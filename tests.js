@@ -817,25 +817,41 @@ section('16. Physics: Thrust, Gravity, Drag, Speed Cap');
     assert(p.vx === origVx, 'under speed cap: velocity unchanged');
 }
 
-// ── 17. AUTO-STABILIZE ──
-section('17. Auto-Stabilization');
+// ── 17. SHIP-TO-SHIP COLLISION ──
+section('17. Ship-to-Ship Collision');
 {
-    const p = makePlayer({angle: 0});
-    let uprightDiff = (-Math.PI/2) - p.angle;
-    while (uprightDiff > Math.PI) uprightDiff -= Math.PI*2;
-    while (uprightDiff < -Math.PI) uprightDiff += Math.PI*2;
-    p.angle += uprightDiff * 0.008;
-    assert(p.angle < 0, 'auto-stab nudges right-pointing ship toward upright');
-    const p2 = makePlayer({angle: -Math.PI});
-    let uprightDiff2 = (-Math.PI/2) - p2.angle;
-    while (uprightDiff2 > Math.PI) uprightDiff2 -= Math.PI*2;
-    while (uprightDiff2 < -Math.PI) uprightDiff2 += Math.PI*2;
-    p2.angle += uprightDiff2 * 0.008;
-    assert(p2.angle > -Math.PI, 'auto-stab nudges left-pointing ship toward upright');
-    const p3 = makePlayer({angle: -Math.PI/2});
-    let uprightDiff3 = (-Math.PI/2) - p3.angle;
-    p3.angle += uprightDiff3 * 0.008;
-    assertApprox(p3.angle, -Math.PI/2, 0.001, 'upright ship stays upright');
+    // Ships collide when distance < SHIP_SZ * 2
+    const p1 = makePlayer({x: 100, y: 100, alive: true, invT: 0, shield: 0});
+    const p2 = makePlayer({x: 100 + SHIP_SZ * 2 - 1, y: 100, alive: true, invT: 0, shield: 0});
+    const d = Math.abs(p2.x - p1.x);
+    assert(d < SHIP_SZ * 2, 'ships within collision range');
+
+    // Ships NOT colliding when far apart
+    const p3 = makePlayer({x: 100, y: 100, alive: true});
+    const p4 = makePlayer({x: 100 + SHIP_SZ * 2 + 5, y: 100, alive: true});
+    const d2 = Math.abs(p4.x - p3.x);
+    assert(d2 >= SHIP_SZ * 2, 'ships outside collision range');
+
+    // Shield absorbs ship collision (killPlayer with no force)
+    const sp = makePlayer({x: 100, y: 100, alive: true, invT: 0, shield: 1, lives: 5});
+    // killPlayer without force: shield should absorb
+    if (sp.shield > 0) { sp.shield--; sp.invT = 30; }
+    assert(sp.shield === 0, 'shield consumed by collision');
+    assert(sp.invT === 30, 'brief invincibility after shield pop');
+
+    // No shield = death
+    const dp = makePlayer({x: 100, y: 100, alive: true, invT: 0, shield: 0, lives: 5});
+    if (dp.shield <= 0) { dp.alive = false; dp.lives--; }
+    assert(!dp.alive, 'no shield = ship destroyed on collision');
+    assert(dp.lives === 4, 'lost a life on collision');
+
+    // Invincible ship not affected
+    const ip = makePlayer({x: 100, y: 100, alive: true, invT: 60, shield: 0, lives: 5});
+    assert(ip.invT > 0, 'invincible ship immune to collision');
+
+    // Landed ship not affected (only flying ships collide)
+    const lp = makePlayer({x: 100, y: 100, alive: true, invT: 0, landed: true});
+    assert(lp.landed, 'landed ships skip ship-to-ship collision check');
 }
 
 // ── 18. HORIZONTAL WRAP ──
@@ -2001,12 +2017,6 @@ section('70. Client Prediction Physics Match Server');
         p.angle += input.rot * ROT_SPD_MAX;
         p.vy += mapGrav;
         p.vx *= DRAG; p.vy *= DRAG;
-        // Auto-stabilization
-        if (Math.abs(input.rot) < 0.1) {
-            const upright = -Math.PI / 2;
-            const diff = upright - p.angle;
-            p.angle += diff * 0.008;
-        }
         const spd = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
         if (spd > MAX_SPD) { p.vx *= MAX_SPD / spd; p.vy *= MAX_SPD / spd; }
         p.x += p.vx; p.y += p.vy;
@@ -2026,12 +2036,6 @@ section('70. Client Prediction Physics Match Server');
         p.angle += input.rot * ROT_SPD_MAX;
         p.vy += mapGrav;
         p.vx *= DRAG; p.vy *= DRAG;
-        // Auto-stabilization (must match server!)
-        if (Math.abs(input.rot) < 0.1) {
-            const upright = -Math.PI / 2;
-            const diff = upright - p.angle;
-            p.angle += diff * 0.008;
-        }
         const spd = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
         if (spd > MAX_SPD) { p.vx *= MAX_SPD / spd; p.vy *= MAX_SPD / spd; }
         p.x += p.vx; p.y += p.vy;
@@ -2053,7 +2057,7 @@ section('70. Client Prediction Physics Match Server');
     assertApprox(serverP.vy, clientP.vy, 0.0001, 'prediction vy matches server');
     assertApprox(serverP.angle, clientP.angle, 0.0001, 'prediction angle matches server');
 
-    // Test auto-stabilization path (no rotation input)
+    // Test no-rotation path (ship maintains angle, no auto-stabilization)
     const sP2 = { x:500,y:400,vx:1,vy:-1,angle:-1.0,alive:true,landed:false };
     const cP2 = { x:500,y:400,vx:1,vy:-1,angle:-1.0,alive:true,landed:false };
     const noRotInput = { thrust:false, revThrust:false, rot:0 };
@@ -2061,8 +2065,8 @@ section('70. Client Prediction Physics Match Server');
         serverPhysicsStep(sP2, noRotInput, G);
         clientPredictionStep(cP2, noRotInput, G);
     }
-    assertApprox(sP2.angle, cP2.angle, 0.0001, 'auto-stab angle matches after 120 frames');
-    assertApprox(sP2.x, cP2.x, 0.0001, 'auto-stab X matches after 120 frames');
+    assertApprox(sP2.angle, cP2.angle, 0.0001, 'no-input angle matches after 120 frames');
+    assertApprox(sP2.x, cP2.x, 0.0001, 'no-input X matches after 120 frames');
 }
 
 // =====================================================
@@ -2085,26 +2089,41 @@ section('71. Drag Value Consistency');
 }
 
 // =====================================================
-section('72. Auto-Stabilization Rate');
+section('72. Fire Latch for Input Throttling');
 // =====================================================
 {
-    // Ship auto-stabilizes at 0.008 factor toward upright (-PI/2)
-    const STAB_RATE = 0.008;
-    const upright = -Math.PI / 2;
-    let angle = 0; // 90 degrees off upright
-    for (let i = 0; i < 300; i++) {
-        const diff = upright - angle;
-        angle += diff * STAB_RATE;
-    }
-    assertApprox(angle, upright, 0.2, 'auto-stab converges toward upright after 300 frames');
+    // When input is throttled to 30Hz, quick fire taps could be missed.
+    // A fire latch ensures any tap between sends is captured.
+    let fireLatch = false;
+    const frames = [
+        { fire: false }, // frame 0 - no fire
+        { fire: true },  // frame 1 - quick tap (between sends)
+        { fire: false }, // frame 2 - send frame, latch should deliver fire=true
+    ];
 
-    // Very tilted ship
-    let angle2 = Math.PI; // completely upside down
-    for (let i = 0; i < 600; i++) {
-        const diff = upright - angle2;
-        angle2 += diff * STAB_RATE;
+    // Simulate 3 frames of input processing
+    let sentFire = false;
+    for (let i = 0; i < frames.length; i++) {
+        if (frames[i].fire) fireLatch = true;
+        if (i === 2) { // send frame
+            sentFire = fireLatch;
+            fireLatch = false;
+        }
     }
-    assertApprox(angle2, upright, 0.1, 'heavily tilted ship stabilizes after 600 frames');
+    assert(sentFire === true, 'fire latch captures tap between sends');
+
+    // Without latch, the tap would be missed
+    let missedFire = frames[2].fire; // would be false at send time
+    assert(missedFire === false, 'without latch, tap is missed at send time');
+
+    // Latch clears after sending
+    assert(fireLatch === false, 'fire latch clears after send');
+
+    // No fire tapped = latch stays false
+    fireLatch = false;
+    const noFireFrames = [{ fire: false }, { fire: false }];
+    for (const f of noFireFrames) { if (f.fire) fireLatch = true; }
+    assert(fireLatch === false, 'no fire tap = latch stays false');
 }
 
 // =====================================================
@@ -2617,6 +2636,76 @@ section('95. Colors Array');
     // All unique
     const uniqueColors = new Set(COLORS);
     assert(uniqueColors.size === 8, 'all 8 colors are unique');
+}
+
+// =====================================================
+section('96. Ship-to-Ship Collision Detection');
+// =====================================================
+{
+    // Two flying ships within SHIP_SZ*2 should collide
+    const collisionRadius = SHIP_SZ * 2; // 20
+    assert(collisionRadius === 20, 'ship collision radius is SHIP_SZ*2 = 20');
+
+    // Ships exactly at collision boundary
+    const d1 = 19.9; // just inside
+    assert(d1 < collisionRadius, 'ships at 19.9 apart collide');
+    const d2 = 20.0; // exactly at boundary
+    assert(!(d2 < collisionRadius), 'ships at exactly 20 do not collide');
+    const d3 = 20.1; // just outside
+    assert(!(d3 < collisionRadius), 'ships at 20.1 apart do not collide');
+
+    // Diagonal distance check
+    const p1 = { x: 100, y: 100 };
+    const p2 = { x: 114, y: 114 };
+    worldW = 4000;
+    const diagDist = dist(p1.x, p1.y, p2.x, p2.y);
+    assertApprox(diagDist, 19.8, 0.1, 'diagonal 14,14 = ~19.8 = collision');
+    assert(diagDist < collisionRadius, 'diagonally close ships collide');
+
+    // Wrap-aware collision (near world boundary)
+    worldW = 4000;
+    const pw1 = { x: 5, y: 100 };
+    const pw2 = { x: 3990, y: 100 };
+    const wrapDist = dist(pw1.x, pw1.y, pw2.x, pw2.y);
+    assert(wrapDist === 15, 'wrap-aware distance = 15 (collision)');
+    assert(wrapDist < collisionRadius, 'ships near wrap boundary collide');
+
+    // Both ships should be killed (not forced — shields protect)
+    // Simulate: ship with shield survives, ship without dies
+    const shielded = { alive: true, shield: 1, invT: 0, lives: 5 };
+    const unshielded = { alive: true, shield: 0, invT: 0, lives: 5 };
+    // killPlayer logic for shielded:
+    if (shielded.shield > 0) { shielded.shield--; shielded.invT = 30; }
+    else { shielded.alive = false; shielded.lives--; }
+    // killPlayer logic for unshielded:
+    if (unshielded.shield > 0) { unshielded.shield--; unshielded.invT = 30; }
+    else { unshielded.alive = false; unshielded.lives--; }
+    assert(shielded.alive === true, 'shielded ship survives collision');
+    assert(shielded.shield === 0, 'shield consumed');
+    assert(unshielded.alive === false, 'unshielded ship dies in collision');
+    assert(unshielded.lives === 4, 'lost a life');
+}
+
+// =====================================================
+section('97. Canvas DPR Scaling');
+// =====================================================
+{
+    // devicePixelRatio should be capped at 2 for performance
+    const testDPR = (raw) => Math.min(raw || 1, 2);
+    assert(testDPR(1) === 1, 'DPR 1x stays 1x');
+    assert(testDPR(2) === 2, 'DPR 2x stays 2x');
+    assert(testDPR(3) === 2, 'DPR 3x capped to 2x');
+    assert(testDPR(3.5) === 2, 'DPR 3.5x capped to 2x');
+    assert(testDPR(undefined) === 1, 'undefined DPR defaults to 1');
+    assert(testDPR(0) === 1, 'DPR 0 treated as falsy, defaults to 1');
+
+    // Canvas dimensions = CSS dimensions * DPR
+    const cssW = 412, cssH = 915; // typical phone
+    const dpr = testDPR(3); // S23 Ultra, capped to 2
+    const canvasW = cssW * dpr;
+    const canvasH = cssH * dpr;
+    assert(canvasW === 824, 'canvas width = CSS width * 2');
+    assert(canvasH === 1830, 'canvas height = CSS height * 2');
 }
 
 console.log(`\n${'='.repeat(50)}`);

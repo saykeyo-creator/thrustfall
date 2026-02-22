@@ -483,14 +483,6 @@ class Room {
             p.vy += this.mapGrav;
             p.vx *= 0.997; p.vy *= 0.997;
 
-            // Auto-stabilize
-            if (Math.abs(inp.rot) < 0.1) {
-                let uprightDiff = (-Math.PI / 2) - p.angle;
-                while (uprightDiff > Math.PI) uprightDiff -= Math.PI * 2;
-                while (uprightDiff < -Math.PI) uprightDiff += Math.PI * 2;
-                p.angle += uprightDiff * 0.008;
-            }
-
             const spd = Math.sqrt(p.vx ** 2 + p.vy ** 2);
             if (spd > MAX_SPD) { p.vx *= MAX_SPD / spd; p.vy *= MAX_SPD / spd; }
             p.x += p.vx; p.y += p.vy;
@@ -505,6 +497,20 @@ class Room {
             if (col) {
                 if (col.type === 'land') this.landShip(p, col.surfY);
                 else this.killPlayer(p);
+            }
+
+            // Ship-to-ship collision — both ships take damage
+            if (p.alive) {
+                for (let oi = pi + 1; oi < this.players.length; oi++) {
+                    const op = this.players[oi];
+                    if (!op.alive || op.invT > 0 || op.landed) continue;
+                    if (dist(p.x, p.y, op.x, op.y, this.worldW) < SHIP_SZ * 2) {
+                        this.emitEvent({ t: 'e', n: 'shipCollide', x1: p.x, y1: p.y, x2: op.x, y2: op.y });
+                        this.killPlayer(p);
+                        this.killPlayer(op);
+                        break;
+                    }
+                }
             }
 
             // Base collisions (THE BUG)

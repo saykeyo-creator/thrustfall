@@ -218,6 +218,7 @@ const INTERP_DELAY = 80; // ms behind real time for remote players
 const CORRECTION_RATE = 0.2; // blend rate toward server truth for local player
 let lastStateTime = 0; // tracks when we last got new server state
 let inputFrame = 0; // throttle input sending
+let fireLatch = false; // latched fire input so quick taps aren't missed between 30Hz sends
 const _li = { rot:0, thrust:false, revThrust:false, fire:false }; // reusable input object
 const _inputMsg = { t:'i', r:0, th:false, rv:false, f:false }; // reusable WS message
 let isMultiplayer = false; // true when using clientUpdate (enables perf shortcuts)
@@ -1394,13 +1395,6 @@ function hostUpdate() {
         p.vy += mapGrav;
         // Air drag — slight deceleration for smoother control
         p.vx *= 0.997; p.vy *= 0.997;
-        // Auto-stabilize rotation when not steering (gentle nudge toward upright)
-        if (Math.abs(inp.rot) < 0.1) {
-            let uprightDiff = (-Math.PI/2) - p.angle;
-            while (uprightDiff > Math.PI) uprightDiff -= Math.PI*2;
-            while (uprightDiff < -Math.PI) uprightDiff += Math.PI*2;
-            p.angle += uprightDiff * 0.008;
-        }
         const spd = Math.sqrt(p.vx**2+p.vy**2);
         if (spd>MAX_SPD){p.vx*=MAX_SPD/spd;p.vy*=MAX_SPD/spd;}
         p.x+=p.vx; p.y+=p.vy;
@@ -1416,6 +1410,22 @@ function hostUpdate() {
         if (col) {
             if (col.type==='land') landShip(p,col.surfY);
             else killPlayer(p);
+        }
+
+        // Ship-to-ship collision — both ships take damage
+        if (p.alive) {
+            for (let oi=pi+1;oi<players.length;oi++) {
+                const op = players[oi];
+                if (!op.alive || op.invT > 0 || op.landed) continue;
+                if (dist(p.x, p.y, op.x, op.y) < SHIP_SZ * 2) {
+                    boom(p.x, p.y, p.color, 1.5);
+                    boom(op.x, op.y, op.color, 1.5);
+                    emitEvent({t:'e',n:'shipCollide',x1:p.x,y1:p.y,x2:op.x,y2:op.y});
+                    killPlayer(p);
+                    killPlayer(op);
+                    break;
+                }
+            }
         }
 
         // Base collisions (THE BUG) — hit any other player's base
@@ -1593,10 +1603,12 @@ function clientUpdate() {
 
     // Send input to server via WebSocket (throttled to 30Hz — server ticks at 30Hz)
     const li = getLocalInput();
+    if (li.fire) fireLatch = true; // latch fire so quick taps aren't missed between sends
     inputFrame++;
     if (ws && ws.readyState === WebSocket.OPEN && (inputFrame & 1) === 0) {
-        _inputMsg.r = li.rot; _inputMsg.th = li.thrust; _inputMsg.rv = li.revThrust; _inputMsg.f = li.fire;
+        _inputMsg.r = li.rot; _inputMsg.th = li.thrust; _inputMsg.rv = li.revThrust; _inputMsg.f = fireLatch;
         ws.send(JSON.stringify(_inputMsg));
+        fireLatch = false; // clear latch after sending
     }
 
     // ---------- CLIENT-SIDE PREDICTION for own ship ----------
@@ -1607,13 +1619,6 @@ function clientUpdate() {
         if (li.revThrust) { me.vx -= Math.cos(me.angle)*REV_THRUST; me.vy -= Math.sin(me.angle)*REV_THRUST; me.revThrusting = true; } else { me.revThrusting = false; }
         me.vy += mapGrav;
         me.vx *= 0.997; me.vy *= 0.997;
-        // Auto-stabilize rotation (must match server)
-        if (Math.abs(li.rot) < 0.1) {
-            let uprightDiff = (-Math.PI/2) - me.angle;
-            while (uprightDiff > Math.PI) uprightDiff -= Math.PI*2;
-            while (uprightDiff < -Math.PI) uprightDiff += Math.PI*2;
-            me.angle += uprightDiff * 0.008;
-        }
         const spd = Math.sqrt(me.vx*me.vx + me.vy*me.vy);
         if (spd > MAX_SPD) { me.vx *= MAX_SPD/spd; me.vy *= MAX_SPD/spd; }
         me.x += me.vx; me.y += me.vy;
@@ -2267,7 +2272,15 @@ document.addEventListener('visibilitychange', () => { if(document.hidden){keys={
 // =====================================================
 // RESIZE & LOOP
 // =====================================================
-function resize() { W=canvas.width=window.innerWidth; H=canvas.height=window.innerHeight; }
+function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2); // cap at 2x for performance
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // Invalidate cached gradients (they depend on H)
+    if (typeof draw !== 'undefined') { draw._tg = null; draw._cg = null; }
+}
 window.addEventListener('resize', resize);
 resize();
 
