@@ -2111,18 +2111,18 @@ section('72. Auto-Stabilization Rate');
 section('73. Server Correction Blending');
 // =====================================================
 {
-    // CORRECTION_RATE = 0.2 blends client toward server truth
-    const CORRECTION_RATE = 0.2;
+    // CORRECTION_RATE = 0.1 blends client toward server truth
+    const CORRECTION_RATE = 0.1;
     let clientX = 100, serverX = 110;
     clientX += (serverX - clientX) * CORRECTION_RATE;
-    assertApprox(clientX, 102, 0.001, 'correction moves 20% toward server');
+    assertApprox(clientX, 101, 0.001, 'correction moves 10% toward server');
 
     // After several corrections, should converge
     let cx = 100;
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 60; i++) {
         cx += (serverX - cx) * CORRECTION_RATE;
     }
-    assertApprox(cx, serverX, 0.02, 'converges within 0.02 after 30 corrections');
+    assertApprox(cx, serverX, 0.05, 'converges within 0.05 after 60 corrections');
 
     // Angle correction with wrapping
     let cAngle = 3.0, sAngle = -3.0;

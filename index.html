@@ -215,7 +215,8 @@ let playerInputs = [];
 // Client-side prediction & interpolation
 let stateBuffer = []; // [{time, state}] for smooth remote player rendering
 const INTERP_DELAY = 80; // ms behind real time for remote players
-const CORRECTION_RATE = 0.2; // blend rate toward server truth for local player
+const CORRECTION_RATE = 0.1; // blend rate toward server truth for local player
+let lastCorrectedTime = 0; // track which server state we last corrected against
 let screenShake = 0;
 let camAngle = -Math.PI/2; // smoothed camera rotation (ship-up view)
 let spectatingIdx = -1;
@@ -1666,17 +1667,22 @@ function clientUpdate() {
         }
     }
 
-    // Smooth correct local player toward server truth
+    // Smooth correct local player toward server truth — ONLY when new state arrives
     if (latest && latest.state.p && latest.state.p[myIndex] && me) {
         const sp = latest.state.p[myIndex];
-        let dx = sp.x - me.x; if (dx > worldW/2) dx -= worldW; if (dx < -worldW/2) dx += worldW;
-        me.x += dx * CORRECTION_RATE; me.y += (sp.y - me.y) * CORRECTION_RATE;
-        me.vx += (sp.vx - me.vx) * CORRECTION_RATE; me.vy += (sp.vy - me.vy) * CORRECTION_RATE;
-        // Correct angle (shortest-path lerp)
-        let angleDiff = sp.a - me.angle;
-        while (angleDiff > Math.PI) angleDiff -= Math.PI*2;
-        while (angleDiff < -Math.PI) angleDiff += Math.PI*2;
-        me.angle += angleDiff * CORRECTION_RATE;
+        // Only blend position/velocity when this is a NEW server state
+        if (latest.time !== lastCorrectedTime) {
+            lastCorrectedTime = latest.time;
+            let dx = sp.x - me.x; if (dx > worldW/2) dx -= worldW; if (dx < -worldW/2) dx += worldW;
+            me.x += dx * CORRECTION_RATE; me.y += (sp.y - me.y) * CORRECTION_RATE;
+            me.vx += (sp.vx - me.vx) * CORRECTION_RATE; me.vy += (sp.vy - me.vy) * CORRECTION_RATE;
+            // Correct angle (shortest-path lerp)
+            let angleDiff = sp.a - me.angle;
+            while (angleDiff > Math.PI) angleDiff -= Math.PI*2;
+            while (angleDiff < -Math.PI) angleDiff += Math.PI*2;
+            me.angle += angleDiff * CORRECTION_RATE;
+        }
+        // Always sync authoritative game state (lives, score, alive, etc)
         me.alive = sp.al; me.lives = sp.l; me.score = sp.s; me.invT = sp.iv ? 1 : 0;
         me.respawnT = sp.rT; me.weapon = sp.wp || 'normal'; me.shield = sp.sh || 0; me.landed = sp.la;
         if (me.x < 0) me.x += worldW; if (me.x > worldW) me.x -= worldW;
