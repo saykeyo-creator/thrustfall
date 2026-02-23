@@ -217,13 +217,15 @@ Land on bases to refuel · Collect weapons · Survive!
 <div class="overlay" id="cosmeticShopScreen">
 <h2>🎨 COSMETICS</h2>
 <div id="coinDisplay" style="color:#ffcc00;font-size:clamp(.8rem,2.5vw,1rem);margin:.3em 0;text-align:center"></div>
+<canvas id="shipPreviewCanvas" width="200" height="180" style="width:200px;height:180px;display:block;margin:0 auto;border-radius:10px;border:1px solid #222"></canvas>
+<div id="shipPreviewLabel" style="color:#ff9900;font-size:clamp(.7rem,2.2vw,.9rem);text-align:center;margin:.3em 0"></div>
 <div style="display:flex;gap:.4em;margin:.5em 0;justify-content:center">
 <button class="btn sm" id="skinTabBtn" onclick="showCosmeticTab('skins')">SHIPS</button>
 <button class="btn sm" id="trailTabBtn" onclick="showCosmeticTab('trails')">TRAILS</button>
 </div>
-<div id="cosmeticList" style="width:min(360px,90vw);margin:.5em auto;max-height:55vh;overflow-y:auto"></div>
+<div id="cosmeticList" style="width:min(360px,90vw);margin:.5em auto;max-height:40vh;overflow-y:auto"></div>
 <div class="sub" style="margin-top:.4em;color:#555">Cosmetics are visual only — no gameplay advantage</div>
-<button class="btn sm" onclick="showMenu()">BACK</button>
+<button class="btn sm" onclick="stopShopPreview();showMenu()">BACK</button>
 </div>
 
 <canvas id="c"></canvas>
@@ -3190,16 +3192,239 @@ function unequipPerk(id) {
 // COSMETIC SHOP (Premium — mock payments)
 // =====================================================
 let cosmeticTab = 'skins';
+let shopPreviewAF = null; // animation frame for shop preview
+let shopPreviewSkinId = null; // which skin is being previewed (hover/tap or active)
+
 function showCosmeticShop() {
     showScreen('cosmeticShopScreen');
     cosmeticTab = 'skins';
+    shopPreviewSkinId = null;
     renderCosmeticShop();
+    startShopPreview();
 }
 function showCosmeticTab(tab) {
     cosmeticTab = tab;
+    shopPreviewSkinId = null;
     document.getElementById('skinTabBtn').style.opacity = tab === 'skins' ? '1' : '.5';
     document.getElementById('trailTabBtn').style.opacity = tab === 'trails' ? '1' : '.5';
     renderCosmeticShop();
+}
+
+function stopShopPreview() {
+    if (shopPreviewAF) { cancelAnimationFrame(shopPreviewAF); shopPreviewAF = null; }
+}
+
+function startShopPreview() {
+    stopShopPreview();
+    const cvs = document.getElementById('shipPreviewCanvas');
+    if (!cvs) return;
+    const pc = cvs.getContext('2d');
+    let tick = 0;
+
+    function drawPreview() {
+        tick++;
+        const w = cvs.width, h = cvs.height;
+        pc.clearRect(0, 0, w, h);
+
+        // Starfield background
+        pc.fillStyle = '#0a0012';
+        pc.fillRect(0, 0, w, h);
+        // Stars
+        for (let i = 0; i < 20; i++) {
+            const sx = ((i * 137 + 50) % w);
+            const sy = ((i * 87 + 30) % h);
+            const twinkle = 0.3 + Math.sin(tick * 0.02 + i) * 0.3;
+            pc.fillStyle = 'rgba(255,255,255,' + twinkle + ')';
+            pc.beginPath(); pc.arc(sx, sy, 0.8, 0, Math.PI * 2); pc.fill();
+        }
+
+        if (cosmeticTab === 'skins') {
+            // Determine which skin to show: hovered/tapped one, or active one
+            const skinId = shopPreviewSkinId || shopData.activeSkin || 'default';
+            const skinDef = SHIP_SKINS.find(s => s.id === skinId);
+            const sColor = (skinDef && skinDef.color) ? skinDef.color : '#00ccff';
+            const sz = 32; // large preview size
+
+            pc.save();
+            pc.translate(w / 2, h / 2 - 5);
+
+            // Gentle bob
+            const bob = Math.sin(tick * 0.03) * 3;
+            pc.translate(0, bob);
+
+            // Glow underneath
+            pc.shadowColor = sColor;
+            pc.shadowBlur = 25;
+
+            // Ghost alpha
+            if (skinId === 'ghost') { pc.globalAlpha = 0.55; }
+            // Neon glow
+            if (skinId === 'neon') { pc.shadowColor = sColor; pc.shadowBlur = 30; }
+
+            pc.fillStyle = sColor;
+            pc.beginPath();
+            drawShipShape(pc, skinId, sz);
+            pc.fill();
+            pc.shadowBlur = 0;
+            pc.strokeStyle = skinId === 'gold' ? '#ffee88' : '#fff';
+            pc.lineWidth = 1.5;
+            pc.stroke();
+
+            // Cockpit
+            pc.fillStyle = '#fff';
+            pc.beginPath(); pc.arc(0, -sz * 0.2, sz * 0.2, 0, Math.PI * 2); pc.fill();
+
+            // Skin-specific effects
+            if (skinId === 'neon') {
+                pc.strokeStyle = 'rgba(0,255,255,0.5)'; pc.lineWidth = 0.8;
+                pc.beginPath(); pc.moveTo(0, -sz * 0.5); pc.lineTo(-sz * 0.25, sz * 0.3);
+                pc.moveTo(0, -sz * 0.5); pc.lineTo(sz * 0.25, sz * 0.3); pc.stroke();
+                // Pulsing outer glow
+                pc.globalAlpha = 0.2 + Math.sin(tick * 0.06) * 0.15;
+                pc.strokeStyle = '#00ffff'; pc.lineWidth = 1;
+                pc.beginPath(); drawShipShape(pc, skinId, sz * 1.08); pc.stroke();
+                pc.globalAlpha = 1;
+            }
+            if (skinId === 'phoenix') {
+                pc.fillStyle = '#ff6600'; pc.globalAlpha = 0.6 + Math.sin(tick * 0.1) * 0.3;
+                pc.beginPath(); pc.arc(-sz * 0.85, sz * 0.4, 5, 0, Math.PI * 2); pc.fill();
+                pc.beginPath(); pc.arc(sz * 0.85, sz * 0.4, 5, 0, Math.PI * 2); pc.fill();
+                pc.fillStyle = '#ffcc00'; pc.globalAlpha = 0.4 + Math.sin(tick * 0.15) * 0.2;
+                pc.beginPath(); pc.arc(-sz * 0.85, sz * 0.4, 3, 0, Math.PI * 2); pc.fill();
+                pc.beginPath(); pc.arc(sz * 0.85, sz * 0.4, 3, 0, Math.PI * 2); pc.fill();
+                pc.globalAlpha = 1;
+            }
+            if (skinId === 'gold') {
+                pc.fillStyle = 'rgba(255,238,136,' + (0.12 + Math.sin(tick * 0.08) * 0.08) + ')';
+                pc.beginPath(); drawShipShape(pc, skinId, sz); pc.fill();
+                // Sparkle particles
+                for (let sp = 0; sp < 3; sp++) {
+                    const spAngle = (tick * 0.02 + sp * 2.1) % (Math.PI * 2);
+                    const spR = sz * 0.8 + Math.sin(tick * 0.05 + sp) * 5;
+                    const spx = Math.cos(spAngle) * spR, spy = Math.sin(spAngle) * spR;
+                    pc.fillStyle = 'rgba(255,238,136,' + (0.5 + Math.sin(tick * 0.1 + sp * 1.5) * 0.4) + ')';
+                    pc.beginPath(); pc.arc(spx, spy, 1.5, 0, Math.PI * 2); pc.fill();
+                }
+            }
+            if (skinId === 'ghost') {
+                pc.globalAlpha = 0.2 + Math.sin(tick * 0.08) * 0.12;
+                pc.strokeStyle = '#8866ff'; pc.lineWidth = 1.5;
+                pc.beginPath(); drawShipShape(pc, skinId, sz * 1.1); pc.stroke();
+                // Flickering wisps
+                for (let g = 0; g < 2; g++) {
+                    const gy = sz * 0.5 + g * 8 + Math.sin(tick * 0.04 + g) * 4;
+                    const gx = Math.sin(tick * 0.03 + g * 2) * 8;
+                    pc.globalAlpha = 0.15 + Math.sin(tick * 0.06 + g) * 0.1;
+                    pc.fillStyle = '#aa88ff';
+                    pc.beginPath(); pc.arc(gx, gy, 3, 0, Math.PI * 2); pc.fill();
+                }
+                pc.globalAlpha = 1;
+            }
+            if (skinId === 'stealth') {
+                // Subtle edge highlights
+                pc.strokeStyle = 'rgba(80,100,120,0.3)'; pc.lineWidth = 0.5;
+                pc.beginPath(); drawShipShape(pc, skinId, sz * 0.95); pc.stroke();
+            }
+
+            // Thrust flame (animated)
+            const flameLen = sz * (0.5 + Math.random() * 0.4);
+            // Use active trail colors for flame preview
+            const trailId = shopData.activeTrail || 'default';
+            const trailDef = TRAIL_EFFECTS.find(t => t.id === trailId);
+            let fCol1 = '#ff8800', fCol2 = '#ffcc00';
+            if (trailDef && trailDef.rainbow) {
+                const hue = (tick * 3) % 360;
+                fCol1 = 'hsl(' + hue + ',100%,50%)'; fCol2 = 'hsl(' + ((hue + 40) % 360) + ',100%,70%)';
+            } else if (trailDef && trailDef.colors) {
+                fCol1 = trailDef.colors[0]; fCol2 = trailDef.colors[1] || trailDef.colors[0];
+            }
+            pc.fillStyle = fCol1; pc.globalAlpha = 0.8;
+            pc.beginPath(); pc.moveTo(-sz * 0.25, sz * 0.5); pc.lineTo(0, sz * 0.5 + flameLen); pc.lineTo(sz * 0.25, sz * 0.5); pc.closePath(); pc.fill();
+            pc.fillStyle = fCol2; pc.globalAlpha = 0.5;
+            pc.beginPath(); pc.moveTo(-sz * 0.12, sz * 0.5); pc.lineTo(0, sz * 0.5 + flameLen * 0.6); pc.lineTo(sz * 0.12, sz * 0.5); pc.closePath(); pc.fill();
+            pc.globalAlpha = 1;
+
+            pc.restore();
+
+            // Label
+            const label = document.getElementById('shipPreviewLabel');
+            if (label) {
+                const displayName = skinDef ? skinDef.name : 'STANDARD';
+                const isActive = skinId === shopData.activeSkin;
+                label.innerHTML = '<span style="color:' + sColor + '">' + displayName + '</span>' +
+                    (isActive ? ' <span style="color:#ffcc00;font-size:.8em">✓ EQUIPPED</span>' : '');
+            }
+        } else {
+            // Trail tab — show active trail on default ship
+            const trailId = shopPreviewSkinId || shopData.activeTrail || 'default';
+            const trailDef = TRAIL_EFFECTS.find(t => t.id === trailId);
+            const sz = 24;
+
+            pc.save();
+            pc.translate(w / 2, h / 2 - 25);
+            const bob = Math.sin(tick * 0.03) * 2;
+            pc.translate(0, bob);
+
+            // Ship
+            pc.fillStyle = '#00ccff';
+            pc.shadowColor = '#00ccff'; pc.shadowBlur = 12;
+            pc.beginPath(); drawShipShape(pc, shopData.activeSkin || 'default', sz); pc.fill();
+            pc.shadowBlur = 0;
+            pc.strokeStyle = '#fff'; pc.lineWidth = 1; pc.stroke();
+            pc.fillStyle = '#fff'; pc.beginPath(); pc.arc(0, -sz * 0.2, sz * 0.18, 0, Math.PI * 2); pc.fill();
+
+            // Trail particles (falling down)
+            const pCount = 15;
+            for (let i = 0; i < pCount; i++) {
+                const age = ((tick * 1.5 + i * 7) % 80) / 80; // 0 to 1 lifecycle
+                const py = sz * 0.5 + age * 75;
+                const px = Math.sin(tick * 0.02 + i * 1.5) * (3 + age * 6);
+                const pSize = (1 - age) * 4 + 1;
+                const pAlpha = (1 - age) * 0.8;
+
+                if (trailDef && trailDef.rainbow) {
+                    const hue = (tick * 2 + i * 30) % 360;
+                    pc.fillStyle = 'hsl(' + hue + ',100%,55%)';
+                } else if (trailDef && trailDef.colors) {
+                    pc.fillStyle = trailDef.colors[i % trailDef.colors.length];
+                } else {
+                    pc.fillStyle = i % 2 === 0 ? '#ff8800' : '#ffcc00';
+                }
+                pc.globalAlpha = pAlpha;
+                pc.beginPath(); pc.arc(px, py, pSize, 0, Math.PI * 2); pc.fill();
+            }
+            pc.globalAlpha = 1;
+
+            // Flame
+            const flameLen = sz * (0.4 + Math.random() * 0.3);
+            let fCol1 = '#ff8800', fCol2 = '#ffcc00';
+            if (trailDef && trailDef.rainbow) {
+                const hue = (tick * 3) % 360;
+                fCol1 = 'hsl(' + hue + ',100%,50%)'; fCol2 = 'hsl(' + ((hue + 40) % 360) + ',100%,70%)';
+            } else if (trailDef && trailDef.colors) {
+                fCol1 = trailDef.colors[0]; fCol2 = trailDef.colors[1] || trailDef.colors[0];
+            }
+            pc.fillStyle = fCol1; pc.globalAlpha = 0.8;
+            pc.beginPath(); pc.moveTo(-sz * 0.25, sz * 0.5); pc.lineTo(0, sz * 0.5 + flameLen); pc.lineTo(sz * 0.25, sz * 0.5); pc.closePath(); pc.fill();
+            pc.fillStyle = fCol2; pc.globalAlpha = 0.5;
+            pc.beginPath(); pc.moveTo(-sz * 0.12, sz * 0.5); pc.lineTo(0, sz * 0.5 + flameLen * 0.6); pc.lineTo(sz * 0.12, sz * 0.5); pc.closePath(); pc.fill();
+            pc.globalAlpha = 1;
+            pc.restore();
+
+            // Label
+            const label = document.getElementById('shipPreviewLabel');
+            if (label) {
+                const displayName = trailDef ? trailDef.name : 'STANDARD';
+                const tColor = trailDef && trailDef.colors ? trailDef.colors[0] : (trailDef && trailDef.rainbow ? '#ff4444' : '#ff8800');
+                const isActive = trailId === shopData.activeTrail;
+                label.innerHTML = '<span style="color:' + tColor + '">' + displayName + ' TRAIL</span>' +
+                    (isActive ? ' <span style="color:#ffcc00;font-size:.8em">✓ EQUIPPED</span>' : '');
+            }
+        }
+
+        shopPreviewAF = requestAnimationFrame(drawPreview);
+    }
+    drawPreview();
 }
 function renderCosmeticShop() {
     document.getElementById('coinDisplay').innerHTML = '💰 Balance: <span style="color:#ffcc00">$' + (shopData.coins / 100).toFixed(2) + '</span>';
@@ -3215,7 +3440,10 @@ function renderCosmeticShop() {
         const isOwned = owned.includes(item.id) || item.free;
         const isActive = active === item.id;
         const div = document.createElement('div');
-        div.style.cssText = 'padding:.5em .7em;margin:.3em 0;border-radius:6px;border:1px solid '+(isActive?'#ffcc00':isOwned?'#444':'#333')+';background:'+(isActive?'rgba(255,204,0,0.08)':'rgba(255,255,255,0.03)')+';display:flex;align-items:center;gap:.5em';
+        div.style.cssText = 'padding:.5em .7em;margin:.3em 0;border-radius:6px;border:1px solid '+(isActive?'#ffcc00':isOwned?'#444':'#333')+';background:'+(isActive?'rgba(255,204,0,0.08)':'rgba(255,255,255,0.03)')+';display:flex;align-items:center;gap:.5em;cursor:pointer';
+
+        // Tap the row to preview this item in the big canvas above
+        div.addEventListener('click', ((id) => () => { shopPreviewSkinId = id; })(item.id));
 
         // Preview — canvas ship rendering for skins, color swatch for trails
         if (cosmeticTab === 'skins') {
