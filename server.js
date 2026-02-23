@@ -272,7 +272,7 @@ class Room {
         this.code = code;
         this.mapKey = mapKey;
         this.isPublic = !!isPublic;
-        this.lobbyPlayers = [{ ws: creatorWs, name: creatorName, index: 0, color: COLORS[0], ready: false, skin: 'default', trail: 'default', perks: [] }];
+        this.lobbyPlayers = [{ ws: creatorWs, name: creatorName, index: 0, color: COLORS[0], ready: false, skin: 'default', trail: 'default', engineSound: 'default', killEffect: 'default', perks: [] }];
         this.creatorWs = creatorWs;
         this.running = false;
         this.autoTimer = null; // 60s countdown interval
@@ -299,7 +299,7 @@ class Room {
     addPlayer(ws, name) {
         if (this.lobbyPlayers.length >= 8) return -1;
         const idx = this.lobbyPlayers.length;
-        this.lobbyPlayers.push({ ws, name, index: idx, color: COLORS[idx], ready: false, skin: 'default', trail: 'default', perks: [] });
+        this.lobbyPlayers.push({ ws, name, index: idx, color: COLORS[idx], ready: false, skin: 'default', trail: 'default', engineSound: 'default', killEffect: 'default', perks: [] });
         this.checkAutoCountdown();
         return idx;
     }
@@ -476,7 +476,7 @@ class Room {
             worldH: mapData.worldH,
             spawns: sb.spawns,
             bases: sb.bases,
-            players: this.lobbyPlayers.map(p => ({ name: p.name, color: p.color, index: p.index, skin: p.skin || 'default', trail: p.trail || 'default' }))
+            players: this.lobbyPlayers.map(p => ({ name: p.name, color: p.color, index: p.index, skin: p.skin || 'default', trail: p.trail || 'default', engineSound: p.engineSound || 'default', killEffect: p.killEffect || 'default' }))
         };
         this.broadcast(startData);
 
@@ -977,6 +977,8 @@ wss.on('connection', (ws) => {
                 // Store cosmetic data from creator
                 if (data.skin) room.lobbyPlayers[0].skin = data.skin;
                 if (data.trail) room.lobbyPlayers[0].trail = data.trail;
+                if (data.engineSound) room.lobbyPlayers[0].engineSound = data.engineSound;
+                if (data.killEffect) room.lobbyPlayers[0].killEffect = data.killEffect;
                 if (data.perks) room.lobbyPlayers[0].perks = data.perks;
                 rooms.set(code, room);
                 wsRoomMap.set(ws, code);
@@ -995,6 +997,8 @@ wss.on('connection', (ws) => {
                 // Store cosmetic data from joiner
                 if (data.skin) room.lobbyPlayers[idx].skin = data.skin;
                 if (data.trail) room.lobbyPlayers[idx].trail = data.trail;
+                if (data.engineSound) room.lobbyPlayers[idx].engineSound = data.engineSound;
+                if (data.killEffect) room.lobbyPlayers[idx].killEffect = data.killEffect;
                 if (data.perks) room.lobbyPlayers[idx].perks = data.perks;
                 wsRoomMap.set(ws, code);
                 room.broadcastLobby();

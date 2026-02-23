@@ -219,9 +219,11 @@ Land on bases to refuel · Collect weapons · Survive!
 <div id="coinDisplay" style="color:#ffcc00;font-size:clamp(.8rem,2.5vw,1rem);margin:.3em 0;text-align:center"></div>
 <canvas id="shipPreviewCanvas" width="200" height="180" style="width:200px;height:180px;display:block;margin:0 auto;border-radius:10px;border:1px solid #222"></canvas>
 <div id="shipPreviewLabel" style="color:#ff9900;font-size:clamp(.7rem,2.2vw,.9rem);text-align:center;margin:.3em 0"></div>
-<div style="display:flex;gap:.4em;margin:.5em 0;justify-content:center">
+<div style="display:flex;gap:.4em;margin:.5em 0;justify-content:center;flex-wrap:wrap">
 <button class="btn sm" id="skinTabBtn" onclick="showCosmeticTab('skins')">SHIPS</button>
 <button class="btn sm" id="trailTabBtn" onclick="showCosmeticTab('trails')">TRAILS</button>
+<button class="btn sm" id="engineTabBtn" onclick="showCosmeticTab('engines')">ENGINES</button>
+<button class="btn sm" id="killFxTabBtn" onclick="showCosmeticTab('killfx')">KILLS</button>
 </div>
 <div id="cosmeticList" style="width:min(360px,90vw);margin:.5em auto;max-height:40vh;overflow-y:auto"></div>
 <div class="sub" style="margin-top:.4em;color:#555">Cosmetics are visual only — no gameplay advantage</div>
@@ -392,6 +394,22 @@ const TRAIL_EFFECTS = [
     {id:'rainbow', name:'RAINBOW',     desc:'Color-cycling exhaust',       price:199,  colors:null, rainbow:true},
     {id:'toxic',   name:'TOXIC',       desc:'Green acid trail',            price:99,   colors:['#44ff00','#88ff44','#aaff88']},
 ];
+const ENGINE_SOUNDS = [
+    {id:'default', name:'STANDARD',  desc:'Classic thrust',          price:0,   free:true},
+    {id:'rumble',  name:'RUMBLE',    desc:'Deep bass growl',         price:99},
+    {id:'whine',   name:'WHINE',    desc:'Electric turbine whine',  price:99},
+    {id:'pulse',   name:'PULSE',    desc:'Pulsing thruster',        price:149},
+    {id:'roar',    name:'ROAR',     desc:'Aggressive roar',         price:199},
+    {id:'hum',     name:'HUM',      desc:'Smooth ion drive',        price:99},
+];
+const KILL_EFFECTS = [
+    {id:'default',  name:'STANDARD', desc:'Classic explosion',       price:0,   free:true,  color:null},
+    {id:'vortex',   name:'VORTEX',   desc:'Imploding vortex',        price:149, color:'#8800ff'},
+    {id:'electric', name:'ELECTRIC', desc:'Lightning discharge',     price:99,  color:'#00eeff'},
+    {id:'shatter',  name:'SHATTER',  desc:'Glass fragment spray',    price:99,  color:'#aaccff'},
+    {id:'nova',     name:'NOVA',     desc:'Supernova ring burst',    price:199, color:'#ffff44'},
+    {id:'void',     name:'VOID',     desc:'Dark matter collapse',    price:149, color:'#6600aa'},
+];
 
 // Player shop data (persisted)
 let shopData = {
@@ -399,8 +417,12 @@ let shopData = {
     equippedPerks: [],     // perk ids currently equipped (max LOADOUT_POINTS)
     ownedSkins: ['default'],
     ownedTrails: ['default'],
+    ownedEngines: ['default'],
+    ownedKillEffects: ['default'],
     activeSkin: 'default',
     activeTrail: 'default',
+    activeEngine: 'default',
+    activeKillEffect: 'default',
     coins: 0              // premium currency (cents) — mock for now
 };
 try { const _sh = JSON.parse(localStorage.getItem('gravShop')); if (_sh) Object.assign(shopData, _sh); } catch(e){}
@@ -509,6 +531,101 @@ function sndAt(t, x, y) {
     const d = dist(x, y, me.x, me.y);
     const vol = Math.max(0, 1 - d / 900);
     snd(t, vol);
+}
+
+// Engine sound function — one-shot per engine type (called every 8 frames)
+function engineSnd(engineId, vol) {
+    if (!ac) return;
+    vol = (vol !== undefined ? vol : 1) * settings.sfxVol;
+    if (vol <= 0.01) return;
+    try {
+        const o = ac.createOscillator(), g = ac.createGain();
+        o.connect(g); g.connect(ac.destination);
+        const n = ac.currentTime;
+        switch(engineId) {
+            case 'rumble':
+                o.type='sawtooth'; o.frequency.setValueAtTime(40,n); o.frequency.exponentialRampToValueAtTime(25,n+.08);
+                g.gain.setValueAtTime(.035*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.08);
+                o.start(n); o.stop(n+.08); break;
+            case 'whine':
+                o.type='triangle'; o.frequency.setValueAtTime(600,n); o.frequency.exponentialRampToValueAtTime(400,n+.06);
+                g.gain.setValueAtTime(.015*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.06);
+                o.start(n); o.stop(n+.06); break;
+            case 'pulse':
+                o.type='square'; o.frequency.setValueAtTime(120,n); o.frequency.setValueAtTime(60,n+.02);
+                o.frequency.setValueAtTime(120,n+.04); o.frequency.exponentialRampToValueAtTime(60,n+.08);
+                g.gain.setValueAtTime(.03*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.08);
+                o.start(n); o.stop(n+.08); break;
+            case 'roar':
+                o.type='sawtooth'; o.frequency.setValueAtTime(200,n); o.frequency.exponentialRampToValueAtTime(50,n+.08);
+                g.gain.setValueAtTime(.04*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.08);
+                o.start(n); o.stop(n+.08); break;
+            case 'hum':
+                o.type='sine'; o.frequency.setValueAtTime(180,n); o.frequency.exponentialRampToValueAtTime(160,n+.08);
+                g.gain.setValueAtTime(.02*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.08);
+                o.start(n); o.stop(n+.08); break;
+            default:
+                o.type='sawtooth'; o.frequency.setValueAtTime(80,n); o.frequency.exponentialRampToValueAtTime(60,n+.06);
+                g.gain.setValueAtTime(.025*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.06);
+                o.start(n); o.stop(n+.06); break;
+        }
+    } catch(e){}
+}
+function engineSndAt(engineId, x, y) {
+    if (!ac) return;
+    const mi = myIndex >= 0 ? myIndex : 0;
+    const me = players[mi];
+    if (!me) { engineSnd(engineId, 1); return; }
+    const d = dist(x, y, me.x, me.y);
+    const vol = Math.max(0, 1 - d / 900);
+    engineSnd(engineId, vol);
+}
+
+// Kill effect explosion — custom particle effects per kill effect type
+function killEffectBoom(x, y, playerColor, effectId) {
+    switch(effectId) {
+        case 'vortex':
+            explosions.push({x,y,r:5,maxR:35,color:'#8800ff',alpha:1,growing:true});
+            for (let i=0;i<20;i++){const a=Math.random()*Math.PI*2,s=Math.random()*4+2;
+            particles.push({x:x+Math.cos(a)*30,y:y+Math.sin(a)*30,vx:-Math.cos(a)*s,vy:-Math.sin(a)*s,
+                life:30+Math.random()*20,maxLife:30+Math.random()*20,
+                color:['#8800ff','#aa44ff','#cc88ff'][Math.floor(Math.random()*3)],size:Math.random()*3+2});}
+            break;
+        case 'electric':
+            explosions.push({x,y,r:5,maxR:30,color:'#00eeff',alpha:1,growing:true});
+            for (let i=0;i<25;i++){const a=Math.random()*Math.PI*2,s=Math.random()*5+2;
+            particles.push({x,y,vx:Math.cos(a)*s+(Math.random()-.5)*3,vy:Math.sin(a)*s-1+(Math.random()-.5)*3,
+                life:20+Math.random()*25,maxLife:20+Math.random()*25,
+                color:['#00eeff','#88ffff','#ffffff','#4488ff'][Math.floor(Math.random()*4)],size:Math.random()*2+1});}
+            break;
+        case 'shatter':
+            explosions.push({x,y,r:5,maxR:20,color:'#aaccff',alpha:1,growing:true});
+            for (let i=0;i<22;i++){const a=(i/22)*Math.PI*2+Math.random()*0.3,s=Math.random()*4+3;
+            particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-0.5,
+                life:35+Math.random()*30,maxLife:35+Math.random()*30,
+                color:['#aaccff','#ddeeff','#99bbee','#ffffff'][Math.floor(Math.random()*4)],size:Math.random()*4+1.5});}
+            break;
+        case 'nova':
+            explosions.push({x,y,r:5,maxR:50,color:'#ffff44',alpha:1,growing:true});
+            for (let i=0;i<24;i++){const a=(i/24)*Math.PI*2,s=3;
+            particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,
+                life:50+Math.random()*20,maxLife:50+Math.random()*20,
+                color:['#ffff44','#ffcc00','#ffffff'][Math.floor(Math.random()*3)],size:Math.random()*3+2});}
+            for (let i=0;i<8;i++){const a=Math.random()*Math.PI*2,s=Math.random()*1.5;
+            particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,
+                life:60+Math.random()*20,maxLife:60+Math.random()*20,color:'#ffffff',size:Math.random()*2+1});}
+            break;
+        case 'void':
+            explosions.push({x,y,r:5,maxR:25,color:'#6600aa',alpha:1,growing:true});
+            for (let i=0;i<18;i++){const a=Math.random()*Math.PI*2,s=Math.random()*2+0.5;
+            particles.push({x:x+Math.cos(a)*20,y:y+Math.sin(a)*20,vx:-Math.cos(a)*s*0.5,vy:-Math.sin(a)*s*0.5,
+                life:45+Math.random()*30,maxLife:45+Math.random()*30,
+                color:['#6600aa','#4400cc','#220066','#8833ff'][Math.floor(Math.random()*4)],size:Math.random()*3+1.5});}
+            break;
+        default:
+            boom(x,y,playerColor,2);
+            break;
+    }
 }
 
 // =====================================================
@@ -875,7 +992,7 @@ function doCreate(mapKey) {
     document.getElementById('createErr').textContent = '';
     lobbyMap = mapKey;
     wsConnect(() => {
-        ws.send(JSON.stringify({ t:'create', name: name, map: mapKey, pub: createPublic, perks: shopData.equippedPerks, skin: shopData.activeSkin, trail: shopData.activeTrail }));
+        ws.send(JSON.stringify({ t:'create', name: name, map: mapKey, pub: createPublic, perks: shopData.equippedPerks, skin: shopData.activeSkin, trail: shopData.activeTrail, engineSound: shopData.activeEngine, killEffect: shopData.activeKillEffect }));
         document.getElementById('createStatus').textContent = '';
     });
 }
@@ -887,7 +1004,7 @@ function doJoin() {
     document.getElementById('joinStatus').textContent = 'Connecting...';
     document.getElementById('joinErr').textContent = '';
     wsConnect(() => {
-        ws.send(JSON.stringify({ t:'join', code: code, name: name, perks: shopData.equippedPerks, skin: shopData.activeSkin, trail: shopData.activeTrail }));
+        ws.send(JSON.stringify({ t:'join', code: code, name: name, perks: shopData.equippedPerks, skin: shopData.activeSkin, trail: shopData.activeTrail, engineSound: shopData.activeEngine, killEffect: shopData.activeKillEffect }));
         document.getElementById('joinStatus').textContent = '';
     });
 }
@@ -1393,7 +1510,9 @@ function beginGame(data) {
             flashTimer: 0, // hit flash effect
             streak: 0, lastKillFrame: -999,
             skin: isLocal ? shopData.activeSkin : (data.players[i].skin || 'default'),
-            trail: isLocal ? shopData.activeTrail : (data.players[i].trail || 'default')
+            trail: isLocal ? shopData.activeTrail : (data.players[i].trail || 'default'),
+            engineSound: isLocal ? shopData.activeEngine : (data.players[i].engineSound || 'default'),
+            killEffect: isLocal ? shopData.activeKillEffect : (data.players[i].killEffect || 'default')
         });
         playerInputs.push({ rot: 0, thrust: false, revThrust: false, fire: false });
     }
@@ -1580,7 +1699,7 @@ function handleEvent(evt) {
             sndAt('explode', ex, ey);
             bumpCombat(COMBAT_KILL_BUMP);
             musicStinger('kill');
-            if (!isHost) { boom(ex, ey, COLORS[evt.i]||'#fff', 2); screenShake=8; }
+            if (!isHost) { killEffectBoom(ex, ey, COLORS[evt.i]||'#fff', evt.ke||'default'); screenShake=8; }
             break;
         case 'baseExp': if(!isHost) baseBoom(ex,ey,evt.o); sndAt('baseExp', ex, ey); bumpCombat(COMBAT_KILL_BUMP); break;
         case 'bugKill': sndAt('bugKill', ex, ey); bumpCombat(COMBAT_HIT_BUMP); if(!isHost) screenShake=12; break;
@@ -1590,7 +1709,7 @@ function handleEvent(evt) {
     }
 }
 
-function killPlayer(p, force) {
+function killPlayer(p, force, killerIdx) {
     if (!p.alive||p.invT>0) return;
     // Shield absorbs one hit (stackable) — unless forced (base kamikaze)
     if (p.shield > 0 && !force) {
@@ -1608,8 +1727,11 @@ function killPlayer(p, force) {
     p.flashTimer = 0;
     if (playerDeaths[p.id] !== undefined) playerDeaths[p.id]++;
     p.weapon = 'normal'; p.shield = 0; p.weaponTimer = 0;
-    boom(p.x,p.y,p.color,2); screenShake=8;
-    emitEvent({t:'e',n:'kill',i:p.id,x:p.x,y:p.y});
+    // Determine kill effect: use killer's killEffect if known, else default
+    const ki = (killerIdx !== undefined && killerIdx >= 0) ? killerIdx : -1;
+    const ke = (ki >= 0 && players[ki]) ? (players[ki].killEffect || 'default') : 'default';
+    killEffectBoom(p.x,p.y,p.color,ke); screenShake=8;
+    emitEvent({t:'e',n:'kill',i:p.id,x:p.x,y:p.y,ki:ki,ke:ke});
     doHaptic(80); // strong haptic on death
     // Progression
     if (p.id === myIndex || (isHost && p.id === 0)) {
@@ -1995,7 +2117,7 @@ function hostUpdate() {
         for (const p of players){
             const hitR = SHIP_SZ + (b.sz||2.5);
             if (p.id!==b.owner&&p.alive&&p.invT<=0&&dist(b.x,b.y,p.x,p.y)<hitR){
-                killPlayer(p);
+                killPlayer(p, false, b.owner);
                 if (p.alive) { /* shield absorbed — don't score */ } else { awardKill(players[b.owner]); }
                 boom(b.x,b.y,b.color,1);
                 // Heavy bullets pierce through first target
@@ -2042,7 +2164,7 @@ function hostUpdate() {
                 for(let d=SHIP_SZ*2;d<endDist;d+=step){
                     const tx=bm.x+Math.cos(bm.angle)*d, ty=bm.y+Math.sin(bm.angle)*d;
                     if(dist(tx,ty,pl.x,pl.y)<SHIP_SZ+4){
-                        killPlayer(pl);
+                        killPlayer(pl, false, bm.owner);
                         if(!pl.alive) awardKill(players[bm.owner]);
                         boom(pl.x,pl.y,bm.color,1.2);
                         bm.hitCd=BEAM_HIT_INTERVAL;
@@ -2092,7 +2214,7 @@ function hostUpdate() {
     // Thrust sounds (host) — every 8 frames to keep it light
     if (frame % 8 === 0) {
         for (const p of players) {
-            if (p.alive && (p.thrusting || p.revThrusting)) sndAt('thrust', p.x, p.y);
+            if (p.alive && (p.thrusting || p.revThrusting)) engineSndAt(p.engineSound || 'default', p.x, p.y);
         }
     }
 
@@ -2281,7 +2403,7 @@ function clientUpdate() {
     thrustSndFrame++;
     if (thrustSndFrame % 8 === 0) {
         for (const p of players) {
-            if (p.alive && (p.thrusting || p.revThrusting)) sndAt('thrust', p.x, p.y);
+            if (p.alive && (p.thrusting || p.revThrusting)) engineSndAt(p.engineSound || 'default', p.x, p.y);
         }
     }
 
@@ -3207,6 +3329,8 @@ function showCosmeticTab(tab) {
     shopPreviewSkinId = null;
     document.getElementById('skinTabBtn').style.opacity = tab === 'skins' ? '1' : '.5';
     document.getElementById('trailTabBtn').style.opacity = tab === 'trails' ? '1' : '.5';
+    document.getElementById('engineTabBtn').style.opacity = tab === 'engines' ? '1' : '.5';
+    document.getElementById('killFxTabBtn').style.opacity = tab === 'killfx' ? '1' : '.5';
     renderCosmeticShop();
 }
 
@@ -3354,7 +3478,7 @@ function startShopPreview() {
                 label.innerHTML = '<span style="color:' + sColor + '">' + displayName + '</span>' +
                     (isActive ? ' <span style="color:#ffcc00;font-size:.8em">✓ EQUIPPED</span>' : '');
             }
-        } else {
+        } else if (cosmeticTab === 'trails') {
             // Trail tab — show active trail on default ship
             const trailId = shopPreviewSkinId || shopData.activeTrail || 'default';
             const trailDef = TRAIL_EFFECTS.find(t => t.id === trailId);
@@ -3420,6 +3544,178 @@ function startShopPreview() {
                 label.innerHTML = '<span style="color:' + tColor + '">' + displayName + ' TRAIL</span>' +
                     (isActive ? ' <span style="color:#ffcc00;font-size:.8em">✓ EQUIPPED</span>' : '');
             }
+        } else if (cosmeticTab === 'engines') {
+            // Engine tab — show ship with animated thrust + sound wave indicator
+            const eId = shopPreviewSkinId || shopData.activeEngine || 'default';
+            const eDef = ENGINE_SOUNDS.find(e => e.id === eId);
+            const sz = 24;
+            pc.save();
+            pc.translate(w / 2, h / 2 - 15);
+            const bob = Math.sin(tick * 0.03) * 2;
+            pc.translate(0, bob);
+
+            // Ship
+            pc.fillStyle = '#00ccff';
+            pc.shadowColor = '#00ccff'; pc.shadowBlur = 12;
+            pc.beginPath(); drawShipShape(pc, shopData.activeSkin || 'default', sz); pc.fill();
+            pc.shadowBlur = 0;
+            pc.strokeStyle = '#fff'; pc.lineWidth = 1; pc.stroke();
+            pc.fillStyle = '#fff'; pc.beginPath(); pc.arc(0, -sz * 0.2, sz * 0.18, 0, Math.PI * 2); pc.fill();
+
+            // Animated flame
+            const flameLen = sz * (0.5 + Math.sin(tick * 0.15) * 0.3);
+            pc.fillStyle = '#ff8800'; pc.globalAlpha = 0.8;
+            pc.beginPath(); pc.moveTo(-sz * 0.25, sz * 0.5); pc.lineTo(0, sz * 0.5 + flameLen); pc.lineTo(sz * 0.25, sz * 0.5); pc.closePath(); pc.fill();
+            pc.fillStyle = '#ffcc00'; pc.globalAlpha = 0.5;
+            pc.beginPath(); pc.moveTo(-sz * 0.12, sz * 0.5); pc.lineTo(0, sz * 0.5 + flameLen * 0.6); pc.lineTo(sz * 0.12, sz * 0.5); pc.closePath(); pc.fill();
+            pc.globalAlpha = 1;
+
+            // Sound wave rings emanating from engine
+            for (let r = 0; r < 3; r++) {
+                const phase = ((tick * 0.04 + r * 0.33) % 1);
+                const ringR = 10 + phase * 40;
+                const alpha = (1 - phase) * 0.35;
+                pc.strokeStyle = eId === 'default' ? '#ff8800' : eId === 'rumble' ? '#ff4400' : eId === 'whine' ? '#88ddff' : eId === 'pulse' ? '#44ff88' : eId === 'roar' ? '#ff6600' : '#aaddff';
+                pc.globalAlpha = alpha;
+                pc.lineWidth = 1.5;
+                pc.beginPath(); pc.arc(0, sz * 0.6, ringR, 0.3, Math.PI - 0.3); pc.stroke();
+            }
+            pc.globalAlpha = 1;
+            pc.restore();
+
+            // Label
+            const label = document.getElementById('shipPreviewLabel');
+            if (label) {
+                const displayName = eDef ? eDef.name : 'STANDARD';
+                const isActive = eId === shopData.activeEngine;
+                label.innerHTML = '<span style="color:#ff8800">' + displayName + ' ENGINE</span>' +
+                    (isActive ? ' <span style="color:#ffcc00;font-size:.8em">✓ EQUIPPED</span>' : '') +
+                    '<br><span style="color:#666;font-size:.7em">Tap item to hear sound</span>';
+            }
+        } else if (cosmeticTab === 'killfx') {
+            // Kill effects tab — show animated explosion preview
+            const keId = shopPreviewSkinId || shopData.activeKillEffect || 'default';
+            const keDef = KILL_EFFECTS.find(k => k.id === keId);
+            const keColor = (keDef && keDef.color) || '#ff4400';
+
+            // Looping explosion animation
+            const cycle = tick % 120; // repeat every 2 seconds
+            const phase = cycle / 120;
+
+            pc.save();
+            pc.translate(w / 2, h / 2);
+
+            if (phase < 0.1) {
+                // Ship about to explode
+                const sz = 20 * (1 - phase * 5);
+                pc.fillStyle = '#ff3366'; pc.globalAlpha = 1 - phase * 8;
+                pc.beginPath(); drawShipShape(pc, 'default', sz); pc.fill();
+                pc.strokeStyle = '#fff'; pc.lineWidth = 1; pc.stroke();
+                pc.globalAlpha = 1;
+            } else if (phase < 0.9) {
+                // Explosion effect
+                const ep = (phase - 0.1) / 0.8; // 0 to 1 within explosion phase
+                switch(keId) {
+                    case 'vortex':
+                        // Particles spiral inward then burst
+                        for (let i = 0; i < 12; i++) {
+                            const a = (i/12)*Math.PI*2 + tick*0.05;
+                            const r = ep < 0.4 ? 35*(1-ep/0.4) : ep < 0.5 ? 0 : (ep-0.5)*60;
+                            const px = Math.cos(a)*r, py = Math.sin(a)*r;
+                            pc.fillStyle = ['#8800ff','#aa44ff','#cc88ff'][i%3];
+                            pc.globalAlpha = 1 - ep*0.8;
+                            pc.beginPath(); pc.arc(px, py, 3-ep*2, 0, Math.PI*2); pc.fill();
+                        }
+                        if (ep < 0.5) {
+                            pc.strokeStyle = '#8800ff'; pc.globalAlpha = 0.5 - ep;
+                            pc.lineWidth = 2; pc.beginPath(); pc.arc(0,0,35*(1-ep*2),0,Math.PI*2); pc.stroke();
+                        }
+                        break;
+                    case 'electric':
+                        // Lightning bolts
+                        for (let i = 0; i < 6; i++) {
+                            const a = (i/6)*Math.PI*2 + (tick%3)*0.5;
+                            const len = 20 + ep*25;
+                            pc.strokeStyle = ['#00eeff','#88ffff','#ffffff'][i%3];
+                            pc.globalAlpha = 1 - ep*0.9; pc.lineWidth = 2;
+                            pc.beginPath(); pc.moveTo(0,0);
+                            let cx=0,cy=0;
+                            for (let s=0;s<4;s++){const seg=len/4;cx+=Math.cos(a+(Math.random()-.5)*1.2)*seg;cy+=Math.sin(a+(Math.random()-.5)*1.2)*seg;pc.lineTo(cx,cy);}
+                            pc.stroke();
+                        }
+                        pc.fillStyle = '#ffffff'; pc.globalAlpha = Math.max(0,0.6-ep);
+                        pc.beginPath(); pc.arc(0,0,8-ep*6,0,Math.PI*2); pc.fill();
+                        break;
+                    case 'shatter':
+                        // Angular fragments flying out
+                        for (let i = 0; i < 10; i++) {
+                            const a = (i/10)*Math.PI*2 + i*0.3;
+                            const r = ep * 45;
+                            const rot = tick*0.1+i;
+                            pc.save(); pc.translate(Math.cos(a)*r, Math.sin(a)*r); pc.rotate(rot);
+                            pc.fillStyle = ['#aaccff','#ddeeff','#99bbee','#ffffff'][i%4];
+                            pc.globalAlpha = 1 - ep;
+                            pc.fillRect(-3,-2,6,4);
+                            pc.restore();
+                        }
+                        break;
+                    case 'nova':
+                        // Expanding ring
+                        const ringR = ep * 55;
+                        pc.strokeStyle = '#ffff44'; pc.globalAlpha = 1 - ep*0.9; pc.lineWidth = 3 - ep*2;
+                        pc.beginPath(); pc.arc(0,0,ringR,0,Math.PI*2); pc.stroke();
+                        // Inner ring
+                        pc.strokeStyle = '#ffffff'; pc.globalAlpha = Math.max(0,0.8-ep*1.2); pc.lineWidth = 1;
+                        pc.beginPath(); pc.arc(0,0,ringR*0.6,0,Math.PI*2); pc.stroke();
+                        // Center flash
+                        pc.fillStyle = '#ffffff'; pc.globalAlpha = Math.max(0,0.8-ep*2);
+                        pc.beginPath(); pc.arc(0,0,10-ep*8,0,Math.PI*2); pc.fill();
+                        // Sparkles along ring
+                        for (let i=0;i<8;i++){
+                            const sa=(i/8)*Math.PI*2;
+                            pc.fillStyle='#ffcc00'; pc.globalAlpha=Math.max(0,(1-ep)*0.7);
+                            pc.beginPath(); pc.arc(Math.cos(sa)*ringR,Math.sin(sa)*ringR,2,0,Math.PI*2); pc.fill();
+                        }
+                        break;
+                    case 'void':
+                        // Dark collapse
+                        for (let i = 0; i < 10; i++) {
+                            const a = (i/10)*Math.PI*2 + tick*0.02;
+                            const r = ep < 0.5 ? 30*(1-ep*2) + Math.sin(tick*0.1+i)*5 : (ep-0.5)*20;
+                            pc.fillStyle = ['#6600aa','#4400cc','#220066','#8833ff'][i%4];
+                            pc.globalAlpha = 1 - ep*0.7;
+                            pc.beginPath(); pc.arc(Math.cos(a)*r, Math.sin(a)*r, 3, 0, Math.PI*2); pc.fill();
+                        }
+                        // Dark center
+                        pc.fillStyle = '#110022'; pc.globalAlpha = Math.max(0,0.8-ep);
+                        pc.beginPath(); pc.arc(0,0,12-ep*10,0,Math.PI*2); pc.fill();
+                        break;
+                    default:
+                        // Standard explosion
+                        const er = 5 + ep * 30;
+                        pc.fillStyle = '#ff4400'; pc.globalAlpha = Math.max(0,0.6-ep*0.5);
+                        pc.beginPath(); pc.arc(0,0,er,0,Math.PI*2); pc.fill();
+                        pc.strokeStyle = '#ffcc00'; pc.globalAlpha = 1 - ep;
+                        pc.lineWidth = 2; pc.beginPath(); pc.arc(0,0,er,0,Math.PI*2); pc.stroke();
+                        for (let i=0;i<8;i++){
+                            const a=(i/8)*Math.PI*2;const pr=ep*35;
+                            pc.fillStyle=i%2===0?'#ff6600':'#ffcc00'; pc.globalAlpha=1-ep;
+                            pc.beginPath(); pc.arc(Math.cos(a)*pr,Math.sin(a)*pr,2.5-ep*2,0,Math.PI*2); pc.fill();
+                        }
+                        break;
+                }
+            }
+            pc.globalAlpha = 1;
+            pc.restore();
+
+            // Label
+            const label = document.getElementById('shipPreviewLabel');
+            if (label) {
+                const displayName = keDef ? keDef.name : 'STANDARD';
+                const isActive = keId === shopData.activeKillEffect;
+                label.innerHTML = '<span style="color:' + keColor + '">' + displayName + ' KILL EFFECT</span>' +
+                    (isActive ? ' <span style="color:#ffcc00;font-size:.8em">✓ EQUIPPED</span>' : '');
+            }
         }
 
         shopPreviewAF = requestAnimationFrame(drawPreview);
@@ -3430,11 +3726,13 @@ function renderCosmeticShop() {
     document.getElementById('coinDisplay').innerHTML = '💰 Balance: <span style="color:#ffcc00">$' + (shopData.coins / 100).toFixed(2) + '</span>';
     document.getElementById('skinTabBtn').style.opacity = cosmeticTab === 'skins' ? '1' : '.5';
     document.getElementById('trailTabBtn').style.opacity = cosmeticTab === 'trails' ? '1' : '.5';
+    document.getElementById('engineTabBtn').style.opacity = cosmeticTab === 'engines' ? '1' : '.5';
+    document.getElementById('killFxTabBtn').style.opacity = cosmeticTab === 'killfx' ? '1' : '.5';
     const list = document.getElementById('cosmeticList');
     list.innerHTML = '';
-    const items = cosmeticTab === 'skins' ? SHIP_SKINS : TRAIL_EFFECTS;
-    const owned = cosmeticTab === 'skins' ? shopData.ownedSkins : shopData.ownedTrails;
-    const active = cosmeticTab === 'skins' ? shopData.activeSkin : shopData.activeTrail;
+    const items = cosmeticTab === 'skins' ? SHIP_SKINS : cosmeticTab === 'trails' ? TRAIL_EFFECTS : cosmeticTab === 'engines' ? ENGINE_SOUNDS : KILL_EFFECTS;
+    const owned = cosmeticTab === 'skins' ? shopData.ownedSkins : cosmeticTab === 'trails' ? shopData.ownedTrails : cosmeticTab === 'engines' ? shopData.ownedEngines : shopData.ownedKillEffects;
+    const active = cosmeticTab === 'skins' ? shopData.activeSkin : cosmeticTab === 'trails' ? shopData.activeTrail : cosmeticTab === 'engines' ? shopData.activeEngine : shopData.activeKillEffect;
 
     for (const item of items) {
         const isOwned = owned.includes(item.id) || item.free;
@@ -3443,9 +3741,13 @@ function renderCosmeticShop() {
         div.style.cssText = 'padding:.5em .7em;margin:.3em 0;border-radius:6px;border:1px solid '+(isActive?'#ffcc00':isOwned?'#444':'#333')+';background:'+(isActive?'rgba(255,204,0,0.08)':'rgba(255,255,255,0.03)')+';display:flex;align-items:center;gap:.5em;cursor:pointer';
 
         // Tap the row to preview this item in the big canvas above
-        div.addEventListener('click', ((id) => () => { shopPreviewSkinId = id; })(item.id));
+        div.addEventListener('click', ((id, tab) => () => {
+            shopPreviewSkinId = id;
+            // Play engine sound preview on tap
+            if (tab === 'engines') { initAudio(); engineSnd(id, 0.5); }
+        })(item.id, cosmeticTab));
 
-        // Preview — canvas ship rendering for skins, color swatch for trails
+        // Preview — canvas ship rendering for skins, color swatch for trails, icons for engines/kills
         if (cosmeticTab === 'skins') {
             const prevCanvas = document.createElement('canvas');
             prevCanvas.width = 56; prevCanvas.height = 56;
@@ -3502,7 +3804,7 @@ function renderCosmeticShop() {
             pc.beginPath(); pc.moveTo(-2, 12); pc.lineTo(0, 18); pc.lineTo(2, 12); pc.closePath(); pc.fill();
             pc.restore();
             div.appendChild(prevCanvas);
-        } else {
+        } else if (cosmeticTab === 'trails') {
             const swatch = document.createElement('div');
             const tc = item.rainbow ? '#ff0000' : (item.colors ? item.colors[0] : '#ff8800');
             swatch.style.cssText = 'width:56px;height:56px;border-radius:4px;flex-shrink:0;position:relative;overflow:hidden';
@@ -3554,6 +3856,51 @@ function renderCosmeticShop() {
             tc2.globalAlpha = 1;
             swatch.appendChild(tCanvas);
             div.appendChild(swatch);
+        } else if (cosmeticTab === 'engines') {
+            // Engine sound preview icon — speaker/wave icon
+            const eCanvas = document.createElement('canvas');
+            eCanvas.width = 56; eCanvas.height = 56;
+            eCanvas.style.cssText = 'width:56px;height:56px;flex-shrink:0';
+            const ec = eCanvas.getContext('2d');
+            ec.fillStyle = '#0a0012'; ec.fillRect(0, 0, 56, 56);
+            // Sound wave icon
+            const eColor = item.id === 'default' ? '#ff8800' : item.id === 'rumble' ? '#ff4400' : item.id === 'whine' ? '#88ddff' : item.id === 'pulse' ? '#44ff88' : item.id === 'roar' ? '#ff6600' : '#aaddff';
+            ec.strokeStyle = eColor; ec.lineWidth = 2;
+            // Speaker shape
+            ec.fillStyle = eColor;
+            ec.beginPath(); ec.moveTo(18,22); ec.lineTo(18,34); ec.lineTo(24,34); ec.lineTo(30,38); ec.lineTo(30,18); ec.lineTo(24,22); ec.closePath(); ec.fill();
+            // Sound waves
+            for (let r = 0; r < 3; r++) {
+                ec.globalAlpha = 0.8 - r * 0.2;
+                ec.beginPath(); ec.arc(28, 28, 8 + r * 5, -0.6, 0.6); ec.stroke();
+            }
+            ec.globalAlpha = 1;
+            div.appendChild(eCanvas);
+        } else {
+            // Kill effect preview icon
+            const kCanvas = document.createElement('canvas');
+            kCanvas.width = 56; kCanvas.height = 56;
+            kCanvas.style.cssText = 'width:56px;height:56px;flex-shrink:0';
+            const kc = kCanvas.getContext('2d');
+            kc.fillStyle = '#0a0012'; kc.fillRect(0, 0, 56, 56);
+            const kColor = item.color || '#ff4400';
+            // Explosion icon
+            kc.save(); kc.translate(28, 28);
+            // Rays
+            for (let r = 0; r < 8; r++) {
+                const a = (r / 8) * Math.PI * 2;
+                kc.strokeStyle = kColor; kc.globalAlpha = 0.7; kc.lineWidth = 2;
+                kc.beginPath(); kc.moveTo(Math.cos(a)*5, Math.sin(a)*5);
+                kc.lineTo(Math.cos(a)*16, Math.sin(a)*16); kc.stroke();
+            }
+            // Center
+            kc.fillStyle = kColor; kc.globalAlpha = 0.9;
+            kc.beginPath(); kc.arc(0, 0, 6, 0, Math.PI * 2); kc.fill();
+            kc.fillStyle = '#fff'; kc.globalAlpha = 0.6;
+            kc.beginPath(); kc.arc(0, 0, 3, 0, Math.PI * 2); kc.fill();
+            kc.globalAlpha = 1;
+            kc.restore();
+            div.appendChild(kCanvas);
         }
 
         const info = document.createElement('div');
@@ -3585,18 +3932,22 @@ function renderCosmeticShop() {
 }
 function equipCosmetic(tab, id) {
     if (tab === 'skins') shopData.activeSkin = id;
-    else shopData.activeTrail = id;
+    else if (tab === 'trails') shopData.activeTrail = id;
+    else if (tab === 'engines') shopData.activeEngine = id;
+    else if (tab === 'killfx') shopData.activeKillEffect = id;
     saveShop();
     renderCosmeticShop();
 }
 function buyCosmetic(tab, id, price) {
     // Mock purchase — in production this would go through Play Store / Stripe
     // For now, just unlock it for free with a confirmation
-    const item = (tab === 'skins' ? SHIP_SKINS : TRAIL_EFFECTS).find(i => i.id === id);
+    const item = (tab === 'skins' ? SHIP_SKINS : tab === 'trails' ? TRAIL_EFFECTS : tab === 'engines' ? ENGINE_SOUNDS : KILL_EFFECTS).find(i => i.id === id);
     if (!item) return;
     // Mock: auto-grant for testing
     if (tab === 'skins') { if (!shopData.ownedSkins.includes(id)) shopData.ownedSkins.push(id); }
-    else { if (!shopData.ownedTrails.includes(id)) shopData.ownedTrails.push(id); }
+    else if (tab === 'trails') { if (!shopData.ownedTrails.includes(id)) shopData.ownedTrails.push(id); }
+    else if (tab === 'engines') { if (!shopData.ownedEngines.includes(id)) shopData.ownedEngines.push(id); }
+    else if (tab === 'killfx') { if (!shopData.ownedKillEffects.includes(id)) shopData.ownedKillEffects.push(id); }
     saveShop();
     renderCosmeticShop();
 }

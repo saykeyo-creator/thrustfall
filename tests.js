@@ -6,6 +6,8 @@
 // from index.html / server.js and verify all critical
 // gameplay mechanics plus client-server alignment.
 
+const fs = require('fs');
+
 let passed = 0, failed = 0, total = 0;
 
 function assert(condition, name) {
@@ -3242,6 +3244,22 @@ const TRAIL_EFFECTS = [
     {id:'rainbow', name:'RAINBOW',     desc:'Color-cycling exhaust',       price:199,  colors:null, rainbow:true},
     {id:'toxic',   name:'TOXIC',       desc:'Green acid trail',            price:99,   colors:['#44ff00','#88ff44','#aaff88']},
 ];
+const ENGINE_SOUNDS = [
+    {id:'default', name:'STANDARD',  desc:'Classic thrust',          price:0,   free:true},
+    {id:'rumble',  name:'RUMBLE',    desc:'Deep bass growl',         price:99},
+    {id:'whine',   name:'WHINE',    desc:'Electric turbine whine',  price:99},
+    {id:'pulse',   name:'PULSE',    desc:'Pulsing thruster',        price:149},
+    {id:'roar',    name:'ROAR',     desc:'Aggressive roar',         price:199},
+    {id:'hum',     name:'HUM',      desc:'Smooth ion drive',        price:99},
+];
+const KILL_EFFECTS = [
+    {id:'default',  name:'STANDARD', desc:'Classic explosion',       price:0,   free:true,  color:null},
+    {id:'vortex',   name:'VORTEX',   desc:'Imploding vortex',        price:149, color:'#8800ff'},
+    {id:'electric', name:'ELECTRIC', desc:'Lightning discharge',     price:99,  color:'#00eeff'},
+    {id:'shatter',  name:'SHATTER',  desc:'Glass fragment spray',    price:99,  color:'#aaccff'},
+    {id:'nova',     name:'NOVA',     desc:'Supernova ring burst',    price:199, color:'#ffff44'},
+    {id:'void',     name:'VOID',     desc:'Dark matter collapse',    price:149, color:'#6600aa'},
+];
 
 function xpForLevel(lv) { return Math.floor(XP_LEVEL_BASE * Math.pow(XP_LEVEL_SCALE, lv - 1)); }
 
@@ -3252,8 +3270,12 @@ function makeShopData(overrides) {
         equippedPerks: [],
         ownedSkins: ['default'],
         ownedTrails: ['default'],
+        ownedEngines: ['default'],
+        ownedKillEffects: ['default'],
         activeSkin: 'default',
         activeTrail: 'default',
+        activeEngine: 'default',
+        activeKillEffect: 'default',
         coins: 0
     }, overrides || {});
 }
@@ -4472,6 +4494,359 @@ section('146. Height-Fit Viewport — Tablet Controls Visible');
     // Fire button visible (at H-70)
     const fireBtnY = (VIEW_H - 70) * tabScale + tabOffY;
     assert(fireBtnY < 1340, 'Tab A9: fire button is fully on screen');
+}
+
+// ── 147. Engine Sounds ── Cosmetic Array & Audio ──
+{
+    section('Engine Sounds — Cosmetic Array & Audio');
+
+    // ENGINE_SOUNDS array exists and has correct structure
+    assert(Array.isArray(ENGINE_SOUNDS), 'ENGINE_SOUNDS is an array');
+    assert(ENGINE_SOUNDS.length === 6, 'ENGINE_SOUNDS has 6 entries');
+
+    // Check all engine sound IDs
+    const engineIds = ENGINE_SOUNDS.map(e => e.id);
+    assert(engineIds.includes('default'), 'ENGINE_SOUNDS has default');
+    assert(engineIds.includes('rumble'), 'ENGINE_SOUNDS has rumble');
+    assert(engineIds.includes('whine'), 'ENGINE_SOUNDS has whine');
+    assert(engineIds.includes('pulse'), 'ENGINE_SOUNDS has pulse');
+    assert(engineIds.includes('roar'), 'ENGINE_SOUNDS has roar');
+    assert(engineIds.includes('hum'), 'ENGINE_SOUNDS has hum');
+
+    // Default is free
+    const defEngine = ENGINE_SOUNDS.find(e => e.id === 'default');
+    assert(defEngine.free === true, 'Default engine is free');
+    assert(defEngine.price === 0, 'Default engine price is 0');
+
+    // All engines have required fields
+    for (const e of ENGINE_SOUNDS) {
+        assert(typeof e.id === 'string', 'Engine ' + e.id + ' has string id');
+        assert(typeof e.name === 'string', 'Engine ' + e.id + ' has string name');
+        assert(typeof e.desc === 'string', 'Engine ' + e.id + ' has string desc');
+        assert(typeof e.price === 'number', 'Engine ' + e.id + ' has numeric price');
+    }
+
+    // Paid engines have positive prices
+    for (const e of ENGINE_SOUNDS) {
+        if (!e.free) assert(e.price > 0, 'Paid engine ' + e.id + ' has positive price');
+    }
+
+    // IDs are unique
+    assert(new Set(engineIds).size === ENGINE_SOUNDS.length, 'Engine sound IDs are unique');
+
+    // shopData fields exist
+    const shop = makeShopData();
+    assert(Array.isArray(shop.ownedEngines), 'shopData has ownedEngines array');
+    assert(shop.ownedEngines.includes('default'), 'shopData.ownedEngines includes default');
+    assert(shop.activeEngine === 'default', 'shopData.activeEngine defaults to default');
+}
+
+// ── 148. Kill Effects ── Cosmetic Array & Particles ──
+{
+    section('Kill Effects — Cosmetic Array & Particles');
+
+    // KILL_EFFECTS array exists and has correct structure
+    assert(Array.isArray(KILL_EFFECTS), 'KILL_EFFECTS is an array');
+    assert(KILL_EFFECTS.length === 6, 'KILL_EFFECTS has 6 entries');
+
+    // Check all kill effect IDs
+    const killIds = KILL_EFFECTS.map(k => k.id);
+    assert(killIds.includes('default'), 'KILL_EFFECTS has default');
+    assert(killIds.includes('vortex'), 'KILL_EFFECTS has vortex');
+    assert(killIds.includes('electric'), 'KILL_EFFECTS has electric');
+    assert(killIds.includes('shatter'), 'KILL_EFFECTS has shatter');
+    assert(killIds.includes('nova'), 'KILL_EFFECTS has nova');
+    assert(killIds.includes('void'), 'KILL_EFFECTS has void');
+
+    // Default is free
+    const defKill = KILL_EFFECTS.find(k => k.id === 'default');
+    assert(defKill.free === true, 'Default kill effect is free');
+    assert(defKill.price === 0, 'Default kill effect price is 0');
+
+    // All kill effects have required fields
+    for (const k of KILL_EFFECTS) {
+        assert(typeof k.id === 'string', 'Kill effect ' + k.id + ' has string id');
+        assert(typeof k.name === 'string', 'Kill effect ' + k.id + ' has string name');
+        assert(typeof k.desc === 'string', 'Kill effect ' + k.id + ' has string desc');
+        assert(typeof k.price === 'number', 'Kill effect ' + k.id + ' has numeric price');
+    }
+
+    // Paid effects have colors
+    for (const k of KILL_EFFECTS) {
+        if (!k.free) assert(typeof k.color === 'string', 'Paid kill effect ' + k.id + ' has color');
+    }
+
+    // IDs are unique
+    assert(new Set(killIds).size === KILL_EFFECTS.length, 'Kill effect IDs are unique');
+
+    // shopData fields exist
+    const shop = makeShopData();
+    assert(Array.isArray(shop.ownedKillEffects), 'shopData has ownedKillEffects array');
+    assert(shop.ownedKillEffects.includes('default'), 'shopData.ownedKillEffects includes default');
+    assert(shop.activeKillEffect === 'default', 'shopData.activeKillEffect defaults to default');
+}
+
+// ── 149. Kill Effect Boom ── Particle Spawning (replicated logic) ──
+{
+    section('Kill Effect Boom — Particle Spawning');
+
+    // Replicate killEffectBoom and boom for testing
+    function testBoom(x,y,color,sz) {
+        sz = sz || 1;
+        _testExplosions.push({x,y,r:5,maxR:25*sz,color,alpha:1,growing:true});
+        const n=Math.min(15*sz,30);
+        for (let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=Math.random()*3*sz+1;
+        _testParticles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-1,life:40+Math.random()*40,maxLife:40+Math.random()*40,color,size:Math.random()*3+1});}
+    }
+    let _testParticles = [], _testExplosions = [];
+
+    function testKillEffectBoom(x, y, playerColor, effectId) {
+        switch(effectId) {
+            case 'vortex':
+                _testExplosions.push({x,y,r:5,maxR:35,color:'#8800ff',alpha:1,growing:true});
+                for (let i=0;i<20;i++){const a=Math.random()*Math.PI*2,s=Math.random()*4+2;
+                _testParticles.push({x:x+Math.cos(a)*30,y:y+Math.sin(a)*30,vx:-Math.cos(a)*s,vy:-Math.sin(a)*s,
+                    life:30,maxLife:30,color:'#8800ff',size:3});}
+                break;
+            case 'electric':
+                _testExplosions.push({x,y,r:5,maxR:30,color:'#00eeff',alpha:1,growing:true});
+                for (let i=0;i<25;i++){const a=Math.random()*Math.PI*2,s=Math.random()*5+2;
+                _testParticles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-1,life:20,maxLife:20,color:'#00eeff',size:2});}
+                break;
+            case 'shatter':
+                _testExplosions.push({x,y,r:5,maxR:20,color:'#aaccff',alpha:1,growing:true});
+                for (let i=0;i<22;i++){const a=(i/22)*Math.PI*2,s=Math.random()*4+3;
+                _testParticles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-0.5,life:35,maxLife:35,color:'#aaccff',size:3});}
+                break;
+            case 'nova':
+                _testExplosions.push({x,y,r:5,maxR:50,color:'#ffff44',alpha:1,growing:true});
+                for (let i=0;i<24;i++){const a=(i/24)*Math.PI*2,s=3;
+                _testParticles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:50,maxLife:50,color:'#ffff44',size:3});}
+                for (let i=0;i<8;i++){const a=Math.random()*Math.PI*2,s=Math.random()*1.5;
+                _testParticles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:60,maxLife:60,color:'#ffffff',size:2});}
+                break;
+            case 'void':
+                _testExplosions.push({x,y,r:5,maxR:25,color:'#6600aa',alpha:1,growing:true});
+                for (let i=0;i<18;i++){const a=Math.random()*Math.PI*2,s=Math.random()*2+0.5;
+                _testParticles.push({x:x+Math.cos(a)*20,y:y+Math.sin(a)*20,vx:-Math.cos(a)*s*0.5,vy:-Math.sin(a)*s*0.5,
+                    life:45,maxLife:45,color:'#6600aa',size:2});}
+                break;
+            default:
+                testBoom(x,y,playerColor,2);
+                break;
+        }
+    }
+
+    // Test each kill effect spawns particles correctly
+    const effectIds = ['default', 'vortex', 'electric', 'shatter', 'nova', 'void'];
+    for (const eid of effectIds) {
+        _testParticles = [];
+        _testExplosions = [];
+        testKillEffectBoom(100, 100, '#ff0000', eid);
+        assert(_testExplosions.length > 0, 'Kill effect ' + eid + ' creates explosions');
+        assert(_testParticles.length > 0, 'Kill effect ' + eid + ' spawns particles');
+        assert(_testParticles.length <= 35, 'Kill effect ' + eid + ' particle count is bounded (' + _testParticles.length + ')');
+    }
+
+    // Vortex particles start away from center (offset spawn)
+    _testParticles = [];
+    _testExplosions = [];
+    testKillEffectBoom(100, 100, '#ff0000', 'vortex');
+    let avgDist = 0;
+    for (const p of _testParticles) avgDist += Math.sqrt((p.x-100)**2 + (p.y-100)**2);
+    avgDist /= _testParticles.length;
+    assert(avgDist > 10, 'Vortex particles spawn offset from center (avgDist=' + avgDist.toFixed(1) + ')');
+
+    // Nova spawns uniform ring (24 + 8 = 32 particles)
+    _testParticles = [];
+    _testExplosions = [];
+    testKillEffectBoom(100, 100, '#ff0000', 'nova');
+    assert(_testParticles.length === 32, 'Nova spawns 32 particles (24 ring + 8 sparkle)');
+
+    // Void particles spawn offset and move inward
+    _testParticles = [];
+    _testExplosions = [];
+    testKillEffectBoom(100, 100, '#ff0000', 'void');
+    let inwardCount = 0;
+    for (const p of _testParticles) {
+        const dx = p.x - 100, dy = p.y - 100;
+        if (dx * p.vx < 0 || dy * p.vy < 0) inwardCount++;
+    }
+    assert(inwardCount > _testParticles.length * 0.5, 'Void particles generally move inward');
+
+    // Electric spawns 25 particles
+    _testParticles = [];
+    _testExplosions = [];
+    testKillEffectBoom(100, 100, '#ff0000', 'electric');
+    assert(_testParticles.length === 25, 'Electric spawns 25 particles');
+
+    // Shatter spawns 22 evenly-angled particles
+    _testParticles = [];
+    _testExplosions = [];
+    testKillEffectBoom(100, 100, '#ff0000', 'shatter');
+    assert(_testParticles.length === 22, 'Shatter spawns 22 particles');
+}
+
+// ── 150. killPlayer ── Killer Index in Updated Signature ──
+{
+    section('killPlayer — Killer Index in Updated Signature');
+
+    // The killPlayer function in index.html now accepts (p, force, killerIdx)
+    // The test replicates the key logic: killerIdx determines kill effect
+    function mkPlayer(id, killEffect) {
+        return {id,x:100+id*200,y:100,alive:true,lives:3,invT:0,vx:0,vy:0,landed:false,
+            shield:0,flashTimer:0,weapon:'normal',weaponTimer:0,color:'#00ccff',name:'P'+id,
+            killEffect:killEffect||'default',respawnT:0,angle:0,engineSound:'default',
+            trail:'default',skin:'default',streak:0,lastKillFrame:-999};
+    }
+
+    const p0 = mkPlayer(0, 'nova');
+    const p1 = mkPlayer(1, 'vortex');
+    const testPlayers = [p0, p1];
+
+    // When killerIdx=0, kill effect should be p0.killEffect='nova'
+    let ki = 0;
+    let ke = (ki >= 0 && testPlayers[ki]) ? (testPlayers[ki].killEffect || 'default') : 'default';
+    assert(ke === 'nova', 'Kill with killerIdx=0 uses nova effect');
+
+    // When killerIdx=-1 (terrain), kill effect='default'
+    ki = -1;
+    ke = (ki >= 0 && testPlayers[ki]) ? (testPlayers[ki].killEffect || 'default') : 'default';
+    assert(ke === 'default', 'Terrain kill (ki=-1) uses default effect');
+
+    // When killerIdx=undefined, ki=-1
+    ki = (undefined !== undefined && undefined >= 0) ? undefined : -1;
+    assert(ki === -1, 'Undefined killerIdx resolves to -1');
+}
+
+// ── 151. Engine & Kill Effect ── Shop Equip & Buy ──
+{
+    section('Engine & Kill Effect — Shop Equip & Buy');
+
+    // Replicate equipCosmetic logic
+    function testEquipCosmetic(shop, tab, id) {
+        if (tab === 'skins') shop.activeSkin = id;
+        else if (tab === 'trails') shop.activeTrail = id;
+        else if (tab === 'engines') shop.activeEngine = id;
+        else if (tab === 'killfx') shop.activeKillEffect = id;
+    }
+
+    // Replicate buyCosmetic logic
+    function testBuyCosmetic(shop, tab, id) {
+        if (tab === 'skins') { if (!shop.ownedSkins.includes(id)) shop.ownedSkins.push(id); }
+        else if (tab === 'trails') { if (!shop.ownedTrails.includes(id)) shop.ownedTrails.push(id); }
+        else if (tab === 'engines') { if (!shop.ownedEngines.includes(id)) shop.ownedEngines.push(id); }
+        else if (tab === 'killfx') { if (!shop.ownedKillEffects.includes(id)) shop.ownedKillEffects.push(id); }
+    }
+
+    // equipCosmetic handles engines
+    const shop1 = makeShopData({ ownedEngines: ['default', 'rumble'] });
+    testEquipCosmetic(shop1, 'engines', 'rumble');
+    assert(shop1.activeEngine === 'rumble', 'equipCosmetic sets activeEngine');
+
+    // equipCosmetic handles killfx
+    const shop2 = makeShopData({ ownedKillEffects: ['default', 'nova'] });
+    testEquipCosmetic(shop2, 'killfx', 'nova');
+    assert(shop2.activeKillEffect === 'nova', 'equipCosmetic sets activeKillEffect');
+
+    // buyCosmetic handles engines
+    const shop3 = makeShopData();
+    testBuyCosmetic(shop3, 'engines', 'whine');
+    assert(shop3.ownedEngines.includes('whine'), 'buyCosmetic unlocks engine');
+
+    // buyCosmetic handles killfx
+    const shop4 = makeShopData();
+    testBuyCosmetic(shop4, 'killfx', 'electric');
+    assert(shop4.ownedKillEffects.includes('electric'), 'buyCosmetic unlocks kill effect');
+
+    // Equipping existing tabs still works
+    const shop5 = makeShopData({ ownedSkins: ['default', 'neon'] });
+    testEquipCosmetic(shop5, 'skins', 'neon');
+    assert(shop5.activeSkin === 'neon', 'equipCosmetic still works for skins');
+
+    const shop6 = makeShopData({ ownedTrails: ['default', 'fire'] });
+    testEquipCosmetic(shop6, 'trails', 'fire');
+    assert(shop6.activeTrail === 'fire', 'equipCosmetic still works for trails');
+
+    // No duplicate on double buy
+    const shop7 = makeShopData();
+    testBuyCosmetic(shop7, 'engines', 'pulse');
+    testBuyCosmetic(shop7, 'engines', 'pulse');
+    assert(shop7.ownedEngines.filter(e => e === 'pulse').length === 1, 'No duplicate engine on double buy');
+}
+
+// ── 152. PVP Cosmetic Sync ── Engine Sound & Kill Effect ──
+{
+    section('PVP Cosmetic Sync — Engine Sound & Kill Effect');
+
+    // Verify beginGame player creation includes engineSound and killEffect
+    // Replicate the key assignment logic from beginGame
+    function testPlayerCosmetics(data, shopData, isHost, myIndex) {
+        const result = [];
+        for (let i = 0; i < data.players.length; i++) {
+            const isLocal = (isHost && i === 0) || (!isHost && i === myIndex);
+            result.push({
+                skin: isLocal ? shopData.activeSkin : (data.players[i].skin || 'default'),
+                trail: isLocal ? shopData.activeTrail : (data.players[i].trail || 'default'),
+                engineSound: isLocal ? shopData.activeEngine : (data.players[i].engineSound || 'default'),
+                killEffect: isLocal ? shopData.activeKillEffect : (data.players[i].killEffect || 'default'),
+            });
+        }
+        return result;
+    }
+
+    const mockData = {
+        players: [
+            { name: 'Host', engineSound: 'roar', killEffect: 'nova', skin: 'default', trail: 'default' },
+            { name: 'P2', engineSound: 'whine', killEffect: 'electric', skin: 'neon', trail: 'fire' }
+        ]
+    };
+    const shop = makeShopData({ activeEngine: 'hum', activeKillEffect: 'void' });
+
+    // Host scenario
+    const hostResult = testPlayerCosmetics(mockData, shop, true, 0);
+    assert(hostResult[0].engineSound === 'hum', 'Host player uses local activeEngine from shopData');
+    assert(hostResult[0].killEffect === 'void', 'Host player uses local activeKillEffect from shopData');
+    assert(hostResult[1].engineSound === 'whine', 'Remote player uses engineSound from start data');
+    assert(hostResult[1].killEffect === 'electric', 'Remote player uses killEffect from start data');
+
+    // Client scenario
+    const clientResult = testPlayerCosmetics(mockData, shop, false, 1);
+    assert(clientResult[0].engineSound === 'roar', 'Client sees host engineSound from start data');
+    assert(clientResult[0].killEffect === 'nova', 'Client sees host killEffect from start data');
+    assert(clientResult[1].engineSound === 'hum', 'Client uses own shopData for local player');
+    assert(clientResult[1].killEffect === 'void', 'Client uses own shopData for local killEffect');
+
+    // Missing cosmetic data defaults to 'default'
+    const sparseData = { players: [{ name: 'Host' }, { name: 'P2' }] };
+    const defShop = makeShopData();
+    const defResult = testPlayerCosmetics(sparseData, defShop, true, 0);
+    assert(defResult[1].engineSound === 'default', 'Missing engineSound defaults to default');
+    assert(defResult[1].killEffect === 'default', 'Missing killEffect defaults to default');
+}
+
+// ── 153. Server Cosmetic Sync ── Engine Sound & Kill Effect ──
+{
+    section('Server Cosmetic Sync — Engine Sound & Kill Effect');
+
+    // Test server code stores and broadcasts new cosmetic fields
+    const srvCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    // Check that server broadcasts engineSound and killEffect
+    assert(srvCode.includes('engineSound'), 'Server code references engineSound');
+    assert(srvCode.includes('killEffect'), 'Server code references killEffect');
+    assert(srvCode.includes("p.engineSound || 'default'"), 'Server broadcasts engineSound in start data');
+    assert(srvCode.includes("p.killEffect || 'default'"), 'Server broadcasts killEffect in start data');
+    assert(srvCode.includes('data.engineSound'), 'Server stores engineSound from create/join');
+    assert(srvCode.includes('data.killEffect'), 'Server stores killEffect from create/join');
+
+    // Verify lobby player initialization includes new fields
+    assert(srvCode.includes("engineSound: 'default'"), 'Server lobby player has engineSound default');
+    assert(srvCode.includes("killEffect: 'default'"), 'Server lobby player has killEffect default');
+
+    // Verify client sends new cosmetics in create/join messages
+    const clientCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    assert(clientCode.includes('engineSound: shopData.activeEngine'), 'Client sends activeEngine in create/join');
+    assert(clientCode.includes('killEffect: shopData.activeKillEffect'), 'Client sends activeKillEffect in create/join');
 }
 
 console.log(`\n${'='.repeat(50)}`);

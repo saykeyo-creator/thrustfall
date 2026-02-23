@@ -45,16 +45,16 @@ node server.js
 node tests.js
 ```
 
-Pure Node.js — no test framework needed. Currently **2858 assertions** across **146 sections**, all passing.
+Pure Node.js — no test framework needed. Currently **2997 assertions** across **153 sections**, all passing.
 
 ---
 
 ## File Structure
 
 ```
-index.html           (~3300 lines)  — THE ENTIRE GAME: HTML, CSS, JS, Canvas rendering, audio, UI
-server.js            (~1100 lines)  — Dedicated WebSocket game server (authoritative for PVP)
-tests.js             (~4200 lines)  — Comprehensive test suite (146 sections, 2858 assertions)
+index.html           (~4400 lines)  — THE ENTIRE GAME: HTML, CSS, JS, Canvas rendering, audio, UI
+server.js            (~1130 lines)  — Dedicated WebSocket game server (authoritative for PVP)
+tests.js             (~4860 lines)  — Comprehensive test suite (153 sections, 2997 assertions)
 sw.js                (~44 lines)    — Service worker for offline caching (PWA)
 capacitor.config.json               — Capacitor config for native Android/iOS builds
 package.json                        — Node.js config (only dependency: ws ^8.16.0)
@@ -95,7 +95,7 @@ Key server features:
 - Room system (create/join with 4-char codes, public browse, 8 players max)
 - Full game simulation: physics, bullets, beams, pickups, shields, kills, scoring
 - Perk system: validates and applies player perks server-side (budget enforcement, PVP multipliers)
-- Cosmetic sync: stores skin/trail per player, broadcasts to all clients
+- Cosmetic sync: stores skin/trail/engineSound/killEffect per player, broadcasts to all clients
 - Auto-countdown for public rooms (60s when 2+ players)
 - Graceful disconnect handling
 
