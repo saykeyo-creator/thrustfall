@@ -52,6 +52,7 @@ const PICKUP_TYPES = [
     { id:'homing',  name:'HOMING',  color:'#ff88ff', icon:'⊙', desc:'Tracking shots', weight:1 },
     { id:'shield',  name:'SHIELD',  color:'#00ffaa', icon:'◎', desc:'Stackable shield', weight:4 },
     { id:'heart',   name:'LIFE',    color:'#ff4477', icon:'♥', desc:'Extra life',      weight:2 },
+    { id:'emp',     name:'EMP',     color:'#ffff00', icon:'⚡', desc:'EMP pulse',      weight:1 },
 ];
 const PICKUP_TOTAL_WEIGHT = PICKUP_TYPES.reduce((s,p)=>s+p.weight,0);
 const MAPS = {
@@ -1076,7 +1077,7 @@ section('28. Bullet Lifetime & Boundary Removal');
 // ── 29. PICKUP WEIGHT DISTRIBUTION ──
 section('29. Pickup Weight Distribution');
 {
-    assert(PICKUP_TOTAL_WEIGHT === 19, 'total pickup weight is 19');
+    assert(PICKUP_TOTAL_WEIGHT === 20, 'total pickup weight is 20');
     assert(PICKUP_TYPES.find(t=>t.id==='spread'), 'spread pickup type exists');
     assert(PICKUP_TYPES.find(t=>t.id==='rapid'), 'rapid pickup type exists');
     assert(PICKUP_TYPES.find(t=>t.id==='heavy'), 'heavy pickup type exists');
@@ -1085,12 +1086,14 @@ section('29. Pickup Weight Distribution');
     assert(PICKUP_TYPES.find(t=>t.id==='homing'), 'homing pickup type exists');
     assert(PICKUP_TYPES.find(t=>t.id==='shield'), 'shield pickup type exists');
     assert(PICKUP_TYPES.find(t=>t.id==='heart'), 'heart pickup type exists');
-    assert(PICKUP_TYPES.length === 8, '8 total pickup types');
+    assert(PICKUP_TYPES.find(t=>t.id==='emp'), 'emp pickup type exists');
+    assert(PICKUP_TYPES.length === 9, '9 total pickup types');
     const shieldWeight = PICKUP_TYPES.find(t=>t.id==='shield').weight;
     const heavyWeight = PICKUP_TYPES.find(t=>t.id==='heavy').weight;
     const homingWeight = PICKUP_TYPES.find(t=>t.id==='homing').weight;
+    const empWeight = PICKUP_TYPES.find(t=>t.id==='emp').weight;
     assert(shieldWeight > heavyWeight, 'shield spawns more often than heavy');
-    assert(homingWeight < heavyWeight, 'homing is rarest weapon');
+    assert(homingWeight === empWeight, 'homing and emp are equally rare');
     assert(shieldWeight === 4, 'shield weight is 4');
     assert(homingWeight === 1, 'homing weight is 1');
 }
@@ -2005,14 +2008,14 @@ section('69. Pickup Types Alignment');
     const expectedPickups = [
         { id:'spread', weight:3 }, { id:'rapid', weight:3 }, { id:'heavy', weight:2 },
         { id:'laser', weight:2 },  { id:'burst', weight:2 }, { id:'homing', weight:1 },
-        { id:'shield', weight:4 }, { id:'heart', weight:2 }
+        { id:'shield', weight:4 }, { id:'heart', weight:2 }, { id:'emp', weight:1 }
     ];
-    assert(PICKUP_TYPES.length === 8, '8 pickup types defined');
+    assert(PICKUP_TYPES.length === 9, '9 pickup types defined');
     for (let i = 0; i < expectedPickups.length; i++) {
         assert(PICKUP_TYPES[i].id === expectedPickups[i].id, `pickup ${i} id="${expectedPickups[i].id}"`);
         assert(PICKUP_TYPES[i].weight === expectedPickups[i].weight, `pickup ${i} weight=${expectedPickups[i].weight}`);
     }
-    assert(PICKUP_TOTAL_WEIGHT === 19, 'total pickup weight = 19');
+    assert(PICKUP_TOTAL_WEIGHT === 20, 'total pickup weight = 20');
 }
 
 // =====================================================
@@ -5109,7 +5112,7 @@ section('146. Height-Fit Viewport — Tablet Controls Visible');
     const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
     assert(code.includes('function spawnPickup'), 'spawnPickup function present');
     assert(code.includes('PICKUP_SPAWN_INTERVAL'), 'PICKUP_SPAWN_INTERVAL constant present');
-    assert(code.includes("n:'pickupSpawn'"), 'pickupSpawn event emitted on spawn');
+    assert(code.includes("'pickupSpawn'") || code.includes("'empSpawn'"), 'pickupSpawn/empSpawn event emitted on spawn');
     assert(code.includes("n:'pickup'"), 'pickup event emitted on collection');
     assert(code.includes("case 'pickupSpawn':"), 'pickupSpawn sound handler present');
     assert(code.includes('function applyPickup'), 'applyPickup function present');
@@ -5326,6 +5329,83 @@ section('146. Height-Fit Viewport — Tablet Controls Visible');
         assert(typeof s.color === 'string' && s.color.startsWith('#'), s.id + ' has a hex color');
         assert(s.shape === s.id, s.id + ' shape matches its id');
     }
+}
+
+// =====================================================
+section('180. EMP Powerup — Full System');
+// =====================================================
+{
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+
+    // Constants
+    assert(code.includes('EMP_PULSE_DUR'), 'EMP_PULSE_DUR constant exists');
+    assert(code.includes('EMP_DISABLE_DUR'), 'EMP_DISABLE_DUR constant exists');
+    assert(code.includes('EMP_RADIUS'), 'EMP_RADIUS constant exists');
+
+    // Pickup type
+    const empType = PICKUP_TYPES.find(t => t.id === 'emp');
+    assert(empType, 'EMP pickup type exists');
+    assert(empType.weight === 1, 'EMP is rarest pickup (weight 1)');
+    assert(empType.color === '#ffff00', 'EMP color is yellow');
+    assert(empType.icon === '⚡', 'EMP icon is lightning bolt');
+
+    // applyPickup handles EMP
+    assert(code.includes("type === 'emp'") || code.includes("type==='emp'"), 'applyPickup handles emp type');
+    assert(code.includes("p.weapon='emp'") || code.includes("p.weapon = 'emp'"), 'EMP sets weapon to emp');
+
+    // fireBullets case
+    assert(code.includes("case 'emp':"), 'fireBullets has emp case');
+    assert(code.includes('p.empActive'), 'fireBullets sets empActive on carrier');
+
+    // hostUpdate — EMP disable
+    assert(code.includes('p.empStruck'), 'empStruck state tracked in hostUpdate');
+    assert(code.includes('!p.empStruck'), 'empStruck disables player controls');
+
+    // hostUpdate — EMP field detection
+    assert(code.includes('EMP_RADIUS'), 'EMP field checks radius');
+    assert(code.includes('op.empStruck'), 'EMP field applies empStruck to enemies');
+    assert(code.includes('op.shield = 0') || code.includes('op.shield=0'), 'EMP strips shields from struck enemies');
+
+    // State sync — broadcast
+    assert(code.includes('empA:'), 'empActive synced in state broadcast');
+    assert(code.includes('empS:'), 'empStruck synced in state broadcast');
+
+    // State sync — client receive
+    assert(code.includes('.empA') && code.includes('.empS'), 'client reads empA and empS from state');
+
+    // Death/respawn cleanup
+    assert(code.includes('p.empActive = 0'), 'empActive cleared on death/respawn');
+    assert(code.includes('p.empStruck = 0'), 'empStruck cleared on death/respawn');
+
+    // Sounds
+    assert(code.includes("'empActivate'"), 'empActivate sound exists');
+    assert(code.includes("'empStruck'"), 'empStruck sound exists');
+    assert(code.includes("'empPulse'"), 'empPulse sound exists');
+    assert(code.includes("'empSpawn'"), 'empSpawn sound exists');
+
+    // Event handlers
+    assert(code.includes("case 'empActivate':"), 'empActivate event handler');
+    assert(code.includes("case 'empStruck':"), 'empStruck event handler');
+    assert(code.includes("case 'empSpawn':"), 'empSpawn event handler');
+
+    // EMP spawn visuals
+    assert(code.includes("'empSpawn'") && code.includes('EMP SPAWNED'), 'EMP spawn shows kill feed announcement');
+    assert(code.includes("pk.age") || code.includes("pk.age||0"), 'pickup age tracked for spawn flash');
+    assert(code.includes("emp") && code.includes("age") && code.includes("60"), 'EMP spawn flash lasts ~60 frames');
+
+    // Radar — EMP special treatment
+    assert(code.includes("pk.type==='emp'"), 'EMP gets special radar rendering');
+    assert(code.includes('DISABLED') && code.includes('empStruck'), 'struck player shows DISABLED text');
+
+    // Rendering — EMP struck visual
+    assert(code.includes('empStruck') && code.includes('DISABLED'), 'EMP struck visual with DISABLED text');
+
+    // Rendering — EMP active pulse
+    assert(code.includes('empActive') && code.includes('EMP_RADIUS'), 'EMP active pulse ring rendered');
+
+    // HUD indicators
+    assert(code.includes('EMP ACTIVE'), 'HUD shows EMP ACTIVE for carrier');
+    assert(code.includes('SYSTEMS OFFLINE'), 'screen shows SYSTEMS OFFLINE for struck player');
 }
 
 console.log(`\n${'='.repeat(50)}`);

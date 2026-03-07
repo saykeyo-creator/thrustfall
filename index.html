@@ -281,6 +281,7 @@ const PICKUP_TYPES = [
     { id:'homing',  name:'HOMING',  color:'#ff88ff', icon:'⊙', desc:'Tracking shots', weight:1 },
     { id:'shield',  name:'SHIELD',  color:'#00ffaa', icon:'◎', desc:'Stackable shield', weight:4 },
     { id:'heart',   name:'LIFE',    color:'#ff4477', icon:'♥', desc:'Extra life',      weight:2 },
+    { id:'emp',     name:'EMP',     color:'#ffff00', icon:'⚡', desc:'EMP pulse',      weight:1 },
 ];
 const PICKUP_TOTAL_WEIGHT = PICKUP_TYPES.reduce((s,p)=>s+p.weight,0);
 
@@ -289,6 +290,9 @@ const WEAPON_TIMER = 1200; // weapon expires after 20 seconds (1200 frames at 60
 const HOMING_TURN = 0.10; // homing bullet turn rate (was 0.06 — buffed)
 const LASER_RANGE = 350; // laser range (was 450 — nerfed)
 const LASER_DUR = 45; // laser beam duration (was 60 — nerfed)
+const EMP_PULSE_DUR = 300; // EMP field active for 5 seconds (300 frames at 60fps)
+const EMP_DISABLE_DUR = 240; // thrust/weapons/shield disabled for 4 seconds (240 frames)
+const EMP_RADIUS = 180; // EMP pulse radius in world pixels
 
 // ---------- PROGRESSION ----------
 const XP_PER_KILL = 25;
@@ -601,6 +605,11 @@ function snd(t, vol) {
             case 'wallHit': o.type='triangle'; o.frequency.setValueAtTime(250+Math.random()*80,n); o.frequency.exponentialRampToValueAtTime(60,n+.08); g.gain.setValueAtTime(.06*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.1); o.start(n); o.stop(n+.1); break;
             // Pickup spawn sparkle
             case 'pickupSpawn': o.type='sine'; o.frequency.setValueAtTime(1200,n); o.frequency.setValueAtTime(1600,n+.06); o.frequency.setValueAtTime(2000,n+.12); o.frequency.exponentialRampToValueAtTime(1400,n+.2); g.gain.setValueAtTime(.04*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.25); o.start(n); o.stop(n+.25); break;
+            // EMP spawn — dramatic rising siren
+            case 'empSpawn': o.type='sawtooth'; o.frequency.setValueAtTime(200,n); o.frequency.exponentialRampToValueAtTime(1800,n+.3); o.frequency.exponentialRampToValueAtTime(600,n+.5); g.gain.setValueAtTime(.1*vol,n); g.gain.setValueAtTime(.12*vol,n+.15); g.gain.exponentialRampToValueAtTime(.001,n+.55); o.start(n); o.stop(n+.56); break;
+            case 'empActivate': o.type='sawtooth'; o.frequency.setValueAtTime(2500,n); o.frequency.exponentialRampToValueAtTime(80,n+.5); g.gain.setValueAtTime(.15*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.5); o.start(n); o.stop(n+.51); break;
+            case 'empStruck': o.type='square'; o.frequency.setValueAtTime(60,n); o.frequency.setValueAtTime(40,n+.15); o.frequency.setValueAtTime(80,n+.25); g.gain.setValueAtTime(.12*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.35); o.start(n); o.stop(n+.36); break;
+            case 'empPulse': o.type='sine'; o.frequency.setValueAtTime(200,n); o.frequency.exponentialRampToValueAtTime(50,n+.15); g.gain.setValueAtTime(.03*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.15); o.start(n); o.stop(n+.16); break;
         }
     } catch (e) {}
 }
@@ -1837,6 +1846,34 @@ function handleEvent(evt) {
         case 'pickupSpawn':
             sndAt('pickupSpawn', ex, ey);
             break;
+        case 'empSpawn':
+            sndAt('empSpawn', ex, ey);
+            screenShake = Math.max(screenShake, 4);
+            // Yellow flash burst particles
+            for(let i=0;i<25;i++){const a=Math.random()*Math.PI*2,s=Math.random()*5+2;particles.push({x:ex,y:ey,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:40+Math.random()*20,maxLife:40+Math.random()*20,color:['#ffff00','#ffcc00','#ffffaa'][Math.floor(Math.random()*3)],size:Math.random()*2.5+1});}
+            // Kill feed announcement
+            killFeed.push({text:'⚡ EMP SPAWNED ⚡',color:'#ffff00',timer:180,big:true});
+            break;
+        case 'empActivate':
+            sndAt('empActivate', ex, ey);
+            bumpCombat(COMBAT_KILL_BUMP);
+            screenShake = 6;
+            doHaptic(60);
+            break;
+        case 'empStruck':
+            sndAt('empStruck', ex, ey);
+            if (evt.i === myIndex) {
+                screenShake = 10;
+                doHaptic(100);
+                scoreFloats.push({x:ex,y:ey-30,text:'⚡ SHIP STRUCK BY EMP ⚡',color:'#ffff00',timer:120});
+            }
+            // Spark particles on struck ship
+            for (let i=0;i<15;i++){const a=Math.random()*Math.PI*2,s=Math.random()*3+1;
+            particles.push({x:ex,y:ey,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:20+Math.random()*15,maxLife:20+Math.random()*15,color:'#ffff00',size:Math.random()*2+1});}
+            break;
+        case 'empPulse':
+            sndAt('empPulse', ex, ey);
+            break;
     }
 }
 
@@ -1865,6 +1902,7 @@ function killPlayer(p, force, killerIdx) {
     p.flashTimer = 0;
     if (playerDeaths[p.id] !== undefined) playerDeaths[p.id]++;
     p.weapon = 'normal'; p.shield = 0; p.weaponTimer = 0;
+    p.empActive = 0; p.empStruck = 0;
     // Determine kill effect: use killer's killEffect if known, else default
     const ki = (killerIdx !== undefined && killerIdx >= 0) ? killerIdx : -1;
     const ke = (ki >= 0 && players[ki]) ? (players[ki].killEffect || 'default') : 'default';
@@ -1907,6 +1945,7 @@ function awardKill(killer) {
 function respawnPlayer(p) {
     p.x=p.spawnX; p.y=p.spawnY; p.vx=0; p.vy=0; p.angle=-Math.PI/2;
     p.alive=true; p.invT=INVINCE_T; p.landed=true; p.landedTimer=60;
+    p.empActive = 0; p.empStruck = 0;
     const isLocalS = (isHost && p.id === 0) || (!isHost && p.id === myIndex);
     p.shield = 1 + (isLocalS ? activeBonuses.shield : 0); // spawn shield + perk bonus
     // THE BUG — base kamikaze bypasses shield
@@ -2012,8 +2051,9 @@ function spawnPickup() {
                 if (x > pl.x && x < pl.x+pl.width) {
                     const py = pl.y - PICKUP_R - 5;
                     if (py > ceilY + 20 && py < groundY - 20) {
-                        pickups.push({x, y:py, type:randomPickupType(), bobPhase:Math.random()*Math.PI*2});
-                        emitEvent({t:'e',n:'pickupSpawn',x:x,y:py});
+                        const pType = randomPickupType();
+                        pickups.push({x, y:py, type:pType, bobPhase:Math.random()*Math.PI*2, age:0});
+                        emitEvent({t:'e',n:pType==='emp'?'empSpawn':'pickupSpawn',x:x,y:py});
                         placed = true; break;
                     }
                 }
@@ -2030,8 +2070,9 @@ function spawnPickup() {
             if (dist(x,y,p.base.x+p.base.w/2,p.base.y) < 80) { tooClose=true; break; }
         }
         if (tooClose) continue;
-        pickups.push({x, y, type:randomPickupType(), bobPhase:Math.random()*Math.PI*2});
-        emitEvent({t:'e',n:'pickupSpawn',x:x,y:y});
+        const pType = randomPickupType();
+        pickups.push({x, y, type:pType, bobPhase:Math.random()*Math.PI*2, age:0});
+        emitEvent({t:'e',n:pType==='emp'?'empSpawn':'pickupSpawn',x:x,y:y});
         return;
     }
 }
@@ -2041,6 +2082,9 @@ function applyPickup(p, type) {
         p.lives = (p.lives || 0) + 1;
     } else if (type === 'shield') {
         p.shield = (p.shield || 0) + 1;
+    } else if (type === 'emp') {
+        p.weapon = 'emp';
+        p.weaponTimer = WEAPON_TIMER; // standard expiry timer — fires on next shot
     } else {
         p.weapon = type;
         const isLocalW = (isHost && p.id === 0) || (!isHost && p.id === myIndex);
@@ -2097,6 +2141,12 @@ function fireBullets(p, pi) {
             // Fast aggressive tracker
             bullets.push({x:bx,y:by,vx:Math.cos(a)*BULLET_SPD*0.9+vbx,vy:Math.sin(a)*BULLET_SPD*0.9+vby,owner:pi,life:Math.floor(BULLET_LIFE*1.5),color:p.color,sz:3.5,homing:true});
             p.fireCd = Math.floor(FIRE_CD*1.1 * fMul); break;
+        case 'emp':
+            // EMP pulse — one-shot activation, field moves with player
+            p.empActive = EMP_PULSE_DUR;
+            p.weapon = 'normal'; p.weaponTimer = 0; // consumed
+            emitEvent({t:'e',n:'empActivate',x:p.x,y:p.y});
+            return; // skip normal shoot event
         default: // normal
             bullets.push({x:bx,y:by,vx:Math.cos(a)*BULLET_SPD+vbx,vy:Math.sin(a)*BULLET_SPD+vby,owner:pi,life:BULLET_LIFE,color:p.color,sz:2.5});
             p.fireCd = Math.floor(FIRE_CD / 1.5 * fMul); // stock fires 1.5x faster (perk can reduce further)
@@ -2133,12 +2183,15 @@ function hostUpdate() {
         if (!p.alive) { p.respawnT--; if (p.respawnT<=0 && p.lives>0) respawnPlayer(p); continue; }
         const inp = playerInputs[pi] || {rot:0,thrust:false,revThrust:false,fire:false};
 
+        // EMP struck countdown — tick before controls
+        if (p.empStruck > 0) p.empStruck--;
+
         if (p.landed) {
-            if (inp.thrust || inp.revThrust) p.landed=false;
+            if ((inp.thrust || inp.revThrust) && !p.empStruck) p.landed=false;
             p.angle += inp.rot * ROT_SPD_MAX;
             if (p.landed) {
                 p.vy=0; p.vx*=0.92;
-                if (inp.fire && p.fireCd<=0) {
+                if (inp.fire && p.fireCd<=0 && !p.empStruck) {
                     fireBullets(p, pi);
                 }
                 if (p.fireCd>0) p.fireCd--;
@@ -2148,9 +2201,9 @@ function hostUpdate() {
         }
 
         p.angle += inp.rot * ROT_SPD_MAX;
-        p.thrusting = inp.thrust;
-        p.revThrusting = inp.revThrust;
-        p.firing = inp.fire;
+        p.thrusting = inp.thrust && !p.empStruck;
+        p.revThrusting = inp.revThrust && !p.empStruck;
+        p.firing = inp.fire && !p.empStruck;
 
         // Thrust with perk multiplier for local player
         const isLocalT = (isHost && pi === 0) || (!isHost && pi === myIndex);
@@ -2206,6 +2259,23 @@ function hostUpdate() {
 
         if (p.firing && p.fireCd<=0) {
             fireBullets(p, pi);
+        }
+
+        // EMP active field — tick down and check enemies in radius
+        if (p.empActive > 0) {
+            p.empActive--;
+            // Periodic pulse sound
+            if (p.empActive % 30 === 0) emitEvent({t:'e',n:'empPulse',x:p.x,y:p.y});
+            for (let oi=0;oi<players.length;oi++) {
+                if (oi===pi) continue;
+                const op = players[oi];
+                if (!op.alive || op.empStruck > 0) continue;
+                if (dist(p.x, p.y, op.x, op.y) < EMP_RADIUS) {
+                    op.empStruck = EMP_DISABLE_DUR;
+                    op.shield = 0; // strip all shields
+                    emitEvent({t:'e',n:'empStruck',x:op.x,y:op.y,i:op.id});
+                }
+            }
         }
 
         const col = shipCollision(p);
@@ -2355,6 +2425,7 @@ function hostUpdate() {
     for (let i=pickups.length-1;i>=0;i--) {
         const pk = pickups[i];
         pk.bobPhase = (pk.bobPhase||0) + 0.05;
+        pk.age = (pk.age||0) + 1;
         for (const p of players) {
             if (!p.alive) continue;
             if (dist(p.x,p.y,pk.x,pk.y) < PICKUP_R+SHIP_SZ) {
@@ -2385,11 +2456,11 @@ function hostUpdate() {
     if (frame % STATE_INTERVAL === 0) {
         broadcast({
             t:'s',
-            p: players.map(p=>({x:rd(p.x),y:rd(p.y),vx:rd(p.vx),vy:rd(p.vy),a:rd(p.angle),al:p.alive,l:p.lives,s:p.score,iv:p.invT>0,th:p.thrusting,rv:p.revThrusting,la:p.landed,fi:p.firing,rT:p.respawnT,wp:p.weapon,sh:p.shield})),
+            p: players.map(p=>({x:rd(p.x),y:rd(p.y),vx:rd(p.vx),vy:rd(p.vy),a:rd(p.angle),al:p.alive,l:p.lives,s:p.score,iv:p.invT>0,th:p.thrusting,rv:p.revThrusting,la:p.landed,fi:p.firing,rT:p.respawnT,wp:p.weapon,sh:p.shield,empA:p.empActive||0,empS:p.empStruck||0})),
             b: bullets.map(b=>({x:rd(b.x),y:rd(b.y),vx:rd(b.vx),vy:rd(b.vy),o:b.owner,c:b.color,sz:b.sz||2.5})),
             bm: beams.map(bm=>({x:rd(bm.x),y:rd(bm.y),a:rd(bm.angle),o:bm.owner,c:bm.color,ed:rd(bm.endDist||BEAM_RANGE),l:bm.life,ml:bm.maxLife})),
             be: baseExps.map(e=>({x:rd(e.x),y:rd(e.y),t:e.t,d:e.dur,o:e.owner,p:rd(e.phase)})),
-            pk: pickups.map(pk=>({x:rd(pk.x),y:rd(pk.y),tp:pk.type,bp:rd(pk.bobPhase||0)}))
+            pk: pickups.map(pk=>({x:rd(pk.x),y:rd(pk.y),tp:pk.type,bp:rd(pk.bobPhase||0),ag:pk.age||0}))
         });
     }
 
@@ -2488,6 +2559,7 @@ function clientUpdate() {
             players[i].invT = b.iv ? 1 : 0; players[i].thrusting = b.th; players[i].revThrusting = b.rv;
             players[i].landed = b.la; players[i].firing = b.fi; players[i].respawnT = b.rT;
             players[i].weapon = b.wp || 'normal'; players[i].shield = b.sh || 0;
+            players[i].empActive = b.empA || 0; players[i].empStruck = b.empS || 0;
         }
     } else if (latest) {
         for (let i = 0; i < latest.state.p.length; i++) {
@@ -2498,6 +2570,7 @@ function clientUpdate() {
             players[i].invT = sp.iv ? 1 : 0; players[i].thrusting = sp.th; players[i].revThrusting = sp.rv;
             players[i].landed = sp.la; players[i].firing = sp.fi; players[i].respawnT = sp.rT;
             players[i].weapon = sp.wp || 'normal'; players[i].shield = sp.sh || 0;
+            players[i].empActive = sp.empA || 0; players[i].empStruck = sp.empS || 0;
             players[i].weaponTimer = sp.wt || 0; players[i].flashTimer = sp.ft || 0;
         }
     }
@@ -2516,6 +2589,7 @@ function clientUpdate() {
         me.alive = sp.al; me.lives = sp.l; me.score = sp.s; me.invT = sp.iv ? 1 : 0;
         me.respawnT = sp.rT; me.weapon = sp.wp || 'normal'; me.shield = sp.sh || 0; me.landed = sp.la;
         me.weaponTimer = sp.wt || 0; me.flashTimer = sp.ft || 0;
+        me.empActive = sp.empA || 0; me.empStruck = sp.empS || 0;
         if (me.x < 0) me.x += worldW; if (me.x > worldW) me.x -= worldW;
     }
 
@@ -2526,7 +2600,7 @@ function clientUpdate() {
         bullets = (gs.b||[]).map(b=>({x:b.x,y:b.y,vx:b.vx,vy:b.vy,owner:b.o,color:b.c,sz:b.sz||2.5}));
         beams = (gs.bm||[]).map(bm=>({x:bm.x,y:bm.y,angle:bm.a,owner:bm.o,color:bm.c,endDist:bm.ed,life:bm.l,maxLife:bm.ml}));
         baseExps = (gs.be||[]).map(e=>({x:e.x,y:e.y,t:e.t,dur:e.d,owner:e.o,phase:e.p,r:BASE_EXP_R}));
-        pickups = (gs.pk||[]).map(pk=>({x:pk.x,y:pk.y,type:pk.tp,bobPhase:pk.bp}));
+        pickups = (gs.pk||[]).map(pk=>({x:pk.x,y:pk.y,type:pk.tp,bobPhase:pk.bp,age:pk.ag||0}));
     } else {
         // Between server updates: move bullets locally so they don't freeze in place
         for (const b of bullets) { b.x += b.vx; b.y += b.vy; }
@@ -2928,6 +3002,20 @@ function draw() {
         if (!pt) continue;
         const bob = Math.sin(pk.bobPhase||0)*4;
         const py = pk.y + bob;
+        // EMP spawn flash — expanding rings for first 60 frames
+        if (pk.type==='emp' && (pk.age||0) < 60) {
+            const a = (pk.age||0);
+            const t = a / 60;
+            ctx.globalAlpha = .6 * (1 - t);
+            ctx.strokeStyle = '#ffff00';
+            ctx.lineWidth = 3 * (1 - t);
+            ctx.beginPath(); ctx.arc(pk.x, py, PICKUP_R + a * 2.5, 0, Math.PI * 2); ctx.stroke();
+            if (a < 40) {
+                ctx.globalAlpha = .3 * (1 - a/40);
+                ctx.beginPath(); ctx.arc(pk.x, py, PICKUP_R + a * 1.2, 0, Math.PI * 2); ctx.stroke();
+            }
+            ctx.globalAlpha = 1;
+        }
         // Glow — skip shadowBlur in multiplayer
         if(!isMultiplayer){ctx.shadowColor=pt.color;ctx.shadowBlur=12;}
         ctx.strokeStyle=pt.color;ctx.lineWidth=2;
@@ -3088,10 +3176,73 @@ function draw() {
                 ctx.globalAlpha=1;
             }
         }
+        // EMP struck visual — yellow static/flicker overlay
+        if (pp.empStruck > 0) {
+            const empProg = pp.empStruck / EMP_DISABLE_DUR;
+            ctx.shadowBlur=0;
+            // Flickering yellow overlay on ship
+            ctx.globalAlpha = empProg * (0.3 + Math.sin(frame * 0.5) * 0.2);
+            ctx.fillStyle = '#ffff00';
+            ctx.beginPath(); drawShipShape(ctx, skinId, SHIP_SZ * 1.1); ctx.fill();
+            // Static spark particles around ship
+            ctx.globalAlpha = empProg * 0.6;
+            for (let si = 0; si < 4; si++) {
+                const sa = (frame * 0.3 + si * 1.57) % (Math.PI * 2);
+                const sr = SHIP_SZ * (0.8 + Math.sin(frame * 0.4 + si) * 0.4);
+                ctx.fillStyle = '#ffff00';
+                ctx.fillRect(Math.cos(sa) * sr - 1, Math.sin(sa) * sr - 1, 2, 2);
+            }
+            // "DISABLED" text
+            if (Math.sin(frame * 0.15) > 0) {
+                ctx.globalAlpha = empProg * 0.8;
+                ctx.fillStyle = '#ffff00'; ctx.font = 'bold 7px Courier New'; ctx.textAlign = 'center';
+                ctx.fillText('DISABLED', 0, SHIP_SZ + 35);
+            }
+            ctx.globalAlpha = 1;
+        }
         // Name tag
         ctx.shadowBlur=0;ctx.globalAlpha=.7;ctx.fillStyle=pp.color;ctx.font='bold 9px Courier New';ctx.textAlign='center';
         ctx.fillText(pp.name,0,-SHIP_SZ-8);
         ctx.globalAlpha=1;ctx.restore();
+    }
+
+    // EMP active pulse — sweeping radar ring (drawn in world space after ships)
+    for (const pp of players) {
+        if (!pp.alive || !pp.empActive || pp.empActive <= 0) continue;
+        const wx = pp.x + wOff;
+        if (wx < visLeft - EMP_RADIUS || wx > visRight + EMP_RADIUS) continue;
+        const empProg = pp.empActive / EMP_PULSE_DUR;
+        // Outer ring — pulsing
+        const sweepAngle = (frame * 0.08) % (Math.PI * 2);
+        ctx.save();
+        ctx.shadowBlur = 0;
+        // Filled zone (very subtle)
+        ctx.globalAlpha = empProg * 0.05;
+        ctx.fillStyle = '#ffff00';
+        ctx.beginPath(); ctx.arc(pp.x, pp.y, EMP_RADIUS, 0, Math.PI * 2); ctx.fill();
+        // Main ring
+        ctx.globalAlpha = empProg * (0.3 + Math.sin(frame * 0.1) * 0.15);
+        ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(pp.x, pp.y, EMP_RADIUS, 0, Math.PI * 2); ctx.stroke();
+        // Sweeping radar arc
+        ctx.globalAlpha = empProg * 0.4;
+        ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(pp.x, pp.y, EMP_RADIUS, sweepAngle, sweepAngle + 0.8); ctx.stroke();
+        // Inner rings (ripples)
+        for (let ri = 1; ri <= 3; ri++) {
+            const rr = EMP_RADIUS * (ri / 4) + Math.sin(frame * 0.06 + ri) * 10;
+            ctx.globalAlpha = empProg * 0.1;
+            ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 0.5;
+            ctx.beginPath(); ctx.arc(pp.x, pp.y, rr, 0, Math.PI * 2); ctx.stroke();
+        }
+        // Radial scan line (radar sweep)
+        ctx.globalAlpha = empProg * 0.3;
+        ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(pp.x, pp.y);
+        ctx.lineTo(pp.x + Math.cos(sweepAngle) * EMP_RADIUS, pp.y + Math.sin(sweepAngle) * EMP_RADIUS);
+        ctx.stroke();
+        ctx.restore();
     }
 
     ctx.restore(); // end wrap offset
@@ -3119,6 +3270,27 @@ function draw() {
             ctx.fillStyle = `rgba(255,180,0,${(1-prog)*0.6})`;
             ctx.font = `bold ${Math.round(wFs*0.65)}px Courier New`;
             ctx.fillText('LIVES DRAINING', W/2, H*0.12 + wFs*1.2);
+        }
+    }
+
+    // EMP struck vignette — yellow flashing border when local player is disabled
+    const me_emp = players[myIndex];
+    if (me_emp && me_emp.empStruck > 0) {
+        const empProg = me_emp.empStruck / EMP_DISABLE_DUR;
+        const empAlpha = empProg * (0.15 + Math.sin(frame * 0.2) * 0.1);
+        const empVig = ctx.createRadialGradient(W/2, H/2, W*0.2, W/2, H/2, W*0.7);
+        empVig.addColorStop(0, 'rgba(0,0,0,0)');
+        empVig.addColorStop(1, `rgba(255,255,0,${empAlpha})`);
+        ctx.fillStyle = empVig; ctx.fillRect(0, 0, W, H);
+        // Large warning text
+        if (Math.sin(frame * 0.12) > -0.3) {
+            const eFs = Math.max(14, Math.min(W * 0.04, 22));
+            ctx.fillStyle = `rgba(255,255,0,${empProg*0.9})`;
+            ctx.font = `bold ${eFs}px Courier New`; ctx.textAlign = 'center';
+            ctx.fillText('\u26A1 SHIP STRUCK BY EMP \u26A1', W/2, H*0.18);
+            ctx.fillStyle = `rgba(255,255,100,${empProg*0.6})`;
+            ctx.font = `bold ${Math.round(eFs*0.6)}px Courier New`;
+            ctx.fillText('SYSTEMS OFFLINE', W/2, H*0.18 + eFs*1.2);
         }
     }
 
@@ -3177,6 +3349,14 @@ function drawHUD() {
     }
     if (me.shield > 0) {
         ctx.fillStyle='#00ffaa'; ctx.textAlign='left'; ctx.fillText('◎ SHIELD x'+me.shield, 8, hudY); hudY += fs+4;
+    }
+    if (me.empActive > 0) {
+        ctx.fillStyle='#ffff00'; ctx.textAlign='left'; ctx.fillText('⚡ EMP ACTIVE', 8, hudY); hudY += fs+4;
+    }
+    if (me.empStruck > 0) {
+        const secLeft = Math.ceil(me.empStruck / 60);
+        ctx.fillStyle = Math.sin(frame*0.3)>0 ? '#ffff00' : '#ff4400'; ctx.textAlign='left';
+        ctx.fillText('⚡ DISABLED '+secLeft+'s', 8, hudY); hudY += fs+4;
     }
 
     // Alive count
@@ -3324,7 +3504,36 @@ function drawRadar() {
     // Pickups
     for (const pk of pickups){
         const pt = PICKUP_TYPES.find(t=>t.id===pk.type);
-        if(pt){const p=toRadar(pk.x,pk.y);if(p){ctx.fillStyle=pt.color;ctx.globalAlpha=.7;ctx.beginPath();ctx.arc(p.rx,p.ry,2,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}}
+        if(!pt) continue;
+        if(pk.type==='emp'){
+            // EMP gets special radar treatment — pulsing ring + larger dot
+            const p=toRadar(pk.x,pk.y);
+            if(p){
+                const pulse=.5+.5*Math.sin(frame*.12);
+                // Outer pulsing ring
+                ctx.strokeStyle=`rgba(255,255,0,${.3+pulse*.4})`;ctx.lineWidth=1.5;
+                ctx.beginPath();ctx.arc(p.rx,p.ry,4+pulse*3,0,Math.PI*2);ctx.stroke();
+                // Inner bright dot
+                ctx.fillStyle='#ffff00';ctx.globalAlpha=.8+pulse*.2;
+                ctx.beginPath();ctx.arc(p.rx,p.ry,2.5,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
+                // ⚡ glyph
+                ctx.fillStyle='#ffff00';ctx.font='bold 7px sans-serif';ctx.textAlign='center';
+                ctx.fillText('⚡',p.rx,p.ry-6);
+            } else {
+                // Off-radar edge arrow for EMP
+                const {dx,dy}=wrapDelta(pk.x,pk.y);
+                const ang=Math.atan2(dy,dx);
+                const ax=rCx+Math.cos(ang)*(rR+7),ay=rCy+Math.sin(ang)*(rR+7);
+                const pulse=.5+.5*Math.sin(frame*.12);
+                ctx.fillStyle=`rgba(255,255,0,${.5+pulse*.5})`;ctx.save();ctx.translate(ax,ay);ctx.rotate(ang);
+                ctx.beginPath();ctx.moveTo(5,0);ctx.lineTo(-3,-3);ctx.lineTo(-3,3);ctx.closePath();ctx.fill();ctx.restore();
+                // Tiny ⚡ near arrow
+                ctx.fillStyle=`rgba(255,255,0,${.5+pulse*.5})`;ctx.font='bold 6px sans-serif';ctx.textAlign='center';
+                ctx.fillText('⚡',ax+Math.cos(ang+Math.PI/2)*6,ay+Math.sin(ang+Math.PI/2)*6+2);
+            }
+        } else {
+            const p=toRadar(pk.x,pk.y);if(p){ctx.fillStyle=pt.color;ctx.globalAlpha=.7;ctx.beginPath();ctx.arc(p.rx,p.ry,2,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}
+        }
     }
 
     // Other players
