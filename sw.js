@@ -1,7 +1,7 @@
 // =====================================================
-// GRAVITATION MOBILE — Service Worker (Offline Cache)
+// THRUSTFALL — Service Worker (Offline Cache)
 // =====================================================
-const CACHE_NAME = 'gravitation-v2';
+const CACHE_NAME = 'thrustfall-v2';
 const ASSETS = [
     '/',
     '/index.html'

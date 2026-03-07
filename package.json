@@ -1,7 +1,7 @@
 {
-  "name": "gravitation-server",
+  "name": "thrustfall-server",
   "version": "2.2.0",
-  "description": "Dedicated WebSocket server for Gravitation Mobile",
+  "description": "Dedicated WebSocket server for Thrustfall",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

@@ -1,5 +1,5 @@
 // =====================================================
-// GRAVITATION MOBILE — Dedicated WebSocket Game Server
+// THRUSTFALL — Dedicated WebSocket Game Server
 // Run: npm install && npm start
 // =====================================================
 
@@ -1113,7 +1113,7 @@ function getLanIP() {
 server.listen(PORT, '0.0.0.0', () => {
     const ip = getLanIP();
     console.log(`\n${'='.repeat(48)}`);
-    console.log(` GRAVITATION SERVER v2.2`);
+    console.log(` THRUSTFALL SERVER v2.2`);
     console.log(` Port: ${PORT}`);
     console.log(` Local:   http://localhost:${PORT}`);
     console.log(` Network: http://${ip}:${PORT}`);

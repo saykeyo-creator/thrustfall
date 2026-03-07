@@ -1,6 +1,6 @@
-# Gravitation Mobile
+# Thrustfall
 
-A Net Yaroze–inspired 2D spaceship combat game built entirely in a single HTML file with a dedicated Node.js WebSocket multiplayer server. Inspired by the original PlayStation 1 Net Yaroze game "Gravitation" (1998).
+A 2D physics-based spaceship cave combat game built entirely in a single HTML file with a dedicated Node.js WebSocket multiplayer server.
 
 ---
 
@@ -8,10 +8,10 @@ A Net Yaroze–inspired 2D spaceship combat game built entirely in a single HTML
 
 | Item | Value |
 |---|---|
-| **GitHub** | `https://github.com/Lakeaj/gravitation-mobile.git` |
+| **GitHub** | `https://github.com/Lakeaj/thrustfall.git` |
 | **Branch** | `main` |
 | **Hosting** | [Render](https://render.com) — Web Service (auto-deploys on push to `main`) |
-| **Live URL** | Check Render dashboard — the service name is `gravitation-mobile` |
+| **Live URL** | Check Render dashboard — the service name is `thrustfall` |
 | **Local dev** | `http://localhost:3000` |
 | **Local port** | `3000` (configurable via `PORT` env var) |
 
@@ -52,9 +52,9 @@ Pure Node.js — no test framework needed. Currently **2997 assertions** across 
 ## File Structure
 
 ```
-index.html           (~4400 lines)  — THE ENTIRE GAME: HTML, CSS, JS, Canvas rendering, audio, UI
+index.html           (~2200 lines)  — THE ENTIRE GAME: HTML, CSS, JS, Canvas rendering, audio, UI
 server.js            (~1130 lines)  — Dedicated WebSocket game server (authoritative for PVP)
-tests.js             (~4860 lines)  — Comprehensive test suite (153 sections, 2997 assertions)
+tests.js             (~1850 lines)  — Comprehensive test suite
 sw.js                (~44 lines)    — Service worker for offline caching (PWA)
 capacitor.config.json               — Capacitor config for native Android/iOS builds
 package.json                        — Node.js config (only dependency: ws ^8.16.0)
@@ -278,7 +278,7 @@ All audio is generated via Web Audio API — no external audio files.
 
 ## Native App (Capacitor)
 
-- App ID: `com.lakesgames.gravitation`
+- App ID: `com.lakesgames.thrustfall`
 - Config: `capacitor.config.json`
 - Platforms: Android + iOS
 - The `webDir` is `.` (root) since the entire game is `index.html`

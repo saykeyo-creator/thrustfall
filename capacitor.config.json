@@ -1,6 +1,6 @@
 {
-  "appId": "com.lakesgames.gravitation",
-  "appName": "Gravitation Mobile",
+  "appId": "com.lakesgames.thrustfall",
+  "appName": "Thrustfall",
   "webDir": ".",
   "bundledWebRuntime": false,
   "server": {
