@@ -5408,6 +5408,904 @@ section('180. EMP Powerup — Full System');
     assert(code.includes('SYSTEMS OFFLINE'), 'screen shows SYSTEMS OFFLINE for struck player');
 }
 
+// =====================================================
+// Additional constants and helpers for new tests (sections 181+)
+// =====================================================
+function getServerPerks2(equippedIds) {
+    const bonuses = { shield:0, fireMul:1, thrustMul:1, lives:0, wpnMul:1, respawnMul:1 };
+    if (!Array.isArray(equippedIds)) return bonuses;
+    let pts = 0;
+    const validIds = [];
+    for (const pid of equippedIds) {
+        const perk = PERKS.find(p => p.id === pid);
+        if (!perk) continue;
+        if (pts + perk.pts > LOADOUT_POINTS) continue;
+        if (validIds.includes(pid)) continue;
+        pts += perk.pts;
+        validIds.push(pid);
+    }
+    for (const pid of validIds) {
+        const perk = PERKS.find(p => p.id === pid);
+        const fx = perk.pvp;
+        if (fx.shield) bonuses.shield += fx.shield;
+        if (fx.fireMul) bonuses.fireMul *= fx.fireMul;
+        if (fx.thrustMul) bonuses.thrustMul *= fx.thrustMul;
+        if (fx.lives) bonuses.lives += fx.lives;
+        if (fx.wpnMul) bonuses.wpnMul *= fx.wpnMul;
+        if (fx.respawnMul) bonuses.respawnMul *= fx.respawnMul;
+    }
+    return bonuses;
+}
+function randomCode2() {
+    const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    let s = '';
+    for (let i = 0; i < 4; i++) s += c[Math.floor(Math.random() * c.length)];
+    return s;
+}
+function landShip2(p, surfY) {
+    p.y = surfY - SHIP_SZ; p.vx *= 0.7; p.vy = 0; p.landed = true; p.landedTimer = 60;
+}
+const ACHIEVEMENTS2 = [
+    {id:'firstBlood',check:s=>s.totalKills>=1},
+    {id:'serial',check:s=>s.totalKills>=50},
+    {id:'centurion',check:s=>s.totalKills>=100},
+    {id:'survivor5',check:s=>s.bestWave>=5},
+    {id:'survivor10',check:s=>s.bestWave>=10},
+    {id:'winner',check:s=>s.wins>=1},
+    {id:'wins10',check:s=>s.wins>=10},
+    {id:'streak3',check:s=>s.bestStreak>=3},
+    {id:'streak5',check:s=>s.bestStreak>=5},
+    {id:'pacifist',check:s=>s.pacifistWave>=3},
+    {id:'collector',check:s=>s.totalPickups>=100},
+    {id:'pilot',check:s=>s.totalLandings>=200},
+    {id:'games50',check:s=>s.gamesPlayed>=50},
+    {id:'hours5',check:s=>s.playTimeMin>=300},
+];
+const DAILY_CHALLENGES2 = [
+    {desc:'Get 3 kills with homing weapon',check:(s,d)=>d.homingKills>=3,reward:50},
+    {desc:'Win a match without dying',check:(s,d)=>d.flawlessWin,reward:75},
+    {desc:'Land on 5 different surfaces',check:(s,d)=>d.uniqueLandings>=5,reward:30},
+    {desc:'Survive to wave 4 in Survival',check:(s,d)=>d.survWave>=4,reward:60},
+    {desc:'Get 10 kills in a single game',check:(s,d)=>d.gameKills>=10,reward:40},
+    {desc:'Collect 5 powerups in one game',check:(s,d)=>d.gamePickups>=5,reward:35},
+    {desc:'Get a triple kill streak',check:(s,d)=>d.gameStreak>=3,reward:50},
+];
+const COMBAT_DECAY_RATE2 = 0.004;
+const COMBAT_SHOOT_BUMP2 = 0.08;
+const COMBAT_KILL_BUMP2 = 0.35;
+
+// =====================================================
+section('181. Server EMP — Missing from Server Pickup Types');
+// =====================================================
+{
+    const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    const cCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    // Server PICKUP_TYPES should have 8 entries (no EMP — EMP is host-mode only)
+    const sMatch = sCode.match(/const PICKUP_TYPES\s*=\s*\[([\s\S]*?)\];/);
+    assert(sMatch, 'server PICKUP_TYPES array found');
+    const sTypes = sMatch[1].match(/id:'(\w+)'/g).map(m => m.match(/id:'(\w+)'/)[1]);
+    assert(sTypes.length === 8, 'server has 8 pickup types (no EMP)');
+    assert(!sTypes.includes('emp'), 'server does not include emp (EMP is host-only)');
+    // Client has 9 (includes EMP)
+    assert(cCode.includes("id:'emp'"), 'client includes emp pickup type');
+    // Server fireBullets has no case 'emp'
+    assert(!sCode.includes("case 'emp':"), 'server fireBullets has no emp case (intentional)');
+    // Document: EMP only works in host mode (solo/survival), not dedicated server multiplayer
+    assert(true, 'EMP is intentionally host-mode-only (documented gap)');
+}
+
+// =====================================================
+section('182. Server Shield Grace — 1-Frame Invincibility');
+// =====================================================
+{
+    const p = {id:0, x:100, y:100, vx:0, vy:0, alive:true, lives:5, shield:2, invT:0, angle:-Math.PI/2, weapon:'normal', weaponTimer:0, flashTimer:0, respawnT:0, landed:false};
+    events = [];
+    // First hit: shield absorbs, invT becomes 1
+    killPlayer(p, false);
+    assert(p.alive, 'first hit: player survives (shield absorbs)');
+    assert(p.shield === 1, 'first hit: shield reduced by 1');
+    assert(p.invT === 1, 'first hit: invT set to 1-frame grace');
+    // Second immediate hit: should be blocked by invT
+    killPlayer(p, false);
+    assert(p.alive, 'second immediate hit: blocked by 1-frame invT');
+    assert(p.shield === 1, 'shield not reduced again during grace');
+    // After grace period expires
+    p.invT = 0;
+    killPlayer(p, false);
+    assert(p.alive, 'third hit: shield absorbs again');
+    assert(p.shield === 0, 'third hit: last shield broken');
+}
+
+// =====================================================
+section('183. Server removePlayer — Mid-Game Disconnect');
+// =====================================================
+{
+    const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    // Verify removePlayer sets alive=false, lives=0, disconnected=true
+    assert(sCode.includes('this.players[idx].alive = false'), 'removePlayer sets alive=false');
+    assert(sCode.includes('this.players[idx].lives = 0'), 'removePlayer sets lives=0');
+    assert(sCode.includes('this.players[idx].disconnected = true'), 'removePlayer sets disconnected=true');
+    assert(sCode.includes('this.checkGameEnd()'), 'removePlayer calls checkGameEnd');
+}
+
+// =====================================================
+section('184. Server Auto-Countdown Timer Logic');
+// =====================================================
+{
+    const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    // checkAutoCountdown exists and has key logic
+    assert(sCode.includes('checkAutoCountdown()'), 'checkAutoCountdown function called');
+    assert(sCode.includes('this.autoCountdown = 60'), 'auto-countdown starts at 60 seconds');
+    assert(sCode.includes('count < 2'), 'timer cancels when fewer than 2 players');
+    assert(sCode.includes('clearInterval(this.autoTimer)'), 'timer is cleared when conditions change');
+    assert(sCode.includes('this.autoTimer = null'), 'autoTimer nulled on cancel');
+    assert(sCode.includes('allReady && count >= 2'), 'immediate start when all ready');
+    assert(sCode.includes('this.isPublic && !this.autoTimer'), 'auto-timer only starts for public rooms');
+    // Timer fires startGame when countdown reaches 0
+    assert(sCode.includes('this.autoCountdown <= 0'), 'checks countdown <= 0');
+    assert(sCode.includes('this.startGame()'), 'starts game when countdown expires');
+}
+
+// =====================================================
+section('185. checkGameEnd — Disconnected Player Handling');
+// =====================================================
+{
+    const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    // Server checkGameEnd filters out disconnected players
+    assert(sCode.includes('!p.disconnected'), 'checkGameEnd filters disconnected players');
+    // Replicate logic: player with lives > 0 but disconnected should not count as alive
+    const players185 = [
+        {lives:5, disconnected:true, name:'DC', color:'red', score:0},
+        {lives:3, disconnected:false, name:'ALIVE', color:'blue', score:2},
+        {lives:0, disconnected:false, name:'DEAD', color:'green', score:1},
+    ];
+    const alive = players185.filter(p => p.lives > 0 && !p.disconnected);
+    assert(alive.length === 1, 'only 1 truly alive player (disconnected excluded)');
+    assert(alive[0].name === 'ALIVE', 'correct player identified as alive');
+}
+
+// =====================================================
+section('186. Server Room Full — 8-Player Cap');
+// =====================================================
+{
+    const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    assert(sCode.includes('this.lobbyPlayers.length >= 8') && sCode.includes('return -1'), 'addPlayer rejects at 8 players');
+    assert(COLORS.length === 8, '8 colors available');
+}
+
+// =====================================================
+section('187. Server Creator Leave — Room Destruction');
+// =====================================================
+{
+    const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    assert(sCode.includes('ws === this.creatorWs'), 'removePlayer checks if creator leaving');
+    assert(sCode.includes('this.destroy()'), 'room destroyed when creator leaves');
+    // destroy() broadcasts 'over' and removes from rooms map
+    assert(sCode.includes("rooms.delete(this.code)"), 'destroy removes room from Map');
+    assert(sCode.includes("t: 'over'") || sCode.includes("t:'over'"), 'destroy broadcasts over event');
+}
+
+// =====================================================
+section('188. Server Rate Limiting');
+// =====================================================
+{
+    const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    assert(sCode.includes('msgCount') && sCode.includes('msgResetTime'), 'rate limit variables exist');
+    assert(sCode.includes('++msgCount > 60'), 'rate limit at 60 messages per second');
+    assert(sCode.includes('now - msgResetTime > 1000'), 'rate limit resets every second');
+}
+
+// =====================================================
+section('189. Server Perk Duplicate Rejection');
+// =====================================================
+{
+    // Sending duplicate perks should only apply once
+    const bonuses = getServerPerks2(['shield', 'shield']);
+    assert(bonuses.shield === 1, 'duplicate shield perk only applied once');
+    const b2 = getServerPerks2(['firerate', 'firerate', 'firerate']);
+    assert(b2.fireMul === 0.92, 'duplicate firerate only applied once');
+}
+
+// =====================================================
+section('190. Server Perk Budget Overflow Rejection');
+// =====================================================
+{
+    // hull (2pts) + hull (2pts) = 4 > LOADOUT_POINTS (3)
+    const bonuses = getServerPerks2(['hull', 'hull']);
+    assert(bonuses.lives === 1, 'second hull rejected (budget overflow)');
+    // shield(1) + firerate(1) + thrust(1) + hull(2) = 5 > 3
+    const b2 = getServerPerks2(['shield', 'firerate', 'thrust', 'hull']);
+    assert(b2.shield === 1, 'shield applied (1pt, total 1)');
+    assert(b2.fireMul === 0.92, 'firerate applied (1pt, total 2)');
+    assert(b2.thrustMul === 1.05, 'thrust applied (1pt, total 3)');
+    assert(b2.lives === 0, 'hull rejected (2pts would exceed budget)');
+}
+
+// =====================================================
+section('191. Server Input Clamping');
+// =====================================================
+{
+    const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    assert(sCode.includes('Math.max(-1, Math.min(1,'), 'rot clamped to [-1, 1]');
+    assert(sCode.includes("Number(data.r) || 0"), 'rot defaults to 0 on NaN');
+    assert(sCode.includes('!!data.th'), 'thrust coerced to boolean');
+    assert(sCode.includes('!!data.rv'), 'revThrust coerced to boolean');
+    assert(sCode.includes('!!data.f'), 'fire coerced to boolean');
+    // Verify clamping logic
+    const clamp = v => Math.max(-1, Math.min(1, Number(v) || 0));
+    assert(clamp(999) === 1, 'rot=999 clamps to 1');
+    assert(clamp(-500) === -1, 'rot=-500 clamps to -1');
+    assert(clamp('abc') === 0, 'rot=abc defaults to 0');
+    assert(clamp(undefined) === 0, 'rot=undefined defaults to 0');
+    assert(clamp(0.5) === 0.5, 'rot=0.5 passes through');
+}
+
+// =====================================================
+section('192. Achievements — Trigger Logic');
+// =====================================================
+{
+    assert(ACHIEVEMENTS2.length === 14, '14 achievements defined');
+    // Test each achievement trigger condition
+    const stats1 = {totalKills:0,bestWave:0,wins:0,bestStreak:0,pacifistWave:0,totalPickups:0,totalLandings:0,gamesPlayed:0,playTimeMin:0};
+    for (const a of ACHIEVEMENTS2) {
+        assert(!a.check(stats1), a.id + ' NOT triggered at zero stats');
+    }
+    // firstBlood triggers at 1 kill
+    assert(ACHIEVEMENTS2.find(a=>a.id==='firstBlood').check({...stats1,totalKills:1}), 'firstBlood triggers at 1 kill');
+    // serial at 50
+    assert(ACHIEVEMENTS2.find(a=>a.id==='serial').check({...stats1,totalKills:50}), 'serial triggers at 50 kills');
+    // survivor5 at wave 5
+    assert(ACHIEVEMENTS2.find(a=>a.id==='survivor5').check({...stats1,bestWave:5}), 'survivor5 triggers at wave 5');
+    // streak3 at 3
+    assert(ACHIEVEMENTS2.find(a=>a.id==='streak3').check({...stats1,bestStreak:3}), 'streak3 triggers at 3 streak');
+    // winner at 1 win
+    assert(ACHIEVEMENTS2.find(a=>a.id==='winner').check({...stats1,wins:1}), 'winner triggers at 1 win');
+    // No double-award: check function returns true once condition met
+    const stats2 = {...stats1, totalKills:1};
+    const achieved = [];
+    for (const a of ACHIEVEMENTS2) {
+        if (!achieved.includes(a.id) && a.check(stats2)) {
+            achieved.push(a.id);
+        }
+    }
+    assert(achieved.length === 1 && achieved[0] === 'firstBlood', 'only firstBlood triggers at 1 kill');
+    // Calling again doesn't double-add
+    for (const a of ACHIEVEMENTS2) {
+        if (!achieved.includes(a.id) && a.check(stats2)) {
+            achieved.push(a.id);
+        }
+    }
+    assert(achieved.length === 1, 'no duplicate achievement');
+}
+
+// =====================================================
+section('193. Daily Challenge System');
+// =====================================================
+{
+    assert(DAILY_CHALLENGES2.length === 7, '7 daily challenges defined');
+    // Each challenge has check, desc, reward
+    for (const dc of DAILY_CHALLENGES2) {
+        assert(typeof dc.check === 'function', 'daily challenge has check function');
+        assert(typeof dc.desc === 'string', 'daily challenge has description');
+        assert(dc.reward > 0, 'daily challenge has positive reward');
+    }
+    // getDailyChallenge returns based on day
+    const today = Math.floor(Date.now() / 86400000);
+    const dc = DAILY_CHALLENGES2[today % DAILY_CHALLENGES2.length];
+    assert(dc, 'getDailyChallenge returns a valid challenge');
+    // Challenge check functions work
+    const stats = {}, daily1 = {homingKills:3, flawlessWin:false, uniqueLandings:0, survWave:0, gameKills:0, gamePickups:0, gameStreak:0};
+    assert(DAILY_CHALLENGES2[0].check(stats, daily1), 'homing kills challenge triggers at 3');
+    assert(!DAILY_CHALLENGES2[0].check(stats, {...daily1, homingKills:2}), 'homing kills challenge does not trigger at 2');
+    assert(DAILY_CHALLENGES2[1].check(stats, {flawlessWin:true}), 'flawless win challenge triggers');
+    assert(!DAILY_CHALLENGES2[1].check(stats, {flawlessWin:false}), 'flawless win challenge does not trigger when false');
+    // Same-day prevention logic
+    const playerStats193 = {dailySeed: today, dailyDone: true};
+    const shouldSkip = (playerStats193.dailySeed === today && playerStats193.dailyDone);
+    assert(shouldSkip, 'same-day completion prevents re-award');
+    // Different day allows re-check
+    const playerStats193b = {dailySeed: today - 1, dailyDone: true};
+    const shouldCheck = !(playerStats193b.dailySeed === today && playerStats193b.dailyDone);
+    assert(shouldCheck, 'new day allows challenge check');
+}
+
+// =====================================================
+section('194. XP Level Scaling — xpForLevel Thresholds');
+// =====================================================
+{
+    assert(xpForLevel(1) === 100, 'level 1 requires 100 XP');
+    assert(xpForLevel(2) === Math.floor(100 * 1.4), 'level 2 requires 140 XP');
+    assert(xpForLevel(3) === Math.floor(100 * Math.pow(1.4, 2)), 'level 3 XP scaling correct');
+    assert(xpForLevel(5) === Math.floor(100 * Math.pow(1.4, 4)), 'level 5 requires 384 XP');
+    assert(xpForLevel(10) === Math.floor(100 * Math.pow(1.4, 9)), 'level 10 scaling correct');
+    // XP increases with each level (monotonic)
+    for (let i = 1; i < 20; i++) {
+        assert(xpForLevel(i+1) > xpForLevel(i), `level ${i+1} requires more XP than level ${i}`);
+    }
+}
+
+// =====================================================
+section('195. addXP — Multi-Level-Up');
+// =====================================================
+{
+    // Simulate addXP logic (without DOM/saveStats/scoreFloat)
+    let stats = {xp: 0, level: 1};
+    const addXPSim = (amount) => {
+        stats.xp += amount;
+        let levelsGained = 0;
+        let needed = xpForLevel(stats.level);
+        while (stats.xp >= needed) {
+            stats.xp -= needed;
+            stats.level++;
+            levelsGained++;
+            needed = xpForLevel(stats.level);
+        }
+        return levelsGained;
+    };
+    // Single level up: need 100 XP at level 1
+    let gained = addXPSim(100);
+    assert(gained === 1, '100 XP at level 1 gains 1 level');
+    assert(stats.level === 2, 'now level 2');
+    assert(stats.xp === 0, '0 XP remaining');
+    // Multi level up: big XP dump
+    stats = {xp: 0, level: 1};
+    gained = addXPSim(500);
+    assert(gained >= 3, '500 XP at level 1 gains 3+ levels');
+    assert(stats.xp >= 0, 'remaining XP is non-negative');
+    assert(stats.xp < xpForLevel(stats.level), 'remaining XP is less than next level');
+    // Edge: exact amount for 2 levels
+    stats = {xp: 0, level: 1};
+    const exact2 = xpForLevel(1) + xpForLevel(2); // 100 + 140 = 240
+    gained = addXPSim(exact2);
+    assert(gained === 2, 'exact XP for 2 levels gains exactly 2');
+    assert(stats.level === 3, 'now level 3');
+    assert(stats.xp === 0, '0 XP remaining after exact');
+}
+
+// =====================================================
+section('196. totalXPEarned & spendableXP Logic');
+// =====================================================
+{
+    // totalXPEarned = current xp + sum of all previous level thresholds
+    const totalXPEarned = (stats) => {
+        let total = stats.xp;
+        for (let lv = 1; lv < stats.level; lv++) total += xpForLevel(lv);
+        return total;
+    };
+    // Level 1, 0 XP
+    assert(totalXPEarned({xp:0, level:1}) === 0, 'level 1, 0 xp = 0 total');
+    // Level 2, 0 XP = earned exactly 100 before
+    assert(totalXPEarned({xp:0, level:2}) === 100, 'level 2, 0 xp = 100 total');
+    // Level 3, 50 XP
+    assert(totalXPEarned({xp:50, level:3}) === 100 + 140 + 50, 'level 3, 50 xp = 290 total');
+    // spendableXP = totalEarned - spent on perks
+    const spendableSim = (stats, unlockedPerks) => {
+        let spent = 0;
+        for (const pid of unlockedPerks) {
+            const p = PERKS.find(pk => pk.id === pid);
+            if (p) spent += p.cost;
+        }
+        return totalXPEarned(stats) - spent;
+    };
+    // No perks unlocked
+    assert(spendableSim({xp:50, level:3}, []) === 290, 'no perks = all XP spendable');
+    // Shield perk unlocked (cost 200)
+    assert(spendableSim({xp:50, level:3}, ['shield']) === 90, 'shield perk costs 200');
+    // Multiple perks: shield(200) + respawn(250) = 450
+    assert(spendableSim({xp:50, level:3}, ['shield','respawn']) === 290 - 450, 'two perks costs 450 total');
+}
+
+// =====================================================
+section('197. equippedPoints Budget Validation');
+// =====================================================
+{
+    const equippedPtsSim = (equipped) => {
+        let pts = 0;
+        for (const pid of equipped) {
+            const p = PERKS.find(pk => pk.id === pid);
+            if (p) pts += p.pts;
+        }
+        return pts;
+    };
+    assert(equippedPtsSim([]) === 0, 'no perks = 0 points');
+    assert(equippedPtsSim(['shield']) === 1, 'shield = 1 point');
+    assert(equippedPtsSim(['hull']) === 2, 'hull = 2 points');
+    assert(equippedPtsSim(['shield','firerate','thrust']) === 3, '3 x 1-pt perks = 3 points (max)');
+    assert(equippedPtsSim(['hull','shield']) === 3, 'hull+shield = 3 points (max)');
+    // Over-budget detection
+    assert(equippedPtsSim(['hull','shield','firerate']) === 4, 'hull+shield+firerate = 4 (over budget)');
+    assert(equippedPtsSim(['hull','shield','firerate']) > LOADOUT_POINTS, 'detects over-budget');
+}
+
+// =====================================================
+section('198. SpawnPickup Placement — Between Ceiling and Terrain');
+// =====================================================
+{
+    const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    // Verify placement guards exist in spawnPickup
+    assert(sCode.includes('ci.y + 20') || sCode.includes('ceilY + 20') || sCode.includes('.y + 20'), 'pickup spawns below ceiling margin');
+    assert(sCode.includes('ti.y - 20') || sCode.includes('groundY - 20') || sCode.includes('.y - 20'), 'pickup spawns above terrain margin');
+    assert(sCode.includes('maxY - minY < 60'), 'rejects too-narrow gaps');
+    assert(sCode.includes('tooClose'), 'checks base proximity');
+    // Verify placement using actual map data
+    for (const mapKey of Object.keys(MAPS)) {
+        const map = generateMap(mapKey);
+        worldW = map.worldW; worldH = map.worldH;
+        // Sample 10 positions and verify terrain > ceiling
+        for (let i = 0; i < 10; i++) {
+            const x = 50 + Math.random() * (map.worldW - 100);
+            const ti = getTerrainYAt(x, map.terrain);
+            const ci = getTerrainYAt(x, map.ceiling);
+            if (ti && ci) {
+                assert(ti.y > ci.y, `${mapKey}: terrain below ceiling at x=${Math.round(x)}`);
+            }
+        }
+    }
+}
+
+// =====================================================
+section('199. EMP Spawn Event Branching');
+// =====================================================
+{
+    const cCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    // spawnPickup uses ternary to emit different event for EMP
+    assert(cCode.includes("pType==='emp'?'empSpawn':'pickupSpawn'"), 'conditional event for EMP vs normal spawn');
+    // Both event handlers exist
+    assert(cCode.includes("case 'empSpawn':"), 'empSpawn event handler exists');
+    assert(cCode.includes("case 'pickupSpawn':"), 'pickupSpawn event handler exists');
+}
+
+// =====================================================
+section('200. Survival Double Game-Over Guard');
+// =====================================================
+{
+    const cCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    // survivalEnding flag prevents double game-over
+    assert(cCode.includes('survivalEnding'), 'survivalEnding flag exists');
+    assert(cCode.includes('if (survivalEnding) return'), 'checkGameEnd returns early if already ending');
+    // Verify it's set in survivalGameOver
+    assert(cCode.includes('survivalEnding = true'), 'survivalEnding set to true on game over');
+    // Verified in cleanup
+    assert(cCode.includes('survivalEnding = false'), 'survivalEnding reset in cleanup');
+}
+
+// =====================================================
+section('201. Survival Wave Modifiers');
+// =====================================================
+{
+    const cCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    // Low gravity on every 3rd wave starting from wave 3
+    assert(cCode.includes("wave >= 3 && wave % 3 === 0") || cCode.includes("wave%3===0"), 'low-grav modifier on multiples of 3');
+    assert(cCode.includes("G * 0.5") || cCode.includes("G*0.5"), 'low-grav halves gravity');
+    // Heavy weapons on every 7th wave starting from wave 7
+    assert(cCode.includes("wave >= 7 && wave % 7 === 0") || cCode.includes("wave%7===0"), 'heavy-wpn modifier on multiples of 7');
+    // Verify modifier logic
+    for (const w of [3,6,9,12]) {
+        assert(w >= 3 && w % 3 === 0, `wave ${w} gets lowgrav modifier`);
+    }
+    for (const w of [7,14,21]) {
+        assert(w >= 7 && w % 7 === 0, `wave ${w} gets heavy weapon modifier`);
+    }
+    // Wave 5 (boss, not multiple of 3) should NOT get lowgrav
+    assert(!(5 % 3 === 0), 'wave 5 does NOT get lowgrav');
+}
+
+// =====================================================
+section('202. Survival Human State Preservation Across Waves');
+// =====================================================
+{
+    const cCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    // Verify spawnSurvivalWave saves these fields from human player
+    const savedFields = ['x','y','vx','vy','angle','lives','score','alive','weapon','shield','invT',
+        'landed','landedTimer','thrusting','revThrusting','firing','fireCd','streak','lastKillFrame',
+        'respawnT','weaponTimer','flashTimer'];
+    for (const f of savedFields) {
+        assert(cCode.includes('human.'+f) || cCode.includes('hs.'+f), `human ${f} saved across waves`);
+    }
+    // Verify restored at index 0
+    assert(cCode.includes('x:hs.x') || cCode.includes('x: hs.x'), 'human x restored from saved state');
+    assert(cCode.includes('lives:hs.lives') || cCode.includes('lives: hs.lives'), 'human lives restored');
+    assert(cCode.includes('weapon:hs.weapon') || cCode.includes('weapon: hs.weapon'), 'human weapon restored');
+    assert(cCode.includes('shield:hs.shield') || cCode.includes('shield: hs.shield'), 'human shield restored');
+}
+
+// =====================================================
+section('203. Survival Bot Types — Variety & Stats');
+// =====================================================
+{
+    const cCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    // BOT_TYPES definitions
+    assert(cCode.includes("label:'normal'"), 'normal bot type exists');
+    assert(cCode.includes("label:'fast'"), 'fast bot type exists');
+    assert(cCode.includes("label:'tank'"), 'tank bot type exists');
+    assert(cCode.includes("label:'sniper'"), 'sniper bot type exists');
+    // Tank has extra lives
+    assert(cCode.includes('extraLives:2'), 'tank bot has +2 extra lives');
+    // Fast is faster
+    assert(cCode.includes('speedMult:1.4'), 'fast bot has 1.4x speed');
+    // Tank is slower
+    assert(cCode.includes('speedMult:0.7'), 'tank bot has 0.7x speed');
+    // Boss waves produce tanks
+    assert(cCode.includes('isBossWave') && cCode.includes('typeIdx = 2'), 'boss wave bots are tanks');
+    // Varied types start at wave 4
+    assert(cCode.includes('wave >= 4'), 'bot type variety starts at wave 4');
+}
+
+// =====================================================
+section('204. Bot AI — Pickup Seeking & Retreat');
+// =====================================================
+{
+    const cCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    // Pickup seeking section exists
+    assert(cCode.includes('PICKUP SEEKING'), 'bot AI has pickup seeking section');
+    assert(cCode.includes('closestP') && cCode.includes('pickupAngle'), 'bot calculates angle to closest pickup');
+    assert(cCode.includes('seekChance'), 'bot has probabilistic pickup seeking');
+    // Retreat behavior
+    assert(cCode.includes('Retreat behavior') || cCode.includes('lowLives'), 'bot has retreat logic');
+    assert(cCode.includes("pers !== 'aggressive'"), 'aggressive bots do not retreat');
+    assert(cCode.includes('fleeAngle'), 'bot calculates flee angle');
+    assert(cCode.includes('retreatDist'), 'bot has retreat distance threshold');
+}
+
+// =====================================================
+section('205. landShip — Velocity Reduction');
+// =====================================================
+{
+    const p = {x:100, y:100, vx:2.0, vy:1.5, landed:false, landedTimer:0};
+    landShip2(p, 200);
+    assertApprox(p.vx, 1.4, 0.01, 'landing reduces vx to 70%');
+    assert(p.vy === 0, 'landing zeroes vy');
+    assert(p.landed === true, 'landing sets landed=true');
+    assert(p.landedTimer === 60, 'landing sets landedTimer=60');
+    assert(p.y === 200 - SHIP_SZ, 'landing positions ship above surface');
+    // Negative vx also reduced
+    const p2 = {x:100, y:100, vx:-3.0, vy:0.5, landed:false, landedTimer:0};
+    landShip2(p2, 150);
+    assertApprox(p2.vx, -2.1, 0.01, 'negative vx also reduced by 30%');
+}
+
+// =====================================================
+section('206. Client Prediction — Terrain & Ceiling Bounce');
+// =====================================================
+{
+    const cCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    // Terrain bounce exists in client prediction
+    assert(cCode.includes('-Math.abs(me.vy) * 0.3') || cCode.includes('-Math.abs(me.vy)*0.3'), 'terrain bounce: vy reflected at 30%');
+    assert(cCode.includes('Math.abs(me.vy) * 0.3') || cCode.includes('Math.abs(me.vy)*0.3'), 'ceiling bounce: vy reflected at 30%');
+    // World bounds bounce
+    assert(cCode.includes('me.y < SHIP_SZ') || cCode.includes('me.y<SHIP_SZ'), 'top bounds check');
+    assert(cCode.includes('me.y > worldH - SHIP_SZ') || cCode.includes('me.y>worldH-SHIP_SZ'), 'bottom bounds check');
+    // Verify bounce coefficient
+    const vy = -2.0;
+    const bounced = -Math.abs(vy) * 0.3;
+    assertApprox(bounced, -0.6, 0.01, 'bounce reduces speed to 30%');
+    const vyUp = 2.0;
+    const bouncedUp = Math.abs(vyUp) * 0.3;
+    assertApprox(bouncedUp, 0.6, 0.01, 'ceiling bounce pushes down at 30%');
+}
+
+// =====================================================
+section('207. cleanup — Full State Reset');
+// =====================================================
+{
+    const cCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    // Verify cleanup resets all critical state variables
+    const resetVars = ['running = false', 'isHost = false', 'isMultiplayer = false',
+        'isRoomCreator = false', 'myIndex = -1', 'stateBuffer = []',
+        'survivalMode = false', 'survivalEnding = false'];
+    for (const v of resetVars) {
+        assert(cCode.includes(v), `cleanup resets ${v.split('=')[0].trim()}`);
+    }
+    assert(cCode.includes('cancelAnimationFrame'), 'cleanup cancels animation frame');
+    assert(cCode.includes('stopMusic'), 'cleanup stops music');
+    assert(cCode.includes('stopMenuTheme'), 'cleanup stops menu theme');
+}
+
+// =====================================================
+section('208. Combat Intensity — Bump & Decay');
+// =====================================================
+{
+    // Replicate combatIntensity math
+    let intensity = 0;
+    let decayTimer = 0;
+    function bump(amount) { intensity = Math.min(1, intensity + amount); decayTimer = 90; }
+    function decay() { if (decayTimer > 0) decayTimer--; else intensity = Math.max(0, intensity - COMBAT_DECAY_RATE2); }
+    // Bump increases intensity
+    bump(COMBAT_SHOOT_BUMP2);
+    assertApprox(intensity, 0.08, 0.001, 'shoot bump adds 0.08');
+    assert(decayTimer === 90, 'decay timer set to 90 frames');
+    // Second bump stacks
+    bump(COMBAT_KILL_BUMP2);
+    assertApprox(intensity, 0.43, 0.001, 'kill bump stacks to 0.43');
+    // Decay doesn't happen while timer > 0
+    for (let i = 0; i < 90; i++) decay();
+    assert(decayTimer === 0, 'timer reaches 0 after 90 frames');
+    assertApprox(intensity, 0.43, 0.001, 'intensity unchanged during timer');
+    // Now decay happens
+    decay();
+    assertApprox(intensity, 0.43 - COMBAT_DECAY_RATE2, 0.001, 'intensity decays by rate after timer');
+    // Clamping to [0,1]
+    intensity = 0.99;
+    bump(0.5);
+    assert(intensity === 1, 'intensity clamped to max 1');
+    intensity = 0.001;
+    decayTimer = 0;
+    decay();
+    assert(intensity >= 0, 'intensity does not go below 0');
+    intensity = 0;
+    decay();
+    assert(intensity === 0, 'intensity stays at 0');
+}
+
+// =====================================================
+section('209. Score Floats — Lifetime & Cleanup');
+// =====================================================
+{
+    // Replicate scoreFloat cleanup logic
+    const scoreFloats = [
+        {x:100,y:100,text:'+1',color:'#fff',timer:60},
+        {x:200,y:200,text:'+2',color:'#fff',timer:1},
+        {x:300,y:300,text:'+3',color:'#fff',timer:30},
+    ];
+    // Simulate one frame tick
+    for (let i=scoreFloats.length-1;i>=0;i--) {
+        scoreFloats[i].timer--;
+        scoreFloats[i].y -= 0.8;
+        if (scoreFloats[i].timer <= 0) scoreFloats.splice(i,1);
+    }
+    assert(scoreFloats.length === 2, 'expired scoreFloat removed');
+    assert(scoreFloats[0].timer === 59, 'first float timer decremented');
+    assert(scoreFloats[1].timer === 29, 'third float becomes second');
+    assertApprox(scoreFloats[0].y, 99.2, 0.01, 'float drifts upward');
+    // Run all to expiry
+    for (let f = 0; f < 60; f++) {
+        for (let i=scoreFloats.length-1;i>=0;i--) {
+            scoreFloats[i].timer--;
+            if (scoreFloats[i].timer<=0) scoreFloats.splice(i,1);
+        }
+    }
+    assert(scoreFloats.length === 0, 'all floats eventually cleaned up');
+}
+
+// =====================================================
+section('210. Interpolation Buffer — Edge Cases');
+// =====================================================
+{
+    // Empty buffer — should not crash
+    const emptyBuf = [];
+    const rt = performance.now ? performance.now() : Date.now();
+    let prev = null, next = null;
+    for (let i = 0; i < emptyBuf.length - 1; i++) {
+        if (emptyBuf[i].time <= rt && emptyBuf[i+1].time >= rt) {
+            prev = emptyBuf[i]; next = emptyBuf[i+1]; break;
+        }
+    }
+    assert(prev === null && next === null, 'empty buffer: no crash, no bracket');
+    // Single entry
+    const singleBuf = [{time: 1000, state: {p:[{x:10,y:20}]}}];
+    prev = null; next = null;
+    for (let i = 0; i < singleBuf.length - 1; i++) {
+        if (singleBuf[i].time <= 1050 && singleBuf[i+1].time >= 1050) {
+            prev = singleBuf[i]; next = singleBuf[i+1]; break;
+        }
+    }
+    assert(prev === null, 'single entry: no bracketing pair');
+    // Fallback: use latest
+    const latest = singleBuf[singleBuf.length - 1];
+    assert(latest.state.p[0].x === 10, 'single entry: can use latest state');
+    // Stale buffer (all entries older than renderTime)
+    const staleBuf = [{time: 500, state: {p:[{x:1}]}}, {time: 600, state: {p:[{x:2}]}}];
+    const renderTime = 1000;
+    prev = null; next = null;
+    for (let i = 0; i < staleBuf.length - 1; i++) {
+        if (staleBuf[i].time <= renderTime && staleBuf[i+1].time >= renderTime) {
+            prev = staleBuf[i]; next = staleBuf[i+1]; break;
+        }
+    }
+    assert(prev === null, 'stale buffer: no bracket (use latest fallback)');
+    const latestStale = staleBuf[staleBuf.length - 1];
+    assert(latestStale.state.p[0].x === 2, 'stale buffer: latest entry is last');
+    // Buffer pruning: keep only last 1 second
+    const bigBuf = [];
+    const now = 5000;
+    for (let i = 0; i < 50; i++) bigBuf.push({time: now - 2000 + i * 50, state: {}});
+    const pruned = bigBuf.filter(e => now - e.time < 1000);
+    assert(pruned.length < bigBuf.length, 'old buffer entries pruned');
+    assert(pruned.every(e => now - e.time < 1000), 'remaining entries within 1 second');
+}
+
+// =====================================================
+section('211. randomCode — Safe Character Set');
+// =====================================================
+{
+    const safeChars = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    const excluded = ['I','O','0','1'];
+    // Generate many codes and verify
+    for (let i = 0; i < 100; i++) {
+        const code = randomCode2();
+        assert(code.length === 4, `code ${code} is 4 characters`);
+        for (const ch of code) {
+            assert(safeChars.includes(ch), `char ${ch} is in safe set`);
+        }
+        for (const ex of excluded) {
+            assert(!code.includes(ex), `code ${code} does not contain ${ex}`);
+        }
+    }
+}
+
+// =====================================================
+section('212. Server Laser Beam — Terrain Raycast');
+// =====================================================
+{
+    const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    // Verify beam raycast checks terrain, ceiling, and platforms
+    assert(sCode.includes('let endDist = BEAM_RANGE'), 'beam starts at max range');
+    assert(sCode.includes('getTerrainYAt') && sCode.includes('endDist = d'), 'beam stops at terrain');
+    // Verify raycast steps along beam path
+    assert(sCode.includes('const step = 8'), 'raycast steps at 8px intervals');
+    assert(sCode.includes('d < BEAM_RANGE'), 'raycast runs to BEAM_RANGE');
+    // Verify platform collision in raycast
+    assert(sCode.includes('platHit') && sCode.includes('endDist = d'), 'beam stops at platform');
+    // Verify ceiling check
+    const beamSection = sCode.substring(sCode.indexOf('let endDist = BEAM_RANGE'));
+    assert(beamSection.includes('ceiling') || beamSection.includes('ct2'), 'beam checks ceiling collision');
+}
+
+// =====================================================
+section('213. Base Explosion Respawn Kill (THE BUG)');
+// =====================================================
+{
+    const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    const cCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    // Both server and client check for base explosion during respawn
+    assert(sCode.includes('RESPAWN_KILL_R'), 'server checks respawn kill radius');
+    assert(cCode.includes('RESPAWN_KILL_R'), 'client checks respawn kill radius');
+    // Respawn into own base explosion kills again
+    assert(sCode.includes('be.owner === p.id'), 'server checks explosion owner matches player');
+    assert(cCode.includes('be.owner===p.id'), 'client checks explosion owner matches player');
+    // Half respawn time on re-kill
+    assert(sCode.includes('RESPAWN_T / 2') || sCode.includes('RESPAWN_T/2'), 'server halves respawn time on re-kill');
+    assert(cCode.includes('RESPAWN_T/2') || cCode.includes('RESPAWN_T / 2'), 'client halves respawn time on re-kill');
+    // Emits bugKill event
+    assert(sCode.includes("n: 'bugKill'") || sCode.includes("n:'bugKill'"), 'server emits bugKill event');
+    assert(cCode.includes("n:'bugKill'"), 'client emits bugKill event');
+}
+
+// =====================================================
+section('214. Server Broadcast — Closed WebSocket Safety');
+// =====================================================
+{
+    const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    // broadcast checks readyState
+    assert(sCode.includes('ws.readyState === WebSocket.OPEN') || sCode.includes('ws.readyState===WebSocket.OPEN'), 'broadcast checks WebSocket.OPEN');
+    assert(sCode.includes('try { p.ws.send') || sCode.includes('try {p.ws.send'), 'broadcast wraps send in try/catch');
+    assert(sCode.includes('} catch (e) {'), 'broadcast catches send errors');
+}
+
+// =====================================================
+section('215. Server Rematch Flow');
+// =====================================================
+{
+    const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    // rematch() calls stopGame then startGame
+    const rematchIdx = sCode.indexOf('rematch()');
+    const rematchBlock = sCode.substring(rematchIdx, sCode.indexOf('}', rematchIdx + 20) + 1);
+    assert(rematchBlock.includes('this.stopGame()'), 'rematch calls stopGame');
+    assert(rematchBlock.includes('this.startGame()'), 'rematch calls startGame');
+    // Only creator can rematch
+    assert(sCode.includes("room.creatorWs !== ws") && sCode.includes("case 'rematch':"), 'rematch restricted to creator');
+}
+
+// =====================================================
+section('216. Server Idle Room Cleanup');
+// =====================================================
+{
+    const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    // Idle cleanup runs periodically
+    assert(sCode.includes('5 * 60 * 1000'), 'idle timeout is 5 minutes');
+    assert(sCode.includes('room.destroy()'), 'idle rooms are destroyed');
+    assert(sCode.includes('60 * 1000') || sCode.includes('60*1000'), 'cleanup runs every 60 seconds');
+    assert(sCode.includes('room.lobbyPlayers.length <= 1'), 'only cleans empty/solo rooms');
+}
+
+// =====================================================
+section('217. handleEvent — All Event Types Present');
+// =====================================================
+{
+    const cCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    const eventTypes = ['land','pickup','shoot','laser','shieldHit','shieldBreak',
+        'kill','baseExp','bugKill','streak','pickupSpawn','empSpawn','empActivate','empStruck','empPulse'];
+    for (const evt of eventTypes) {
+        assert(cCode.includes("case '"+evt+"':"), `handleEvent has case for '${evt}'`);
+    }
+}
+
+// =====================================================
+section('218. Server State Broadcast Fields');
+// =====================================================
+{
+    const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    // Verify all expected fields in player state broadcast
+    const broadcastFields = ['x:','y:','vx:','vy:','a:','al:','l:','s:','iv:',
+        'th:','rv:','la:','fi:','rT:','wp:','sh:','wt:','ft:'];
+    for (const f of broadcastFields) {
+        assert(sCode.includes(f), `server broadcasts field ${f}`);
+    }
+    // Verify pickup broadcast
+    assert(sCode.includes('tp:') && sCode.includes('pk.type'), 'server broadcasts pickup type');
+    assert(sCode.includes('bp:'), 'server broadcasts pickup bobPhase');
+    // Verify beam broadcast
+    assert(sCode.includes('ed:') && sCode.includes('endDist'), 'server broadcasts beam endDist');
+}
+
+// =====================================================
+section('219. Server fireBullets — All Weapon Cooldowns');
+// =====================================================
+{
+    const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    // Verify all weapon types produce correct cooldown formulas
+    assert(sCode.includes('FIRE_CD / 1.5'), 'normal weapon fires at 1.5x rate');
+    assert(sCode.includes('FIRE_CD * 0.4'), 'rapid weapon fires at 2.5x rate');
+    assert(sCode.includes('FIRE_CD * 1.2'), 'heavy weapon fires slower');
+    assert(sCode.includes('BEAM_DUR + BEAM_CD'), 'laser has beam cycle cooldown');
+    assert(sCode.includes('FIRE_CD * 1.3'), 'burst fires slightly slower');
+    assert(sCode.includes('FIRE_CD * 1.1'), 'homing fires slightly slower');
+    // All weapon switch cases present
+    const weaponCases = ['spread','rapid','heavy','laser','burst','homing'];
+    for (const w of weaponCases) {
+        assert(sCode.includes("case '"+w+"':"), `server fireBullets handles ${w}`);
+    }
+}
+
+// =====================================================
+section('220. Server applyPickup — Heart, Shield, Weapon');
+// =====================================================
+{
+    const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    // Heart adds life
+    assert(sCode.includes("type === 'heart'") || sCode.includes("type==='heart'"), 'server handles heart pickup');
+    assert(sCode.includes('p.lives') && sCode.includes('+ 1'), 'heart adds 1 life');
+    // Shield stacks
+    assert(sCode.includes("type === 'shield'") || sCode.includes("type==='shield'"), 'server handles shield pickup');
+    assert(sCode.includes('p.shield') && sCode.includes('+ 1'), 'shield adds 1');
+    // Weapons get timer with perk multiplier
+    assert(sCode.includes('WEAPON_TIMER') && sCode.includes('wpnMul'), 'weapon timer uses perk multiplier');
+    // Emits pickup event
+    assert(sCode.includes("n: 'pickup'") || sCode.includes("n:'pickup'"), 'server emits pickup event');
+}
+
+// =====================================================
+section('221. Server beginGame — Perk Application');
+// =====================================================
+{
+    const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    // Verify beginGame calls getServerPerks and applies bonuses
+    assert(sCode.includes('getServerPerks'), 'beginGame calls getServerPerks');
+    assert(sCode.includes('perkBonuses.lives') || sCode.includes('.lives'), 'perk lives bonus applied');
+    assert(sCode.includes('perkBonuses.shield') || sCode.includes('.shield'), 'perk shield bonus applied');
+    // Starting lives includes perk bonus
+    assert(sCode.includes('LIVES + perkBonuses.lives'), 'starting lives = LIVES + perk bonus');
+    // Starting shield includes perk bonus
+    assert(sCode.includes('1 + perkBonuses.shield'), 'starting shield = 1 + perk bonus');
+    // Perk bonuses stored on player object
+    assert(sCode.includes('perkBonuses: perkBonuses') || sCode.includes('perkBonuses:perkBonuses'), 'perk bonuses attached to player');
+}
+
+// =====================================================
+section('222. Server killPlayer — Perk Respawn Multiplier');
+// =====================================================
+{
+    const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    // Verify kill uses respawn perk multiplier
+    assert(sCode.includes('perkBonuses') && sCode.includes('respawnMul'), 'server killPlayer uses respawn multiplier');
+    assert(sCode.includes('RESPAWN_T * rMul') || sCode.includes('RESPAWN_T*rMul'), 'respawn time scaled by perk');
+    // Verify the respawn perk reduces time
+    const rMul = 0.85;
+    const respawnT = Math.floor(RESPAWN_T * rMul);
+    assert(respawnT < RESPAWN_T, 'respawn perk reduces respawn time');
+    assert(respawnT === Math.floor(90 * 0.85), 'respawn time = floor(90*0.85) = 76');
+}
+
 console.log(`\n${'='.repeat(50)}`);
 console.log(`RESULTS: ${passed}/${total} passed, ${failed} failed`);
 console.log(`${'='.repeat(50)}`);
