@@ -296,6 +296,7 @@ class Room {
         this.playerInputs = [];
         this.playerDeaths = [];
         this.lastSentPlayers = null; // for delta compression
+        this.countdownTimer = null; // countdown interval for start/rematch
         this.ending = false;
     }
 
@@ -406,15 +407,17 @@ class Room {
 
     startGame() {
         if (this.running || this.lobbyPlayers.length < 2) return;
+        if (this.countdownTimer) { clearInterval(this.countdownTimer); this.countdownTimer = null; }
         if (this.autoTimer) { clearInterval(this.autoTimer); this.autoTimer = null; this.autoCountdown = -1; }
         let c = 3;
         this.broadcast({ t: 'countdown', v: c });
-        const iv = setInterval(() => {
+        this.countdownTimer = setInterval(() => {
             c--;
             if (c > 0) {
                 this.broadcast({ t: 'countdown', v: c });
             } else {
-                clearInterval(iv);
+                clearInterval(this.countdownTimer);
+                this.countdownTimer = null;
                 this.broadcast({ t: 'countdown', v: 'GO!' });
                 setTimeout(() => this.beginGame(), 600);
             }
@@ -946,6 +949,8 @@ class Room {
     stopGame() {
         this.running = false;
         if (this.gameLoop) { clearInterval(this.gameLoop); this.gameLoop = null; }
+        if (this.countdownTimer) { clearInterval(this.countdownTimer); this.countdownTimer = null; }
+        this.lastSentPlayers = null;
     }
 
     rematch() {

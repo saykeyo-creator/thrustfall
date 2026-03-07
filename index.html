@@ -1074,10 +1074,12 @@ function handleServerMessage(data) {
                     for (const k in delta) fullPlayerState[i][k] = delta[k];
                 }
             } else {
-                // Full state — deep copy player objects
+                // Full state — copy into fullPlayerState for future delta merges
                 fullPlayerState = data.p.map(p => Object.assign({}, p));
+                // data.p is fresh from JSON.parse, safe for stateBuffer directly
             }
-            data.p = fullPlayerState.map(p => Object.assign({}, p));
+            // Delta path: need copies since fullPlayerState objects are mutated by future deltas
+            if (data.d === 1) data.p = fullPlayerState.map(p => Object.assign({}, p));
             stateBuffer.push({ time: performance.now(), state: data });
             if (stateBuffer.length > 30) stateBuffer.shift();
             break;

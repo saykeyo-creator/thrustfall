@@ -6632,6 +6632,28 @@ section('232. Delta Compression — Client fullPlayerState Reset');
     // Delta merge logic in state receive
     assert(code.includes("data.d === 1"), 'client checks delta flag');
     assert(code.includes('fullPlayerState[i][k] = delta[k]') || code.includes('fullPlayerState[i][k]=delta[k]'), 'client merges delta fields');
+    // On delta path, copies are made for stateBuffer isolation
+    assert(code.includes("if (data.d === 1) data.p = fullPlayerState.map"), 'client copies fullPlayerState for stateBuffer on delta');
+}
+
+// =====================================================
+section('233. Rematch — Countdown Timer Tracked on Room');
+// =====================================================
+{
+    const code = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    // countdownTimer property must exist on Room
+    assert(code.includes('this.countdownTimer'), 'countdownTimer tracked on Room');
+    // startGame stores countdown interval on this
+    assert(code.includes('this.countdownTimer = setInterval'), 'startGame stores countdown timer on this');
+    // stopGame clears countdown timer
+    assert(code.includes('clearInterval(this.countdownTimer)'), 'stopGame clears countdown timer');
+    // stopGame resets lastSentPlayers for clean state after rematch
+    assert(code.includes('this.lastSentPlayers = null'), 'stopGame resets lastSentPlayers');
+    // startGame clears any existing countdown before starting a new one
+    const startMatch = code.match(/startGame\(\)\s*\{/);
+    const startIdx = startMatch ? startMatch.index : -1;
+    const startBody = startIdx >= 0 ? code.substring(startIdx, startIdx + 400) : '';
+    assert(startBody.includes('clearInterval(this.countdownTimer)'), 'startGame clears existing countdown first');
 }
 
 console.log(`\n${'='.repeat(50)}`);
