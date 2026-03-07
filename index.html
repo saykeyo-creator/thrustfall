@@ -231,22 +231,32 @@ Land on bases to refuel · Collect weapons · Survive!
 </div>
 
 <!-- PREMIUM COSMETIC SHOP -->
-<div class="overlay" id="cosmeticShopScreen" style="justify-content:flex-start;overflow:hidden;box-sizing:border-box;padding:max(.5em,env(safe-area-inset-top)) max(.5em,env(safe-area-inset-right)) max(.5em,env(safe-area-inset-bottom)) max(.5em,env(safe-area-inset-left))">
-<div style="flex-shrink:0;text-align:center">
-<h2 style="margin:0 0 .1em 0;font-size:clamp(1.1rem,4.5vw,1.6rem)">🎨 COSMETICS</h2>
-<div id="coinDisplay" style="color:#ffcc00;font-size:clamp(.8rem,3vw,1rem);margin:0 0 .3em 0"></div>
+<div class="overlay" id="cosmeticShopScreen" style="justify-content:flex-start;overflow:hidden;box-sizing:border-box;padding:max(.3em,env(safe-area-inset-top)) max(.5em,env(safe-area-inset-right)) max(.4em,env(safe-area-inset-bottom)) max(.5em,env(safe-area-inset-left))">
+<!-- Top bar: title + coins in one line -->
+<div style="flex-shrink:0;display:flex;align-items:center;justify-content:space-between;width:min(360px,95vw);margin:0 auto .2em auto">
+<h2 style="margin:0;font-size:clamp(1rem,3.5vw,1.3rem)">🎨 SHOP</h2>
+<div id="coinDisplay" style="color:#ffcc00;font-size:clamp(.8rem,2.8vw,.95rem);margin:0"></div>
 </div>
-<canvas id="shopPreviewCanvas" width="280" height="160" style="width:min(260px,75vw);height:min(149px,22vh);display:block;margin:0 auto .2em auto;border-radius:10px;border:1px solid #444;background:#0a0012;flex-shrink:0"></canvas>
-<div id="shopPreviewLabel" style="color:#aaa;font-size:clamp(.75rem,2.5vw,.9rem);text-align:center;margin:0 0 .3em 0;flex-shrink:0"></div>
-<div id="shopCategoryTabs" style="display:flex;gap:.4em;margin:0 auto .3em auto;justify-content:center;flex-shrink:0;width:min(360px,95vw)">
+<!-- Preview area: canvas + label side by side in a styled container -->
+<div style="flex-shrink:0;width:min(360px,95vw);margin:0 auto .3em auto;display:flex;align-items:center;gap:.6em;padding:.5em;border-radius:10px;border:1px solid #333;background:rgba(10,0,18,0.8)">
+<canvas id="shopPreviewCanvas" width="140" height="140" style="width:min(100px,28vw);height:min(100px,28vw);border-radius:8px;flex-shrink:0;background:#0a0012"></canvas>
+<div style="flex:1;min-width:0">
+<div id="shopPreviewLabel" style="color:#ccc;font-size:clamp(.8rem,2.8vw,.95rem);font-weight:bold;margin-bottom:.15em"></div>
+<div id="shopPreviewDesc" style="color:#777;font-size:clamp(.65rem,2.2vw,.8rem);margin-bottom:.3em"></div>
+<div id="shopPreviewAction"></div>
+</div>
+</div>
+<!-- Category tabs -->
+<div id="shopCategoryTabs" style="display:flex;gap:.3em;margin:0 auto .3em auto;flex-shrink:0;width:min(360px,95vw)">
 <button class="btn sm" id="shopTab_skins" onclick="selectShopCategory('skins')" style="flex:1;font-size:clamp(.7rem,2.2vw,.85rem);padding:.4em .2em;min-width:0">🚀 SHIPS</button>
 <button class="btn sm" id="shopTab_trails" onclick="selectShopCategory('trails')" style="flex:1;font-size:clamp(.7rem,2.2vw,.85rem);padding:.4em .2em;min-width:0">🔥 TRAILS</button>
 <button class="btn sm" id="shopTab_engines" onclick="selectShopCategory('engines')" style="flex:1;font-size:clamp(.7rem,2.2vw,.85rem);padding:.4em .2em;min-width:0">🔊 ENGINES</button>
 <button class="btn sm" id="shopTab_killfx" onclick="selectShopCategory('killfx')" style="flex:1;font-size:clamp(.7rem,2.2vw,.85rem);padding:.4em .2em;min-width:0">💥 KILLS</button>
 </div>
+<!-- Scrollable item list -->
 <div id="cosmeticList" style="width:min(360px,95vw);margin:0 auto;flex:1 1 0;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch"></div>
-<div style="flex-shrink:0;text-align:center;margin-top:.3em">
-<div style="color:#555;font-size:clamp(.55rem,1.8vw,.7rem);margin-bottom:.2em">Cosmetics are visual only — no gameplay advantage</div>
+<!-- Bottom -->
+<div style="flex-shrink:0;text-align:center;margin-top:.2em">
 <button class="btn sm" onclick="stopShopPreview();showMenu()">BACK</button>
 </div>
 </div>
@@ -3891,15 +3901,35 @@ function renderCosmeticShop() {
     const cat = getShopCategory(cosmeticTab);
     const item = cat.items.find(i => i.id === shopPreviewItemId) || cat.items[0];
 
-    // Update preview label
+    // Update preview info beside canvas
     const label = document.getElementById('shopPreviewLabel');
-    if (label && item) {
+    const descEl = document.getElementById('shopPreviewDesc');
+    const actionEl = document.getElementById('shopPreviewAction');
+    if (item) {
+        const isOwned = cat.owned.includes(item.id) || item.free;
         const isEquipped = cat.active === item.id;
-        label.innerHTML = '<span style="color:#ddd;font-weight:bold">' + item.name + '</span> — <span style="color:#777">' + item.desc + '</span>' +
-            (isEquipped ? ' <span style="color:#ffcc00">✓ EQUIPPED</span>' : '');
+        label.textContent = item.name + (isEquipped ? ' ✓' : '');
+        label.style.color = isEquipped ? '#ffcc00' : '#ccc';
+        descEl.textContent = item.desc + (cosmeticTab === 'engines' ? ' — tap preview to hear' : '');
+        // Action button next to preview
+        actionEl.innerHTML = '';
+        if (!isEquipped) {
+            const abtn = document.createElement('button');
+            abtn.className = 'btn sm';
+            abtn.style.cssText = 'font-size:clamp(.7rem,2.5vw,.9rem);padding:.35em .8em;margin:0';
+            if (isOwned) {
+                abtn.textContent = 'EQUIP';
+                abtn.onclick = () => equipCosmetic(cosmeticTab, item.id);
+            } else {
+                abtn.textContent = 'BUY $' + (item.price / 100).toFixed(2);
+                abtn.style.borderColor = '#ffcc00'; abtn.style.color = '#ffcc00';
+                abtn.onclick = () => buyCosmetic(cosmeticTab, item.id, item.price);
+            }
+            actionEl.appendChild(abtn);
+        }
     }
 
-    // Add tap-to-hear handler for engine previews
+    // Tap-to-hear for engine previews
     const cv = document.getElementById('shopPreviewCanvas');
     cv.onclick = cosmeticTab === 'engines' ? () => { initAudio(); engineSnd(shopPreviewItemId || 'default', 0.5); } : null;
     cv.style.cursor = cosmeticTab === 'engines' ? 'pointer' : 'default';
