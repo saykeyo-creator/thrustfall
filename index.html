@@ -17,6 +17,7 @@ canvas{display:block;position:fixed;top:0;left:0;width:100%;height:100%}
 .overlay{position:fixed;top:0;left:0;width:100%;height:100%;display:none;flex-direction:column;align-items:center;justify-content:center;z-index:100;background:radial-gradient(ellipse at center,#1a0a2e 0%,#0d0015 60%,#000 100%);padding:1em;padding-top:max(1em,env(safe-area-inset-top));padding-bottom:max(1em,env(safe-area-inset-bottom));padding-left:max(1em,env(safe-area-inset-left));padding-right:max(1em,env(safe-area-inset-right));overflow-y:auto;transition:opacity .25s ease}
 .overlay.active{display:flex;animation:fadeIn .25s ease}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
 h1{font-size:clamp(2rem,8vw,4.5rem);color:#ff6600;text-shadow:0 0 20px #ff6600,0 0 40px #ff3300;margin-bottom:.1em;letter-spacing:.12em;animation:tp 2s ease-in-out infinite}
 @keyframes tp{0%,100%{text-shadow:0 0 20px #ff6600,0 0 40px #ff3300,0 0 60px #cc0000}50%{text-shadow:0 0 30px #ff8800,0 0 60px #ff5500}}
 h2{font-size:clamp(1.2rem,5vw,2.5rem);color:#ff6600;margin-bottom:.5em;text-align:center}
@@ -45,7 +46,16 @@ input[type=text]::placeholder{color:#555;text-transform:none}
 <body>
 
 <!-- MAIN MENU -->
-<div class="overlay active" id="menuScreen">
+<div class="overlay active" id="menuSplash" style="cursor:pointer">
+<h1 style="margin-bottom:.2em">THRUSTFALL</h1>
+<div class="sub" style="margin-bottom:1.5em">Cave combat &bull; Online multiplayer</div>
+<div style="color:#555;font-size:clamp(.8rem,2.5vw,1.1rem);animation:pulse 2s ease-in-out infinite">TAP TO START</div>
+<div class="info-footer" style="margin-top:2em">
+<span style="color:#444">v2.2 &bull; Lakes Games &bull; 2026</span>
+</div>
+</div>
+
+<div class="overlay" id="menuScreen">
 <h1>THRUSTFALL</h1>
 <div class="sub">Cave combat &bull; Online multiplayer</div>
 <button class="btn" style="background:linear-gradient(180deg,#441100,#220000);border-color:#ff3300;color:#ff6600;font-size:clamp(1rem,3.5vw,1.4rem);padding:.8em 2em" onclick="showSurvival()">⚔ SURVIVAL</button>
@@ -224,15 +234,7 @@ Land on bases to refuel · Collect weapons · Survive!
 <div class="overlay" id="cosmeticShopScreen">
 <h2>🎨 COSMETICS</h2>
 <div id="coinDisplay" style="color:#ffcc00;font-size:clamp(.8rem,2.5vw,1rem);margin:.3em 0;text-align:center"></div>
-<canvas id="shipPreviewCanvas" width="200" height="180" style="width:200px;height:180px;display:block;margin:0 auto;border-radius:10px;border:1px solid #222"></canvas>
-<div id="shipPreviewLabel" style="color:#ff9900;font-size:clamp(.7rem,2.2vw,.9rem);text-align:center;margin:.3em 0"></div>
-<div style="display:flex;gap:.4em;margin:.5em 0;justify-content:center;flex-wrap:wrap">
-<button class="btn sm" id="skinTabBtn" onclick="showCosmeticTab('skins')">SHIPS</button>
-<button class="btn sm" id="trailTabBtn" onclick="showCosmeticTab('trails')">TRAILS</button>
-<button class="btn sm" id="engineTabBtn" onclick="showCosmeticTab('engines')">ENGINES</button>
-<button class="btn sm" id="killFxTabBtn" onclick="showCosmeticTab('killfx')">KILLS</button>
-</div>
-<div id="cosmeticList" style="width:min(360px,90vw);margin:.5em auto;max-height:40vh;overflow-y:auto"></div>
+<div id="cosmeticAccordion" style="width:min(370px,92vw);margin:.5em auto;max-height:65vh;overflow-y:auto"></div>
 <div class="sub" style="margin-top:.4em;color:#555">Cosmetics are visual only — no gameplay advantage</div>
 <button class="btn sm" onclick="stopShopPreview();showMenu()">BACK</button>
 </div>
@@ -1142,21 +1144,42 @@ function leaveLobby() { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON
 // =====================================================
 // SOLO ROAM
 // =====================================================
+function maybeShowOnboarding(callback) {
+    if (localStorage.getItem('tf_played')) { callback(); return; }
+    localStorage.setItem('tf_played', '1');
+    const tip = document.createElement('div');
+    tip.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;z-index:9999;background:rgba(0,0,0,0.85);pointer-events:auto';
+    tip.innerHTML = '<div style="text-align:center;color:#fff;font-family:Courier New,monospace;max-width:320px;padding:24px">' +
+        '<div style="font-size:22px;font-weight:bold;color:#00ccff;margin-bottom:16px">HOW TO PLAY</div>' +
+        '<div style="font-size:15px;line-height:1.7;color:#ccc">' +
+        (('ontouchstart' in window) ?
+            '<b style="color:#fff">LEFT JOYSTICK</b> — Rotate & Thrust<br><b style="color:#fff">RIGHT BUTTON</b> — Fire<br>' :
+            '<b style="color:#fff">← →</b> Rotate &nbsp; <b style="color:#fff">↑</b> Thrust &nbsp; <b style="color:#fff">↓</b> Reverse<br><b style="color:#fff">SPACE</b> Fire<br>') +
+        '<br><span style="color:#ff8800">Land on your base to heal!</span></div>' +
+        '<div style="margin-top:20px"><button style="background:linear-gradient(180deg,#002244,#001122);border:1px solid #00ccff;color:#00ccff;padding:.6em 2em;font-family:Courier New,monospace;font-size:14px;font-weight:bold;border-radius:6px;cursor:pointer">GOT IT — PLAY</button></div></div>';
+    document.body.appendChild(tip);
+    const dismiss = () => { tip.remove(); callback(); };
+    tip.querySelector('button').addEventListener('click', dismiss);
+    tip.querySelector('button').addEventListener('touchstart', (e) => { e.preventDefault(); dismiss(); });
+}
+
 function startSoloGame(mapKey) {
-    cleanup();
-    lobbyMap = mapKey;
-    isHost = true;
-    myIndex = 0;
-    const mapData = generateMap(mapKey);
-    const sb = computeSpawns(1, mapData.worldW, mapData.worldH, mapData.terrain);
-    beginGame({
-        worldW: mapData.worldW, worldH: mapData.worldH,
-        terrain: mapData.terrain, ceiling: mapData.ceiling,
-        platforms: mapData.platforms, stars: mapData.stars,
-        spawns: sb.spawns, bases: sb.bases,
-        players: [{name:'SOLO'}]
+    maybeShowOnboarding(() => {
+        cleanup();
+        lobbyMap = mapKey;
+        isHost = true;
+        myIndex = 0;
+        const mapData = generateMap(mapKey);
+        const sb = computeSpawns(1, mapData.worldW, mapData.worldH, mapData.terrain);
+        beginGame({
+            worldW: mapData.worldW, worldH: mapData.worldH,
+            terrain: mapData.terrain, ceiling: mapData.ceiling,
+            platforms: mapData.platforms, stars: mapData.stars,
+            spawns: sb.spawns, bases: sb.bases,
+            players: [{name:'SOLO'}]
+        });
+        players[0].lives = 999; // infinite lives in solo
     });
-    players[0].lives = 999; // infinite lives in solo
 }
 
 function cleanup() {
@@ -1183,28 +1206,30 @@ function cleanup() {
 // SURVIVAL MODE
 // =====================================================
 function startSurvival(mapKey) {
-    cleanup();
-    lobbyMap = mapKey;
-    isHost = true;
-    myIndex = 0;
-    survivalMode = true;
-    survivalWave = 0;
-    survivalWaveState = 'fighting';
-    survivalEnding = false;
-    const nameInput = document.getElementById('survivalName');
-    survivalPlayerName = (nameInput && nameInput.value.trim()) ? nameInput.value.trim().toUpperCase() : 'PILOT';
-    const mapData = generateMap(mapKey);
-    survivalSpawnData = computeSpawns(8, mapData.worldW, mapData.worldH, mapData.terrain);
-    beginGame({
-        worldW: mapData.worldW, worldH: mapData.worldH,
-        terrain: mapData.terrain, ceiling: mapData.ceiling,
-        platforms: mapData.platforms, stars: mapData.stars,
-        spawns: [survivalSpawnData.spawns[0]],
-        bases: [survivalSpawnData.bases[0]],
-        players: [{name: survivalPlayerName}]
+    maybeShowOnboarding(() => {
+        cleanup();
+        lobbyMap = mapKey;
+        isHost = true;
+        myIndex = 0;
+        survivalMode = true;
+        survivalWave = 0;
+        survivalWaveState = 'fighting';
+        survivalEnding = false;
+        const nameInput = document.getElementById('survivalName');
+        survivalPlayerName = (nameInput && nameInput.value.trim()) ? nameInput.value.trim().toUpperCase() : 'PILOT';
+        const mapData = generateMap(mapKey);
+        survivalSpawnData = computeSpawns(8, mapData.worldW, mapData.worldH, mapData.terrain);
+        beginGame({
+            worldW: mapData.worldW, worldH: mapData.worldH,
+            terrain: mapData.terrain, ceiling: mapData.ceiling,
+            platforms: mapData.platforms, stars: mapData.stars,
+            spawns: [survivalSpawnData.spawns[0]],
+            bases: [survivalSpawnData.bases[0]],
+            players: [{name: survivalPlayerName}]
+        });
+        // beginGame already applied perk bonuses — don't overwrite them
+        setTimeout(() => { if (survivalMode && running) spawnSurvivalWave(1); }, 1200);
     });
-    // beginGame already applied perk bonuses — don't overwrite them
-    setTimeout(() => { if (survivalMode && running) spawnSurvivalWave(1); }, 1200);
 }
 
 function spawnSurvivalWave(wave) {
@@ -1606,27 +1631,6 @@ function beginGame(data) {
     showScreen(null);
     running = true;
     cancelAnimationFrame(af);
-
-    // First-time onboarding tip
-    if (!localStorage.getItem('tf_played')) {
-        localStorage.setItem('tf_played', '1');
-        const tip = document.createElement('div');
-        tip.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;z-index:9999;background:rgba(0,0,0,0.7);pointer-events:auto;transition:opacity .5s';
-        tip.innerHTML = '<div style="text-align:center;color:#fff;font-family:Courier New,monospace;max-width:320px;padding:24px">' +
-            '<div style="font-size:20px;font-weight:bold;color:#00ccff;margin-bottom:12px">HOW TO PLAY</div>' +
-            '<div style="font-size:14px;line-height:1.6;color:#aaa">' +
-            (('ontouchstart' in window) ?
-                '<b style="color:#fff">LEFT JOYSTICK</b> — Rotate &amp; Thrust<br><b style="color:#fff">RIGHT BUTTON</b> — Fire<br>' :
-                '<b style="color:#fff">← →</b> Rotate &nbsp; <b style="color:#fff">↑</b> Thrust &nbsp; <b style="color:#fff">↓</b> Reverse<br><b style="color:#fff">SPACE</b> Fire<br>') +
-            '<br><span style="color:#ff8800">Land on your base to heal!</span></div>' +
-            '<div style="margin-top:16px;font-size:12px;color:#555">Tap anywhere to start</div></div>';
-        document.body.appendChild(tip);
-        const dismissTip = () => { tip.style.opacity = '0'; setTimeout(() => tip.remove(), 500); };
-        tip.addEventListener('click', dismissTip);
-        tip.addEventListener('touchstart', dismissTip);
-        setTimeout(dismissTip, 6000);
-    }
-
     af = requestAnimationFrame(loop);
 }
 
@@ -3600,19 +3604,21 @@ let shopPreviewSkinId = null; // which skin is being previewed (hover/tap or act
 
 function showCosmeticShop() {
     showScreen('cosmeticShopScreen');
-    cosmeticTab = 'skins';
     shopPreviewSkinId = null;
     renderCosmeticShop();
-    startShopPreview();
 }
 function showCosmeticTab(tab) {
-    cosmeticTab = tab;
-    shopPreviewSkinId = null;
-    document.getElementById('skinTabBtn').style.opacity = tab === 'skins' ? '1' : '.5';
-    document.getElementById('trailTabBtn').style.opacity = tab === 'trails' ? '1' : '.5';
-    document.getElementById('engineTabBtn').style.opacity = tab === 'engines' ? '1' : '.5';
-    document.getElementById('killFxTabBtn').style.opacity = tab === 'killfx' ? '1' : '.5';
-    renderCosmeticShop();
+    // Toggle accordion section
+    const section = document.getElementById('shopSection_' + tab);
+    if (section) {
+        const content = section.querySelector('.shop-section-content');
+        const arrow = section.querySelector('.shop-arrow');
+        if (content.style.display === 'none') {
+            content.style.display = 'block'; arrow.textContent = '▼';
+        } else {
+            content.style.display = 'none'; arrow.textContent = '►';
+        }
+    }
 }
 
 function stopShopPreview() {
@@ -3620,595 +3626,129 @@ function stopShopPreview() {
 }
 
 function startShopPreview() {
-    stopShopPreview();
-    const cvs = document.getElementById('shipPreviewCanvas');
-    if (!cvs) return;
-    const pc = cvs.getContext('2d');
-    let tick = 0;
-
-    function drawPreview() {
-        tick++;
-        const w = cvs.width, h = cvs.height;
-        pc.clearRect(0, 0, w, h);
-
-        // Starfield background
-        pc.fillStyle = '#0a0012';
-        pc.fillRect(0, 0, w, h);
-        // Stars
-        for (let i = 0; i < 20; i++) {
-            const sx = ((i * 137 + 50) % w);
-            const sy = ((i * 87 + 30) % h);
-            const twinkle = 0.3 + Math.sin(tick * 0.02 + i) * 0.3;
-            pc.fillStyle = 'rgba(255,255,255,' + twinkle + ')';
-            pc.beginPath(); pc.arc(sx, sy, 0.8, 0, Math.PI * 2); pc.fill();
-        }
-
-        if (cosmeticTab === 'skins') {
-            // Determine which skin to show: hovered/tapped one, or active one
-            const skinId = shopPreviewSkinId || shopData.activeSkin || 'default';
-            const skinDef = SHIP_SKINS.find(s => s.id === skinId);
-            const sColor = (skinDef && skinDef.color) ? skinDef.color : '#00ccff';
-            const sz = 32; // large preview size
-
-            pc.save();
-            pc.translate(w / 2, h / 2 - 5);
-
-            // Gentle bob
-            const bob = Math.sin(tick * 0.03) * 3;
-            pc.translate(0, bob);
-
-            // Glow underneath
-            pc.shadowColor = sColor;
-            pc.shadowBlur = 25;
-
-            // Ghost alpha
-            if (skinId === 'ghost') { pc.globalAlpha = 0.55; }
-            // Neon glow
-            if (skinId === 'neon') { pc.shadowColor = sColor; pc.shadowBlur = 30; }
-
-            pc.fillStyle = sColor;
-            pc.beginPath();
-            drawShipShape(pc, skinId, sz);
-            pc.fill();
-            pc.shadowBlur = 0;
-            pc.strokeStyle = skinId === 'gold' ? '#ffee88' : '#fff';
-            pc.lineWidth = 1.5;
-            pc.stroke();
-
-            // Cockpit
-            pc.fillStyle = '#fff';
-            pc.beginPath(); pc.arc(0, -sz * 0.2, sz * 0.2, 0, Math.PI * 2); pc.fill();
-
-            // Skin-specific effects
-            if (skinId === 'neon') {
-                pc.strokeStyle = 'rgba(0,255,255,0.5)'; pc.lineWidth = 0.8;
-                pc.beginPath(); pc.moveTo(0, -sz * 0.5); pc.lineTo(-sz * 0.25, sz * 0.3);
-                pc.moveTo(0, -sz * 0.5); pc.lineTo(sz * 0.25, sz * 0.3); pc.stroke();
-                // Pulsing outer glow
-                pc.globalAlpha = 0.2 + Math.sin(tick * 0.06) * 0.15;
-                pc.strokeStyle = '#00ffff'; pc.lineWidth = 1;
-                pc.beginPath(); drawShipShape(pc, skinId, sz * 1.08); pc.stroke();
-                pc.globalAlpha = 1;
-            }
-            if (skinId === 'phoenix') {
-                pc.fillStyle = '#ff6600'; pc.globalAlpha = 0.6 + Math.sin(tick * 0.1) * 0.3;
-                pc.beginPath(); pc.arc(-sz * 0.85, sz * 0.4, 5, 0, Math.PI * 2); pc.fill();
-                pc.beginPath(); pc.arc(sz * 0.85, sz * 0.4, 5, 0, Math.PI * 2); pc.fill();
-                pc.fillStyle = '#ffcc00'; pc.globalAlpha = 0.4 + Math.sin(tick * 0.15) * 0.2;
-                pc.beginPath(); pc.arc(-sz * 0.85, sz * 0.4, 3, 0, Math.PI * 2); pc.fill();
-                pc.beginPath(); pc.arc(sz * 0.85, sz * 0.4, 3, 0, Math.PI * 2); pc.fill();
-                pc.globalAlpha = 1;
-            }
-            if (skinId === 'gold') {
-                pc.fillStyle = 'rgba(255,238,136,' + (0.12 + Math.sin(tick * 0.08) * 0.08) + ')';
-                pc.beginPath(); drawShipShape(pc, skinId, sz); pc.fill();
-                // Sparkle particles
-                for (let sp = 0; sp < 3; sp++) {
-                    const spAngle = (tick * 0.02 + sp * 2.1) % (Math.PI * 2);
-                    const spR = sz * 0.8 + Math.sin(tick * 0.05 + sp) * 5;
-                    const spx = Math.cos(spAngle) * spR, spy = Math.sin(spAngle) * spR;
-                    pc.fillStyle = 'rgba(255,238,136,' + (0.5 + Math.sin(tick * 0.1 + sp * 1.5) * 0.4) + ')';
-                    pc.beginPath(); pc.arc(spx, spy, 1.5, 0, Math.PI * 2); pc.fill();
-                }
-            }
-            if (skinId === 'ghost') {
-                pc.globalAlpha = 0.2 + Math.sin(tick * 0.08) * 0.12;
-                pc.strokeStyle = '#8866ff'; pc.lineWidth = 1.5;
-                pc.beginPath(); drawShipShape(pc, skinId, sz * 1.1); pc.stroke();
-                // Flickering wisps
-                for (let g = 0; g < 2; g++) {
-                    const gy = sz * 0.5 + g * 8 + Math.sin(tick * 0.04 + g) * 4;
-                    const gx = Math.sin(tick * 0.03 + g * 2) * 8;
-                    pc.globalAlpha = 0.15 + Math.sin(tick * 0.06 + g) * 0.1;
-                    pc.fillStyle = '#aa88ff';
-                    pc.beginPath(); pc.arc(gx, gy, 3, 0, Math.PI * 2); pc.fill();
-                }
-                pc.globalAlpha = 1;
-            }
-            if (skinId === 'stealth') {
-                // Subtle edge highlights
-                pc.strokeStyle = 'rgba(80,100,120,0.3)'; pc.lineWidth = 0.5;
-                pc.beginPath(); drawShipShape(pc, skinId, sz * 0.95); pc.stroke();
-            }
-
-            // Thrust flame (animated)
-            const flameLen = sz * (0.5 + Math.random() * 0.4);
-            // Use active trail colors for flame preview
-            const trailId = shopData.activeTrail || 'default';
-            const trailDef = TRAIL_EFFECTS.find(t => t.id === trailId);
-            let fCol1 = '#ff8800', fCol2 = '#ffcc00';
-            if (trailDef && trailDef.rainbow) {
-                const hue = (tick * 3) % 360;
-                fCol1 = 'hsl(' + hue + ',100%,50%)'; fCol2 = 'hsl(' + ((hue + 40) % 360) + ',100%,70%)';
-            } else if (trailDef && trailDef.colors) {
-                fCol1 = trailDef.colors[0]; fCol2 = trailDef.colors[1] || trailDef.colors[0];
-            }
-            pc.fillStyle = fCol1; pc.globalAlpha = 0.8;
-            pc.beginPath(); pc.moveTo(-sz * 0.25, sz * 0.5); pc.lineTo(0, sz * 0.5 + flameLen); pc.lineTo(sz * 0.25, sz * 0.5); pc.closePath(); pc.fill();
-            pc.fillStyle = fCol2; pc.globalAlpha = 0.5;
-            pc.beginPath(); pc.moveTo(-sz * 0.12, sz * 0.5); pc.lineTo(0, sz * 0.5 + flameLen * 0.6); pc.lineTo(sz * 0.12, sz * 0.5); pc.closePath(); pc.fill();
-            pc.globalAlpha = 1;
-
-            pc.restore();
-
-            // Label
-            const label = document.getElementById('shipPreviewLabel');
-            if (label) {
-                const displayName = skinDef ? skinDef.name : 'STANDARD';
-                const isActive = skinId === shopData.activeSkin;
-                label.innerHTML = '<span style="color:' + sColor + '">' + displayName + '</span>' +
-                    (isActive ? ' <span style="color:#ffcc00;font-size:.8em">✓ EQUIPPED</span>' : '');
-            }
-        } else if (cosmeticTab === 'trails') {
-            // Trail tab — show active trail on default ship
-            const trailId = shopPreviewSkinId || shopData.activeTrail || 'default';
-            const trailDef = TRAIL_EFFECTS.find(t => t.id === trailId);
-            const sz = 24;
-
-            pc.save();
-            pc.translate(w / 2, h / 2 - 25);
-            const bob = Math.sin(tick * 0.03) * 2;
-            pc.translate(0, bob);
-
-            // Ship
-            pc.fillStyle = '#00ccff';
-            pc.shadowColor = '#00ccff'; pc.shadowBlur = 12;
-            pc.beginPath(); drawShipShape(pc, shopData.activeSkin || 'default', sz); pc.fill();
-            pc.shadowBlur = 0;
-            pc.strokeStyle = '#fff'; pc.lineWidth = 1; pc.stroke();
-            pc.fillStyle = '#fff'; pc.beginPath(); pc.arc(0, -sz * 0.2, sz * 0.18, 0, Math.PI * 2); pc.fill();
-
-            // Trail particles (falling down)
-            const pCount = 15;
-            for (let i = 0; i < pCount; i++) {
-                const age = ((tick * 1.5 + i * 7) % 80) / 80; // 0 to 1 lifecycle
-                const py = sz * 0.5 + age * 75;
-                const px = Math.sin(tick * 0.02 + i * 1.5) * (3 + age * 6);
-                const pSize = (1 - age) * 4 + 1;
-                const pAlpha = (1 - age) * 0.8;
-
-                if (trailDef && trailDef.rainbow) {
-                    const hue = (tick * 2 + i * 30) % 360;
-                    pc.fillStyle = 'hsl(' + hue + ',100%,55%)';
-                } else if (trailDef && trailDef.colors) {
-                    pc.fillStyle = trailDef.colors[i % trailDef.colors.length];
-                } else {
-                    pc.fillStyle = i % 2 === 0 ? '#ff8800' : '#ffcc00';
-                }
-                pc.globalAlpha = pAlpha;
-                pc.beginPath(); pc.arc(px, py, pSize, 0, Math.PI * 2); pc.fill();
-            }
-            pc.globalAlpha = 1;
-
-            // Flame
-            const flameLen = sz * (0.4 + Math.random() * 0.3);
-            let fCol1 = '#ff8800', fCol2 = '#ffcc00';
-            if (trailDef && trailDef.rainbow) {
-                const hue = (tick * 3) % 360;
-                fCol1 = 'hsl(' + hue + ',100%,50%)'; fCol2 = 'hsl(' + ((hue + 40) % 360) + ',100%,70%)';
-            } else if (trailDef && trailDef.colors) {
-                fCol1 = trailDef.colors[0]; fCol2 = trailDef.colors[1] || trailDef.colors[0];
-            }
-            pc.fillStyle = fCol1; pc.globalAlpha = 0.8;
-            pc.beginPath(); pc.moveTo(-sz * 0.25, sz * 0.5); pc.lineTo(0, sz * 0.5 + flameLen); pc.lineTo(sz * 0.25, sz * 0.5); pc.closePath(); pc.fill();
-            pc.fillStyle = fCol2; pc.globalAlpha = 0.5;
-            pc.beginPath(); pc.moveTo(-sz * 0.12, sz * 0.5); pc.lineTo(0, sz * 0.5 + flameLen * 0.6); pc.lineTo(sz * 0.12, sz * 0.5); pc.closePath(); pc.fill();
-            pc.globalAlpha = 1;
-            pc.restore();
-
-            // Label
-            const label = document.getElementById('shipPreviewLabel');
-            if (label) {
-                const displayName = trailDef ? trailDef.name : 'STANDARD';
-                const tColor = trailDef && trailDef.colors ? trailDef.colors[0] : (trailDef && trailDef.rainbow ? '#ff4444' : '#ff8800');
-                const isActive = trailId === shopData.activeTrail;
-                label.innerHTML = '<span style="color:' + tColor + '">' + displayName + ' TRAIL</span>' +
-                    (isActive ? ' <span style="color:#ffcc00;font-size:.8em">✓ EQUIPPED</span>' : '');
-            }
-        } else if (cosmeticTab === 'engines') {
-            // Engine tab — show ship with animated thrust + sound wave indicator
-            const eId = shopPreviewSkinId || shopData.activeEngine || 'default';
-            const eDef = ENGINE_SOUNDS.find(e => e.id === eId);
-            const sz = 24;
-            pc.save();
-            pc.translate(w / 2, h / 2 - 15);
-            const bob = Math.sin(tick * 0.03) * 2;
-            pc.translate(0, bob);
-
-            // Ship
-            pc.fillStyle = '#00ccff';
-            pc.shadowColor = '#00ccff'; pc.shadowBlur = 12;
-            pc.beginPath(); drawShipShape(pc, shopData.activeSkin || 'default', sz); pc.fill();
-            pc.shadowBlur = 0;
-            pc.strokeStyle = '#fff'; pc.lineWidth = 1; pc.stroke();
-            pc.fillStyle = '#fff'; pc.beginPath(); pc.arc(0, -sz * 0.2, sz * 0.18, 0, Math.PI * 2); pc.fill();
-
-            // Animated flame
-            const flameLen = sz * (0.5 + Math.sin(tick * 0.15) * 0.3);
-            pc.fillStyle = '#ff8800'; pc.globalAlpha = 0.8;
-            pc.beginPath(); pc.moveTo(-sz * 0.25, sz * 0.5); pc.lineTo(0, sz * 0.5 + flameLen); pc.lineTo(sz * 0.25, sz * 0.5); pc.closePath(); pc.fill();
-            pc.fillStyle = '#ffcc00'; pc.globalAlpha = 0.5;
-            pc.beginPath(); pc.moveTo(-sz * 0.12, sz * 0.5); pc.lineTo(0, sz * 0.5 + flameLen * 0.6); pc.lineTo(sz * 0.12, sz * 0.5); pc.closePath(); pc.fill();
-            pc.globalAlpha = 1;
-
-            // Sound wave rings emanating from engine
-            for (let r = 0; r < 3; r++) {
-                const phase = ((tick * 0.04 + r * 0.33) % 1);
-                const ringR = 10 + phase * 40;
-                const alpha = (1 - phase) * 0.35;
-                pc.strokeStyle = eId === 'default' ? '#ff8800' : eId === 'rumble' ? '#ff4400' : eId === 'whine' ? '#88ddff' : eId === 'pulse' ? '#44ff88' : eId === 'roar' ? '#ff6600' : '#aaddff';
-                pc.globalAlpha = alpha;
-                pc.lineWidth = 1.5;
-                pc.beginPath(); pc.arc(0, sz * 0.6, ringR, 0.3, Math.PI - 0.3); pc.stroke();
-            }
-            pc.globalAlpha = 1;
-            pc.restore();
-
-            // Label
-            const label = document.getElementById('shipPreviewLabel');
-            if (label) {
-                const displayName = eDef ? eDef.name : 'STANDARD';
-                const isActive = eId === shopData.activeEngine;
-                label.innerHTML = '<span style="color:#ff8800">' + displayName + ' ENGINE</span>' +
-                    (isActive ? ' <span style="color:#ffcc00;font-size:.8em">✓ EQUIPPED</span>' : '') +
-                    '<br><span style="color:#666;font-size:.7em">Tap item to hear sound</span>';
-            }
-        } else if (cosmeticTab === 'killfx') {
-            // Kill effects tab — show animated explosion preview
-            const keId = shopPreviewSkinId || shopData.activeKillEffect || 'default';
-            const keDef = KILL_EFFECTS.find(k => k.id === keId);
-            const keColor = (keDef && keDef.color) || '#ff4400';
-
-            // Looping explosion animation
-            const cycle = tick % 120; // repeat every 2 seconds
-            const phase = cycle / 120;
-
-            pc.save();
-            pc.translate(w / 2, h / 2);
-
-            if (phase < 0.1) {
-                // Ship about to explode
-                const sz = 20 * (1 - phase * 5);
-                pc.fillStyle = '#ff3366'; pc.globalAlpha = 1 - phase * 8;
-                pc.beginPath(); drawShipShape(pc, 'default', sz); pc.fill();
-                pc.strokeStyle = '#fff'; pc.lineWidth = 1; pc.stroke();
-                pc.globalAlpha = 1;
-            } else if (phase < 0.9) {
-                // Explosion effect
-                const ep = (phase - 0.1) / 0.8; // 0 to 1 within explosion phase
-                switch(keId) {
-                    case 'vortex':
-                        // Particles spiral inward then burst
-                        for (let i = 0; i < 12; i++) {
-                            const a = (i/12)*Math.PI*2 + tick*0.05;
-                            const r = ep < 0.4 ? 35*(1-ep/0.4) : ep < 0.5 ? 0 : (ep-0.5)*60;
-                            const px = Math.cos(a)*r, py = Math.sin(a)*r;
-                            pc.fillStyle = ['#8800ff','#aa44ff','#cc88ff'][i%3];
-                            pc.globalAlpha = 1 - ep*0.8;
-                            pc.beginPath(); pc.arc(px, py, 3-ep*2, 0, Math.PI*2); pc.fill();
-                        }
-                        if (ep < 0.5) {
-                            pc.strokeStyle = '#8800ff'; pc.globalAlpha = 0.5 - ep;
-                            pc.lineWidth = 2; pc.beginPath(); pc.arc(0,0,35*(1-ep*2),0,Math.PI*2); pc.stroke();
-                        }
-                        break;
-                    case 'electric':
-                        // Lightning bolts
-                        for (let i = 0; i < 6; i++) {
-                            const a = (i/6)*Math.PI*2 + (tick%3)*0.5;
-                            const len = 20 + ep*25;
-                            pc.strokeStyle = ['#00eeff','#88ffff','#ffffff'][i%3];
-                            pc.globalAlpha = 1 - ep*0.9; pc.lineWidth = 2;
-                            pc.beginPath(); pc.moveTo(0,0);
-                            let cx=0,cy=0;
-                            for (let s=0;s<4;s++){const seg=len/4;cx+=Math.cos(a+(Math.random()-.5)*1.2)*seg;cy+=Math.sin(a+(Math.random()-.5)*1.2)*seg;pc.lineTo(cx,cy);}
-                            pc.stroke();
-                        }
-                        pc.fillStyle = '#ffffff'; pc.globalAlpha = Math.max(0,0.6-ep);
-                        pc.beginPath(); pc.arc(0,0,8-ep*6,0,Math.PI*2); pc.fill();
-                        break;
-                    case 'shatter':
-                        // Angular fragments flying out
-                        for (let i = 0; i < 10; i++) {
-                            const a = (i/10)*Math.PI*2 + i*0.3;
-                            const r = ep * 45;
-                            const rot = tick*0.1+i;
-                            pc.save(); pc.translate(Math.cos(a)*r, Math.sin(a)*r); pc.rotate(rot);
-                            pc.fillStyle = ['#aaccff','#ddeeff','#99bbee','#ffffff'][i%4];
-                            pc.globalAlpha = 1 - ep;
-                            pc.fillRect(-3,-2,6,4);
-                            pc.restore();
-                        }
-                        break;
-                    case 'nova':
-                        // Expanding ring
-                        const ringR = ep * 55;
-                        pc.strokeStyle = '#ffff44'; pc.globalAlpha = 1 - ep*0.9; pc.lineWidth = 3 - ep*2;
-                        pc.beginPath(); pc.arc(0,0,ringR,0,Math.PI*2); pc.stroke();
-                        // Inner ring
-                        pc.strokeStyle = '#ffffff'; pc.globalAlpha = Math.max(0,0.8-ep*1.2); pc.lineWidth = 1;
-                        pc.beginPath(); pc.arc(0,0,ringR*0.6,0,Math.PI*2); pc.stroke();
-                        // Center flash
-                        pc.fillStyle = '#ffffff'; pc.globalAlpha = Math.max(0,0.8-ep*2);
-                        pc.beginPath(); pc.arc(0,0,10-ep*8,0,Math.PI*2); pc.fill();
-                        // Sparkles along ring
-                        for (let i=0;i<8;i++){
-                            const sa=(i/8)*Math.PI*2;
-                            pc.fillStyle='#ffcc00'; pc.globalAlpha=Math.max(0,(1-ep)*0.7);
-                            pc.beginPath(); pc.arc(Math.cos(sa)*ringR,Math.sin(sa)*ringR,2,0,Math.PI*2); pc.fill();
-                        }
-                        break;
-                    case 'void':
-                        // Dark collapse
-                        for (let i = 0; i < 10; i++) {
-                            const a = (i/10)*Math.PI*2 + tick*0.02;
-                            const r = ep < 0.5 ? 30*(1-ep*2) + Math.sin(tick*0.1+i)*5 : (ep-0.5)*20;
-                            pc.fillStyle = ['#6600aa','#4400cc','#220066','#8833ff'][i%4];
-                            pc.globalAlpha = 1 - ep*0.7;
-                            pc.beginPath(); pc.arc(Math.cos(a)*r, Math.sin(a)*r, 3, 0, Math.PI*2); pc.fill();
-                        }
-                        // Dark center
-                        pc.fillStyle = '#110022'; pc.globalAlpha = Math.max(0,0.8-ep);
-                        pc.beginPath(); pc.arc(0,0,12-ep*10,0,Math.PI*2); pc.fill();
-                        break;
-                    default:
-                        // Standard explosion
-                        const er = 5 + ep * 30;
-                        pc.fillStyle = '#ff4400'; pc.globalAlpha = Math.max(0,0.6-ep*0.5);
-                        pc.beginPath(); pc.arc(0,0,er,0,Math.PI*2); pc.fill();
-                        pc.strokeStyle = '#ffcc00'; pc.globalAlpha = 1 - ep;
-                        pc.lineWidth = 2; pc.beginPath(); pc.arc(0,0,er,0,Math.PI*2); pc.stroke();
-                        for (let i=0;i<8;i++){
-                            const a=(i/8)*Math.PI*2;const pr=ep*35;
-                            pc.fillStyle=i%2===0?'#ff6600':'#ffcc00'; pc.globalAlpha=1-ep;
-                            pc.beginPath(); pc.arc(Math.cos(a)*pr,Math.sin(a)*pr,2.5-ep*2,0,Math.PI*2); pc.fill();
-                        }
-                        break;
-                }
-            }
-            pc.globalAlpha = 1;
-            pc.restore();
-
-            // Label
-            const label = document.getElementById('shipPreviewLabel');
-            if (label) {
-                const displayName = keDef ? keDef.name : 'STANDARD';
-                const isActive = keId === shopData.activeKillEffect;
-                label.innerHTML = '<span style="color:' + keColor + '">' + displayName + ' KILL EFFECT</span>' +
-                    (isActive ? ' <span style="color:#ffcc00;font-size:.8em">✓ EQUIPPED</span>' : '');
-            }
-        }
-
-        shopPreviewAF = requestAnimationFrame(drawPreview);
-    }
-    drawPreview();
+    // No longer needed — shop uses accordion layout with inline previews
 }
 function renderCosmeticShop() {
     document.getElementById('coinDisplay').innerHTML = '💰 Balance: <span style="color:#ffcc00">$' + (shopData.coins / 100).toFixed(2) + '</span>';
-    document.getElementById('skinTabBtn').style.opacity = cosmeticTab === 'skins' ? '1' : '.5';
-    document.getElementById('trailTabBtn').style.opacity = cosmeticTab === 'trails' ? '1' : '.5';
-    document.getElementById('engineTabBtn').style.opacity = cosmeticTab === 'engines' ? '1' : '.5';
-    document.getElementById('killFxTabBtn').style.opacity = cosmeticTab === 'killfx' ? '1' : '.5';
-    const list = document.getElementById('cosmeticList');
-    list.innerHTML = '';
-    const items = cosmeticTab === 'skins' ? SHIP_SKINS : cosmeticTab === 'trails' ? TRAIL_EFFECTS : cosmeticTab === 'engines' ? ENGINE_SOUNDS : KILL_EFFECTS;
-    const owned = cosmeticTab === 'skins' ? shopData.ownedSkins : cosmeticTab === 'trails' ? shopData.ownedTrails : cosmeticTab === 'engines' ? shopData.ownedEngines : shopData.ownedKillEffects;
-    const active = cosmeticTab === 'skins' ? shopData.activeSkin : cosmeticTab === 'trails' ? shopData.activeTrail : cosmeticTab === 'engines' ? shopData.activeEngine : shopData.activeKillEffect;
+    const container = document.getElementById('cosmeticAccordion');
+    // Preserve which sections are open
+    const wasOpen = {};
+    container.querySelectorAll('.shop-section').forEach(s => {
+        const tab = s.dataset.tab;
+        const content = s.querySelector('.shop-section-content');
+        wasOpen[tab] = content && content.style.display !== 'none';
+    });
+    container.innerHTML = '';
 
-    for (const item of items) {
-        const isOwned = owned.includes(item.id) || item.free;
-        const isActive = active === item.id;
-        const div = document.createElement('div');
-        div.style.cssText = 'padding:.5em .7em;margin:.3em 0;border-radius:6px;border:1px solid '+(isActive?'#ffcc00':isOwned?'#444':'#333')+';background:'+(isActive?'rgba(255,204,0,0.08)':'rgba(255,255,255,0.03)')+';display:flex;align-items:center;gap:.5em;cursor:pointer';
+    const categories = [
+        { tab: 'skins',   label: '🚀 SHIPS',   items: SHIP_SKINS,   owned: shopData.ownedSkins,       active: shopData.activeSkin },
+        { tab: 'trails',  label: '🔥 TRAILS',  items: TRAIL_EFFECTS, owned: shopData.ownedTrails,      active: shopData.activeTrail },
+        { tab: 'engines', label: '🔊 ENGINES', items: ENGINE_SOUNDS, owned: shopData.ownedEngines,     active: shopData.activeEngine },
+        { tab: 'killfx',  label: '💥 KILLS',   items: KILL_EFFECTS,  owned: shopData.ownedKillEffects, active: shopData.activeKillEffect },
+    ];
 
-        // Tap the row to preview this item in the big canvas above
-        div.addEventListener('click', ((id, tab) => () => {
-            shopPreviewSkinId = id;
-            // Play engine sound preview on tap
-            if (tab === 'engines') { initAudio(); engineSnd(id, 0.5); }
-        })(item.id, cosmeticTab));
+    for (const cat of categories) {
+        const section = document.createElement('div');
+        section.className = 'shop-section';
+        section.id = 'shopSection_' + cat.tab;
+        section.dataset.tab = cat.tab;
 
-        // Preview — canvas ship rendering for skins, color swatch for trails, icons for engines/kills
-        if (cosmeticTab === 'skins') {
-            const prevCanvas = document.createElement('canvas');
-            prevCanvas.width = 56; prevCanvas.height = 56;
-            prevCanvas.style.cssText = 'width:56px;height:56px;flex-shrink:0';
-            const pc = prevCanvas.getContext('2d');
-            // Background
-            pc.fillStyle = '#0a0012'; pc.fillRect(0, 0, 56, 56);
-            pc.save();
-            pc.translate(28, 30);
-            // Ship color
-            const sColor = item.color || '#00ccff';
-            if (item.id === 'neon') { pc.shadowColor = sColor; pc.shadowBlur = 12; }
-            if (item.id === 'ghost') { pc.globalAlpha = 0.55; }
-            pc.fillStyle = sColor;
-            pc.beginPath();
-            drawShipShape(pc, item.id, 16);
-            pc.fill();
-            pc.strokeStyle = item.id === 'gold' ? '#ffee88' : '#fff';
-            pc.lineWidth = 1;
-            pc.stroke();
-            // Cockpit
-            pc.fillStyle = '#fff'; pc.beginPath(); pc.arc(0, -16 * 0.2, 16 * 0.2, 0, Math.PI * 2); pc.fill();
-            // Neon inner lines
-            if (item.id === 'neon') {
-                pc.strokeStyle = 'rgba(0,255,255,0.5)'; pc.lineWidth = 0.5;
-                pc.beginPath(); pc.moveTo(0, -8); pc.lineTo(-4, 5); pc.moveTo(0, -8); pc.lineTo(4, 5); pc.stroke();
-            }
-            // Phoenix flames
-            if (item.id === 'phoenix') {
-                pc.fillStyle = '#ff6600'; pc.globalAlpha = 0.8;
-                pc.beginPath(); pc.arc(-16 * 0.85, 16 * 0.4, 3, 0, Math.PI * 2); pc.fill();
-                pc.beginPath(); pc.arc(16 * 0.85, 16 * 0.4, 3, 0, Math.PI * 2); pc.fill();
-                pc.globalAlpha = 1;
-            }
-            // Gold shimmer
-            if (item.id === 'gold') {
-                pc.fillStyle = 'rgba(255,238,136,0.15)';
-                pc.beginPath(); drawShipShape(pc, item.id, 16); pc.fill();
-            }
-            // Ghost outer glow
-            if (item.id === 'ghost') {
-                pc.globalAlpha = 0.3;
-                pc.strokeStyle = '#8866ff'; pc.lineWidth = 1;
-                pc.beginPath(); drawShipShape(pc, item.id, 17); pc.stroke();
-                pc.globalAlpha = 1;
-            }
-            pc.restore();
-            // Thrust flame preview
-            pc.save();
-            pc.translate(28, 30);
-            pc.fillStyle = '#ff8800'; pc.globalAlpha = 0.7;
-            pc.beginPath(); pc.moveTo(-4, 12); pc.lineTo(0, 22); pc.lineTo(4, 12); pc.closePath(); pc.fill();
-            pc.fillStyle = '#ffcc00'; pc.globalAlpha = 0.5;
-            pc.beginPath(); pc.moveTo(-2, 12); pc.lineTo(0, 18); pc.lineTo(2, 12); pc.closePath(); pc.fill();
-            pc.restore();
-            div.appendChild(prevCanvas);
-        } else if (cosmeticTab === 'trails') {
-            const swatch = document.createElement('div');
-            const tc = item.rainbow ? '#ff0000' : (item.colors ? item.colors[0] : '#ff8800');
-            swatch.style.cssText = 'width:56px;height:56px;border-radius:4px;flex-shrink:0;position:relative;overflow:hidden';
-            if (item.rainbow) {
-                swatch.style.background = 'linear-gradient(135deg,red,orange,yellow,green,blue,purple)';
+        // Header bar (click to toggle)
+        const header = document.createElement('div');
+        const isOpen = wasOpen[cat.tab] !== undefined ? wasOpen[cat.tab] : (cat.tab === 'skins');
+        header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:.55em .7em;margin-top:.4em;border-radius:6px;border:1px solid #444;background:rgba(255,255,255,0.04);cursor:pointer;user-select:none';
+        const activeItem = cat.items.find(i => i.id === cat.active);
+        header.innerHTML = '<span style="color:#ccc;font-size:clamp(.8rem,2.3vw,.95rem);font-weight:bold">' + cat.label +
+            ' <span style="color:#666;font-weight:normal;font-size:.8em">(' + (activeItem ? activeItem.name : '—') + ')</span></span>' +
+            '<span class="shop-arrow" style="color:#888;font-size:.8em">' + (isOpen ? '▼' : '►') + '</span>';
+        header.addEventListener('click', () => showCosmeticTab(cat.tab));
+        section.appendChild(header);
+
+        // Content area
+        const content = document.createElement('div');
+        content.className = 'shop-section-content';
+        content.style.display = isOpen ? 'block' : 'none';
+
+        for (const item of cat.items) {
+            const isOwned = cat.owned.includes(item.id) || item.free;
+            const isActive = cat.active === item.id;
+            const row = document.createElement('div');
+            row.style.cssText = 'padding:.45em .6em;margin:.25em 0;border-radius:5px;border:1px solid '+(isActive?'#ffcc00':isOwned?'#333':'#222')+';background:'+(isActive?'rgba(255,204,0,0.08)':'rgba(255,255,255,0.02)')+';display:flex;align-items:center;gap:.5em';
+
+            // Inline preview
+            if (cat.tab === 'skins') {
+                const pc = document.createElement('canvas');
+                pc.width = 40; pc.height = 40;
+                pc.style.cssText = 'width:40px;height:40px;flex-shrink:0';
+                const c = pc.getContext('2d');
+                c.fillStyle = '#0a0012'; c.fillRect(0, 0, 40, 40);
+                c.save(); c.translate(20, 22);
+                const sColor = item.color || '#00ccff';
+                if (item.id === 'neon') { c.shadowColor = sColor; c.shadowBlur = 8; }
+                if (item.id === 'ghost') { c.globalAlpha = 0.55; }
+                c.fillStyle = sColor;
+                c.beginPath(); drawShipShape(c, item.id, 12); c.fill();
+                c.strokeStyle = item.id === 'gold' ? '#ffee88' : '#fff'; c.lineWidth = 0.8; c.stroke();
+                c.fillStyle = '#fff'; c.beginPath(); c.arc(0, -12 * 0.2, 12 * 0.18, 0, Math.PI * 2); c.fill();
+                c.shadowBlur = 0; c.globalAlpha = 1;
+                c.restore();
+                // Mini flame
+                c.save(); c.translate(20, 22);
+                c.fillStyle = '#ff8800'; c.globalAlpha = 0.6;
+                c.beginPath(); c.moveTo(-3, 9); c.lineTo(0, 16); c.lineTo(3, 9); c.closePath(); c.fill();
+                c.globalAlpha = 1; c.restore();
+                row.appendChild(pc);
+            } else if (cat.tab === 'trails') {
+                const sw = document.createElement('div');
+                sw.style.cssText = 'width:40px;height:40px;border-radius:4px;flex-shrink:0;overflow:hidden';
+                if (item.rainbow) {
+                    sw.style.background = 'linear-gradient(135deg,red,orange,yellow,green,blue,purple)';
+                } else if (item.colors) {
+                    sw.style.background = 'linear-gradient(180deg,' + item.colors.join(',') + ')';
+                } else { sw.style.background = 'linear-gradient(180deg,#ff8800,#ffcc00)'; }
+                row.appendChild(sw);
+            } else if (cat.tab === 'engines') {
+                const eIcon = document.createElement('div');
+                const eColor = item.id === 'default' ? '#ff8800' : item.id === 'rumble' ? '#ff4400' : item.id === 'whine' ? '#88ddff' : item.id === 'pulse' ? '#44ff88' : item.id === 'roar' ? '#ff6600' : '#aaddff';
+                eIcon.style.cssText = 'width:40px;height:40px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:20px;color:' + eColor;
+                eIcon.textContent = '🔊';
+                eIcon.addEventListener('click', ((id) => (e) => { e.stopPropagation(); initAudio(); engineSnd(id, 0.5); })(item.id));
+                row.appendChild(eIcon);
             } else {
-                swatch.style.background = '#0a0012';
+                const kIcon = document.createElement('div');
+                kIcon.style.cssText = 'width:40px;height:40px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:20px;color:' + (item.color || '#ff4400');
+                kIcon.textContent = '💥';
+                row.appendChild(kIcon);
             }
-            // Draw trail preview with mini canvas
-            const tCanvas = document.createElement('canvas');
-            tCanvas.width = 56; tCanvas.height = 56;
-            tCanvas.style.cssText = 'width:100%;height:100%;position:absolute;top:0;left:0';
-            const tc2 = tCanvas.getContext('2d');
-            tc2.fillStyle = '#0a0012'; tc2.fillRect(0, 0, 56, 56);
-            // Draw a small ship with trail
-            tc2.save(); tc2.translate(28, 20);
-            tc2.fillStyle = '#00ccff';
-            tc2.beginPath(); drawShipShape(tc2, 'default', 10); tc2.fill();
-            tc2.strokeStyle = '#fff'; tc2.lineWidth = 0.8; tc2.stroke();
-            tc2.fillStyle = '#fff'; tc2.beginPath(); tc2.arc(0, -2, 2, 0, Math.PI * 2); tc2.fill();
-            tc2.restore();
-            // Trail particles
-            if (item.rainbow) {
-                for (let i = 0; i < 8; i++) {
-                    const hue = (i * 45) % 360;
-                    tc2.fillStyle = 'hsl(' + hue + ',100%,50%)';
-                    tc2.globalAlpha = 0.8 - i * 0.08;
-                    tc2.beginPath();
-                    tc2.arc(28 + (Math.random() - 0.5) * 6, 30 + i * 3, 2.5 - i * 0.2, 0, Math.PI * 2);
-                    tc2.fill();
-                }
-            } else if (item.colors) {
-                for (let i = 0; i < 8; i++) {
-                    tc2.fillStyle = item.colors[i % item.colors.length];
-                    tc2.globalAlpha = 0.8 - i * 0.08;
-                    tc2.beginPath();
-                    tc2.arc(28 + (Math.random() - 0.5) * 5, 30 + i * 3, 2.5 - i * 0.2, 0, Math.PI * 2);
-                    tc2.fill();
-                }
+
+            // Info
+            const info = document.createElement('div');
+            info.style.cssText = 'flex:1;min-width:0';
+            info.innerHTML = '<div style="color:'+(isOwned?'#ddd':'#888')+';font-size:clamp(.7rem,2.1vw,.85rem);font-weight:bold">' + item.name + '</div>' +
+                '<div style="color:#555;font-size:clamp(.5rem,1.4vw,.65rem)">' + item.desc + '</div>';
+            row.appendChild(info);
+
+            // Action button
+            const btn = document.createElement('button');
+            btn.className = 'btn sm';
+            btn.style.cssText = 'min-width:55px;font-size:clamp(.55rem,1.6vw,.72rem);padding:.35em .6em';
+            if (isActive) {
+                btn.textContent = '✓';
+                btn.disabled = true;
+                btn.style.borderColor = '#ffcc00'; btn.style.color = '#ffcc00';
+            } else if (isOwned) {
+                btn.textContent = 'EQUIP';
+                btn.onclick = (e) => { e.stopPropagation(); equipCosmetic(cat.tab, item.id); };
             } else {
-                for (let i = 0; i < 6; i++) {
-                    tc2.fillStyle = i % 2 === 0 ? '#ff8800' : '#ffcc00';
-                    tc2.globalAlpha = 0.7 - i * 0.1;
-                    tc2.beginPath();
-                    tc2.arc(28 + (Math.random() - 0.5) * 4, 30 + i * 3, 2 - i * 0.2, 0, Math.PI * 2);
-                    tc2.fill();
-                }
+                btn.textContent = '$' + (item.price / 100).toFixed(2);
+                btn.style.borderColor = '#ffcc00'; btn.style.color = '#ffcc00';
+                btn.onclick = (e) => { e.stopPropagation(); buyCosmetic(cat.tab, item.id, item.price); };
             }
-            tc2.globalAlpha = 1;
-            swatch.appendChild(tCanvas);
-            div.appendChild(swatch);
-        } else if (cosmeticTab === 'engines') {
-            // Engine sound preview icon — speaker/wave icon
-            const eCanvas = document.createElement('canvas');
-            eCanvas.width = 56; eCanvas.height = 56;
-            eCanvas.style.cssText = 'width:56px;height:56px;flex-shrink:0';
-            const ec = eCanvas.getContext('2d');
-            ec.fillStyle = '#0a0012'; ec.fillRect(0, 0, 56, 56);
-            // Sound wave icon
-            const eColor = item.id === 'default' ? '#ff8800' : item.id === 'rumble' ? '#ff4400' : item.id === 'whine' ? '#88ddff' : item.id === 'pulse' ? '#44ff88' : item.id === 'roar' ? '#ff6600' : '#aaddff';
-            ec.strokeStyle = eColor; ec.lineWidth = 2;
-            // Speaker shape
-            ec.fillStyle = eColor;
-            ec.beginPath(); ec.moveTo(18,22); ec.lineTo(18,34); ec.lineTo(24,34); ec.lineTo(30,38); ec.lineTo(30,18); ec.lineTo(24,22); ec.closePath(); ec.fill();
-            // Sound waves
-            for (let r = 0; r < 3; r++) {
-                ec.globalAlpha = 0.8 - r * 0.2;
-                ec.beginPath(); ec.arc(28, 28, 8 + r * 5, -0.6, 0.6); ec.stroke();
-            }
-            ec.globalAlpha = 1;
-            div.appendChild(eCanvas);
-        } else {
-            // Kill effect preview icon
-            const kCanvas = document.createElement('canvas');
-            kCanvas.width = 56; kCanvas.height = 56;
-            kCanvas.style.cssText = 'width:56px;height:56px;flex-shrink:0';
-            const kc = kCanvas.getContext('2d');
-            kc.fillStyle = '#0a0012'; kc.fillRect(0, 0, 56, 56);
-            const kColor = item.color || '#ff4400';
-            // Explosion icon
-            kc.save(); kc.translate(28, 28);
-            // Rays
-            for (let r = 0; r < 8; r++) {
-                const a = (r / 8) * Math.PI * 2;
-                kc.strokeStyle = kColor; kc.globalAlpha = 0.7; kc.lineWidth = 2;
-                kc.beginPath(); kc.moveTo(Math.cos(a)*5, Math.sin(a)*5);
-                kc.lineTo(Math.cos(a)*16, Math.sin(a)*16); kc.stroke();
-            }
-            // Center
-            kc.fillStyle = kColor; kc.globalAlpha = 0.9;
-            kc.beginPath(); kc.arc(0, 0, 6, 0, Math.PI * 2); kc.fill();
-            kc.fillStyle = '#fff'; kc.globalAlpha = 0.6;
-            kc.beginPath(); kc.arc(0, 0, 3, 0, Math.PI * 2); kc.fill();
-            kc.globalAlpha = 1;
-            kc.restore();
-            div.appendChild(kCanvas);
+            row.appendChild(btn);
+            content.appendChild(row);
         }
-
-        const info = document.createElement('div');
-        info.style.cssText = 'flex:1';
-        info.innerHTML = '<div style="color:'+(isOwned?'#ffcc00':'#888')+';font-size:clamp(.75rem,2.3vw,.95rem);font-weight:bold">' + item.name + '</div>' +
-            '<div style="color:#666;font-size:clamp(.55rem,1.6vw,.7rem);margin-top:.15em">' + item.desc + '</div>';
-        div.appendChild(info);
-
-        const btn = document.createElement('button');
-        btn.className = 'btn sm';
-        btn.style.cssText = 'min-width:65px;font-size:clamp(.6rem,1.8vw,.8rem)';
-        if (isActive) {
-            btn.textContent = 'ACTIVE';
-            btn.disabled = true;
-            btn.style.borderColor = '#ffcc00';
-            btn.style.color = '#ffcc00';
-        } else if (isOwned) {
-            btn.textContent = 'EQUIP';
-            btn.onclick = () => { equipCosmetic(cosmeticTab, item.id); };
-        } else {
-            btn.textContent = '$' + (item.price / 100).toFixed(2);
-            btn.style.borderColor = '#ffcc00';
-            btn.style.color = '#ffcc00';
-            btn.onclick = () => { buyCosmetic(cosmeticTab, item.id, item.price); };
-        }
-        div.appendChild(btn);
-        list.appendChild(div);
+        section.appendChild(content);
+        container.appendChild(section);
     }
 }
 function equipCosmetic(tab, id) {
@@ -4244,19 +3784,20 @@ function applySavedName() {
 // Apply on page load
 setTimeout(applySavedName, 100);
 
-// Start menu theme on first user interaction (Web Audio requires gesture)
+// Splash screen — first tap initializes audio (browser requires gesture) and shows main menu
 (function() {
-    function startMenuOnInteraction() {
-        document.removeEventListener('click', startMenuOnInteraction);
-        document.removeEventListener('touchstart', startMenuOnInteraction);
-        document.removeEventListener('keydown', startMenuOnInteraction);
-        // Only start if still on menu screen
-        const ms = document.getElementById('menuScreen');
-        if (ms && ms.classList.contains('active')) startMenuTheme();
+    const splash = document.getElementById('menuSplash');
+    if (!splash) return;
+    function dismissSplash() {
+        splash.removeEventListener('click', dismissSplash);
+        splash.removeEventListener('touchstart', dismissSplash);
+        initAudio();
+        if (ac && ac.state === 'suspended') ac.resume();
+        showScreen('menuScreen');
+        startMenuTheme();
     }
-    document.addEventListener('click', startMenuOnInteraction);
-    document.addEventListener('touchstart', startMenuOnInteraction);
-    document.addEventListener('keydown', startMenuOnInteraction);
+    splash.addEventListener('click', dismissSplash);
+    splash.addEventListener('touchstart', dismissSplash);
 })();
 
 // Register Service Worker for offline support
