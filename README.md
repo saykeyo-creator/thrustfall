@@ -45,16 +45,16 @@ node server.js
 node tests.js
 ```
 
-Pure Node.js — no test framework needed. Currently **2997 assertions** across **153 sections**, all passing.
+Pure Node.js — no test framework needed. Currently **3072 assertions** across **163 sections**, all passing.
 
 ---
 
 ## File Structure
 
 ```
-index.html           (~2200 lines)  — THE ENTIRE GAME: HTML, CSS, JS, Canvas rendering, audio, UI
-server.js            (~1130 lines)  — Dedicated WebSocket game server (authoritative for PVP)
-tests.js             (~1850 lines)  — Comprehensive test suite
+index.html           (~4200 lines)  — THE ENTIRE GAME: HTML, CSS, JS, Canvas rendering, audio, UI
+server.js            (~1050 lines)  — Dedicated WebSocket game server (authoritative for PVP)
+tests.js             (~4500 lines)  — Comprehensive test suite (3072 assertions)
 sw.js                (~44 lines)    — Service worker for offline caching (PWA)
 capacitor.config.json               — Capacitor config for native Android/iOS builds
 package.json                        — Node.js config (only dependency: ws ^8.16.0)
@@ -69,23 +69,25 @@ Everything is in one file. The rough layout:
 | 1–40 | HTML structure: `<canvas>`, menu screens, overlays |
 | 41–230 | Shop/perk UI HTML (perkShopScreen, cosmeticShopScreen) |
 | 230–340 | CSS — all styling, responsive layout |
-| 340–370 | `<script>` — Constants (must match server.js exactly) |
-| 370–450 | XP/Perk/Cosmetic data structures & helper functions |
-| 450–800 | WebSocket connection, lobby system, message handling |
-| 800–1000 | Game mode launchers (Survival, Practice, Multiplayer) |
-| 1000–1100 | Survival wave system, bot spawning |
-| 1100–1350 | Bot AI system (personalities, terrain avoidance, targeting) |
-| 1350–1420 | `beginGame()` — initializes players, applies perks, sets up game state |
-| 1420–1700 | `hostUpdate()` — authoritative game loop for solo/survival modes |
-| 1700–1900 | Physics, collisions, bullets, pickups, beams |
-| 1900–2100 | `clientUpdate()` — interpolation, client prediction for PVP |
-| 2100–2200 | Client-side prediction physics |
-| 2200–2550 | `draw()` — Canvas rendering (ships, terrain, particles, HUD, cosmetics) |
-| 2550–2700 | UI rendering (HUD, kill feed, score floats, weapon timer bar) |
-| 2700–2900 | Input handling (touch, keyboard, gamepad) |
-| 2900–3000 | Audio system (adaptive Doom/Halo-style music, spatial SFX) |
-| 3000–3180 | Shop JS functions (perk shop, cosmetic shop, buy/equip/unlock) |
-| 3180–3320 | Stats, XP system, game over screen |
+| 340–490 | `<script>` — Constants, XP/Perk/Cosmetic data structures & helpers |
+| 490–540 | Bullet whizz sound system (`checkBulletWhizz`, weapon-type detection) |
+| 540–700 | Audio system — `snd()` switch (all SFX including 5 whizz variants) |
+| 700–1100 | WebSocket connection, lobby system, message handling |
+| 1100–1300 | Game mode launchers (Survival, Practice, Multiplayer) |
+| 1300–1500 | Survival wave system, bot spawning |
+| 1500–1750 | Bot AI system (personalities, terrain avoidance, targeting) |
+| 1750–1850 | `beginGame()` — initializes players, applies perks, sets up game state |
+| 1850–2200 | `hostUpdate()` — authoritative game loop for solo/survival modes |
+| 2200–2400 | Physics, collisions, bullets, pickups, beams |
+| 2400–2600 | `clientUpdate()` — interpolation, client prediction for PVP |
+| 2600–2700 | Client-side prediction physics |
+| 2700–3000 | `draw()` — Canvas rendering (ships, terrain, particles, HUD, cosmetics) |
+| 3000–3100 | UI rendering (HUD, kill feed, score floats, weapon timer bar) |
+| 2950–3100 | Player-centered radar (`drawRadar`, `wrapDelta`, `toRadar`, direction indicators) |
+| 3100–3300 | Input handling (touch, keyboard, gamepad) |
+| 3300–3500 | Adaptive music system (4-layer Doom/Halo-style, spatial SFX) |
+| 3500–3700 | Shop JS functions (perk shop, cosmetic shop, buy/equip/unlock) |
+| 3700–4200 | Stats, XP system, game over screen |
 
 ### server.js — Dedicated Multiplayer Server
 
@@ -119,6 +121,10 @@ Test sections cover:
 - **115–141**: Perk definitions, cosmetic shop, loadout system, perk gameplay integration, bug fix verification
 - **142–143**: Server-side perk validation, server perk integration
 - **144–146**: Unique ship shapes, music Layer 4 warzone trigger, height-fit tablet viewport
+- **147–153**: Engine sounds, kill effects, cosmetic sync (client & server)
+- **154**: Bullet whizz sound system (5 weapon-type variants, throttling, beam proximity)
+- **155**: Player-centered radar (wrapDelta, toRadar, canvas clipping, direction indicators)
+- **156–163**: **Safeguard integrity tests** — prevent accidental game gutting by verifying minimum file sizes and existence of all major systems (core gameplay, adaptive music, shop & cosmetics, XP & progression, settings, survival mode, multiplayer)
 
 ---
 
@@ -251,6 +257,19 @@ Maps are procedurally generated with seeded random (`mulberry32` PRNG) for deter
 
 ---
 
+## Radar / Minimap
+
+The radar is **player-centered** — the player's ship is always at the center of the circular minimap. All entities are positioned relative to the player using wrap-aware delta calculations (`wrapDelta`) to handle toroidal world boundaries correctly.
+
+Key features:
+- `viewRadius` scales to show ~45% of the largest world dimension
+- `toRadar()` maps world coordinates to radar pixel coordinates relative to the player
+- Canvas clipping creates a clean circular boundary
+- Direction indicators (edge arrows) show off-screen player positions
+- Terrain, ceilings, platforms, pickups, explosions, and other players all rendered
+
+---
+
 ## Audio System
 
 Adaptive 4-layer music system (Doom/Halo inspired):
@@ -260,6 +279,15 @@ Adaptive 4-layer music system (Doom/Halo inspired):
 4. **Layer 4 (Warzone Chaos)**: Activates when 3+ enemies are on screen and intensity > 0.6 — sirens, 32nd-note kicks, dissonant stabs, war horns
 
 BPM ramps from 110 (calm) to 130 (combat). Kill stingers play on kills.
+
+**Bullet whizz sounds** — incoming projectiles near the player trigger weapon-specific audio cues:
+- Standard bullets → sine wave descending pitch
+- Heavy bullets → low sawtooth rumble
+- Homing missiles → warbling triangle wave
+- Rapid fire → short square wave chirps
+- Laser beams → high sawtooth hiss (proximity-based via perpendicular distance)
+
+Throttled to max ~7 per second (`WHIZZ_COOLDOWN = 8` frames) to prevent audio spam.
 
 All audio is generated via Web Audio API — no external audio files.
 
