@@ -1,11 +1,10 @@
 {
   "appId": "com.lakesgames.thrustfall",
   "appName": "Thrustfall",
-  "webDir": ".",
+  "webDir": "www",
   "bundledWebRuntime": false,
   "server": {
-    "url": "",
-    "cleartext": true
+    "cleartext": false
   },
   "plugins": {
     "SplashScreen": {
@@ -26,7 +25,7 @@
     }
   },
   "android": {
-    "allowMixedContent": true,
+    "allowMixedContent": false,
     "backgroundColor": "#0a0a1a",
     "webContentsDebuggingEnabled": false
   },

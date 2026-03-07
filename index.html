@@ -2,15 +2,21 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0a0a1a">
+<meta name="description" content="Thrustfall — A gravity-defying cave combat game with online multiplayer">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="/manifest.json">
 <title>Thrustfall</title>
 <!-- Dedicated server mode — no third-party dependencies needed -->
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:'Courier New',monospace;touch-action:none;color:#ccc}
 canvas{display:block;position:fixed;top:0;left:0;width:100%;height:100%}
-.overlay{position:fixed;top:0;left:0;width:100%;height:100%;display:none;flex-direction:column;align-items:center;justify-content:center;z-index:100;background:radial-gradient(ellipse at center,#1a0a2e 0%,#0d0015 60%,#000 100%);padding:1em;overflow-y:auto}
-.overlay.active{display:flex}
+.overlay{position:fixed;top:0;left:0;width:100%;height:100%;display:none;flex-direction:column;align-items:center;justify-content:center;z-index:100;background:radial-gradient(ellipse at center,#1a0a2e 0%,#0d0015 60%,#000 100%);padding:1em;padding-top:max(1em,env(safe-area-inset-top));padding-bottom:max(1em,env(safe-area-inset-bottom));padding-left:max(1em,env(safe-area-inset-left));padding-right:max(1em,env(safe-area-inset-right));overflow-y:auto;transition:opacity .25s ease}
+.overlay.active{display:flex;animation:fadeIn .25s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
 h1{font-size:clamp(2rem,8vw,4.5rem);color:#ff6600;text-shadow:0 0 20px #ff6600,0 0 40px #ff3300;margin-bottom:.1em;letter-spacing:.12em;animation:tp 2s ease-in-out infinite}
 @keyframes tp{0%,100%{text-shadow:0 0 20px #ff6600,0 0 40px #ff3300,0 0 60px #cc0000}50%{text-shadow:0 0 30px #ff8800,0 0 60px #ff5500}}
 h2{font-size:clamp(1.2rem,5vw,2.5rem);color:#ff6600;margin-bottom:.5em;text-align:center}
@@ -18,7 +24,7 @@ h2{font-size:clamp(1.2rem,5vw,2.5rem);color:#ff6600;margin-bottom:.5em;text-alig
 .btn{padding:.7em 1.5em;font-size:clamp(.85rem,3vw,1.2rem);font-family:'Courier New',monospace;background:linear-gradient(180deg,#333,#1a1a1a);color:#ff9900;border:2px solid #ff6600;border-radius:8px;cursor:pointer;text-transform:uppercase;letter-spacing:.06em;margin:.3em;min-width:140px;text-align:center;transition:all .15s}
 .btn:hover,.btn:active{background:linear-gradient(180deg,#ff6600,#cc3300);color:#fff;transform:scale(1.02)}
 .btn:disabled{opacity:.4;pointer-events:none}
-.btn.sm{padding:.4em .8em;font-size:clamp(.7rem,2.2vw,.95rem);min-width:80px}
+.btn.sm{padding:.55em 1em;font-size:clamp(.75rem,2.4vw,1rem);min-width:90px;min-height:44px}
 input[type=text]{padding:.6em .8em;font-size:clamp(.9rem,3vw,1.2rem);font-family:'Courier New',monospace;background:#111;color:#ff9900;border:2px solid #444;border-radius:6px;text-align:center;width:min(260px,80vw);margin:.3em auto;outline:none;text-transform:uppercase}
 input[type=text]:focus{border-color:#ff6600}
 input[type=text]::placeholder{color:#555;text-transform:none}
@@ -54,9 +60,10 @@ input[type=text]::placeholder{color:#555;text-transform:none}
 <button class="btn sm" onclick="showStats()">📊 STATS</button>
 </div>
 <div class="info-footer" style="margin-top:1.4em">
-<span style="color:#555">v2.1 &bull; Lakes Games &bull; 2026</span><br>
+<span style="color:#555">v2.2 &bull; Lakes Games &bull; 2026</span><br>
 <span style="color:#444">A gravity-defying cave combat game</span><br>
-<span style="color:#444">Made with love by Keyo &amp; Tom</span>
+<span style="color:#444">Made with love by Keyo &amp; Tom</span><br>
+<a href="https://thrustfall.onrender.com/privacy" style="color:#666;font-size:clamp(.45rem,1.3vw,.6rem);text-decoration:underline" target="_blank">Privacy Policy</a> &bull; <a href="https://thrustfall.onrender.com/terms" style="color:#666;font-size:clamp(.45rem,1.3vw,.6rem);text-decoration:underline" target="_blank">Terms of Service</a>
 </div>
 </div>
 
@@ -1599,6 +1606,27 @@ function beginGame(data) {
     showScreen(null);
     running = true;
     cancelAnimationFrame(af);
+
+    // First-time onboarding tip
+    if (!localStorage.getItem('tf_played')) {
+        localStorage.setItem('tf_played', '1');
+        const tip = document.createElement('div');
+        tip.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;z-index:9999;background:rgba(0,0,0,0.7);pointer-events:auto;transition:opacity .5s';
+        tip.innerHTML = '<div style="text-align:center;color:#fff;font-family:Courier New,monospace;max-width:320px;padding:24px">' +
+            '<div style="font-size:20px;font-weight:bold;color:#00ccff;margin-bottom:12px">HOW TO PLAY</div>' +
+            '<div style="font-size:14px;line-height:1.6;color:#aaa">' +
+            (('ontouchstart' in window) ?
+                '<b style="color:#fff">LEFT JOYSTICK</b> — Rotate &amp; Thrust<br><b style="color:#fff">RIGHT BUTTON</b> — Fire<br>' :
+                '<b style="color:#fff">← →</b> Rotate &nbsp; <b style="color:#fff">↑</b> Thrust &nbsp; <b style="color:#fff">↓</b> Reverse<br><b style="color:#fff">SPACE</b> Fire<br>') +
+            '<br><span style="color:#ff8800">Land on your base to heal!</span></div>' +
+            '<div style="margin-top:16px;font-size:12px;color:#555">Tap anywhere to start</div></div>';
+        document.body.appendChild(tip);
+        const dismissTip = () => { tip.style.opacity = '0'; setTimeout(() => tip.remove(), 500); };
+        tip.addEventListener('click', dismissTip);
+        tip.addEventListener('touchstart', dismissTip);
+        setTimeout(dismissTip, 6000);
+    }
+
     af = requestAnimationFrame(loop);
 }
 
@@ -2713,6 +2741,18 @@ function draw() {
         ctx.drawImage(terrainCanvas, 0, 0);
     }
 
+    // Live star twinkle overlay — modulates brightness based on phase
+    for (let si = frame % 3; si < stars.length; si += 3) {
+        const s = stars[si];
+        if (s.x < visLeft || s.x > visRight || s.y < visTop || s.y > visBot) continue;
+        const twinkle = .3 * Math.sin(s.tw);
+        if (Math.abs(twinkle) < 0.05) continue;
+        ctx.globalAlpha = Math.abs(twinkle);
+        ctx.fillStyle = twinkle > 0 ? '#fff' : '#0a0012';
+        ctx.fillRect(s.x, s.y, s.sz, s.sz);
+    }
+    ctx.globalAlpha = 1;
+
     // Bases (dynamic — player colors)
     for (const pp of players){
         const b=pp.base;
@@ -2742,16 +2782,22 @@ function draw() {
         if (prog<.8&&Math.sin(be.phase*3)>0){ctx.fillStyle=`rgba(255,0,0,${al})`;ctx.font='bold 11px Courier New';ctx.textAlign='center';ctx.fillText('\u26A0 DANGER \u26A0',be.x,be.y-pr-6);}
     }
 
-    // Particles — viewport cull
-    for (const pt of particles){const wx=pt.x+wOff;if(wx<visLeft||wx>visRight||pt.y<visTop||pt.y>visBot)continue;ctx.globalAlpha=pt.life/pt.maxLife;ctx.fillStyle=pt.color;ctx.fillRect(pt.x-pt.size/2,pt.y-pt.size/2,pt.size,pt.size);}
+    // Particles — viewport cull, circles with size decay + additive blending
+    ctx.globalCompositeOperation='lighter';
+    for (const pt of particles){const wx=pt.x+wOff;if(wx<visLeft||wx>visRight||pt.y<visTop||pt.y>visBot)continue;const lifeRatio=pt.life/pt.maxLife;ctx.globalAlpha=lifeRatio;ctx.fillStyle=pt.color;const sz=pt.size*(.4+lifeRatio*.6);ctx.beginPath();ctx.arc(pt.x,pt.y,sz,0,Math.PI*2);ctx.fill();}
+    ctx.globalCompositeOperation='source-over';
     ctx.globalAlpha=1;
 
-    // Explosions — viewport cull
-    for (const e of explosions){const wx=e.x+wOff;if(wx<visLeft-e.r||wx>visRight+e.r||e.y<visTop-e.r||e.y>visBot+e.r)continue;ctx.beginPath();ctx.arc(e.x,e.y,e.r,0,Math.PI*2);ctx.fillStyle=e.color;ctx.globalAlpha=e.alpha*.3;ctx.fill();ctx.strokeStyle=e.color;ctx.globalAlpha=e.alpha;ctx.lineWidth=2;ctx.stroke();}
+    // Explosions — viewport cull, additive blending + shockwave ring
+    ctx.globalCompositeOperation='lighter';
+    for (const e of explosions){const wx=e.x+wOff;if(wx<visLeft-e.r||wx>visRight+e.r||e.y<visTop-e.r||e.y>visBot+e.r)continue;ctx.beginPath();ctx.arc(e.x,e.y,e.r,0,Math.PI*2);ctx.fillStyle=e.color;ctx.globalAlpha=e.alpha*.3;ctx.fill();ctx.strokeStyle=e.color;ctx.globalAlpha=e.alpha;ctx.lineWidth=2;ctx.stroke();if(e.alpha>.3){ctx.globalAlpha=e.alpha*.15;ctx.lineWidth=1;ctx.beginPath();ctx.arc(e.x,e.y,e.r*1.5,0,Math.PI*2);ctx.strokeStyle='#fff';ctx.stroke();}}
+    ctx.globalCompositeOperation='source-over';
     ctx.globalAlpha=1;
 
-    // Bullets — viewport cull + skip shadowBlur in multiplayer (expensive GPU op per bullet)
+    // Bullets — viewport cull, additive blending
+    ctx.globalCompositeOperation='lighter';
     for (const b of bullets){const wx=b.x+wOff;if(wx<visLeft||wx>visRight||b.y<visTop||b.y>visBot)continue;const bsz=b.sz||2.5;ctx.fillStyle=b.color;if(!isMultiplayer){ctx.shadowColor=b.color;ctx.shadowBlur=bsz>3?6:4;}ctx.beginPath();ctx.arc(b.x,b.y,bsz,0,Math.PI*2);ctx.fill();ctx.globalAlpha=.3;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x-b.vx*2,b.y-b.vy*2);ctx.stroke();ctx.globalAlpha=1;}
+    ctx.globalCompositeOperation='source-over';
     ctx.shadowBlur=0;
 
     // Laser beams
@@ -2865,6 +2911,17 @@ function draw() {
             } else if (trailDef && trailDef.colors) {
                 tCol1 = trailDef.colors[0]; tCol2 = trailDef.colors[1] || trailDef.colors[0];
             }
+            // Engine exhaust glow
+            const glowR = SHIP_SZ * (1.2 + Math.random() * 0.4);
+            const eg = ctx.createRadialGradient(0, SHIP_SZ * 0.5, 0, 0, SHIP_SZ * 0.5, glowR);
+            eg.addColorStop(0, tCol2); eg.addColorStop(0.4, tCol1); eg.addColorStop(1, 'rgba(0,0,0,0)');
+            const prevCO = ctx.globalCompositeOperation;
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.globalAlpha = 0.25;
+            ctx.fillStyle = eg;
+            ctx.fillRect(-glowR, SHIP_SZ * 0.5 - glowR, glowR * 2, glowR * 2);
+            ctx.globalAlpha = 1;
+            ctx.globalCompositeOperation = prevCO;
             ctx.fillStyle=tCol1;ctx.beginPath();ctx.moveTo(-SHIP_SZ*.3,SHIP_SZ*.5);ctx.lineTo(0,SHIP_SZ*.5+fs);ctx.lineTo(SHIP_SZ*.3,SHIP_SZ*.5);ctx.closePath();ctx.fill();
             ctx.fillStyle=tCol2;ctx.beginPath();ctx.moveTo(-SHIP_SZ*.15,SHIP_SZ*.5);ctx.lineTo(0,SHIP_SZ*.5+fs*.6);ctx.lineTo(SHIP_SZ*.15,SHIP_SZ*.5);ctx.closePath();ctx.fill();
         }
@@ -2945,6 +3002,12 @@ function draw() {
     }
     ctx.globalAlpha=1;
 
+    // Ambient vignette — subtle dark edges for depth
+    const vig = ctx.createRadialGradient(W/2, H/2, W*0.35, W/2, H/2, W*0.85);
+    vig.addColorStop(0, 'rgba(0,0,0,0)');
+    vig.addColorStop(1, 'rgba(0,0,0,0.35)');
+    ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
+
     // HUD
     drawHUD();
     // Radar
@@ -2958,8 +3021,16 @@ function drawHUD() {
     const me = players[myIndex];
     if (!me) return;
     const fs = Math.max(11, Math.min(W*.03, 16));
-    ctx.font = `bold ${fs}px Courier New`;
+    ctx.font = `bold ${fs}px 'Courier New', monospace`;
     ctx.textAlign = 'left';
+
+    // HUD background panel
+    const panelH = fs * 2 + 16;
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillRect(0, 0, W, panelH);
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    ctx.fillRect(0, panelH - 1, W, 1);
+
     ctx.fillStyle = me.color;
     let ls = me.name+': ';
     const maxHearts = Math.max(me.lives, LIVES);
@@ -3161,8 +3232,9 @@ function drawRadar() {
 // ---------- CONTROLS ----------
 function drawControls() {
     const maxD = 50;
-    // Joystick zone — always visible
-    const jzX = 70, jzY = H - 80;
+    // Joystick zone — always visible (offset for safe area)
+    const safeBottom = 20; // extra margin for gesture bar / safe area
+    const jzX = 70, jzY = H - 80 - safeBottom;
 
     if (joystickTouch) {
         // Active joystick at touch origin
@@ -3196,7 +3268,7 @@ function drawControls() {
     }
 
     // Fire button — always visible, right side
-    const fbX=W-65, fbY=H-70, fbR=34;
+    const fbX=W-65, fbY=H-70-safeBottom, fbR=34;
     ctx.fillStyle=fireTouch?'rgba(255,100,0,0.4)':'rgba(255,100,0,0.08)';
     ctx.beginPath();ctx.arc(fbX,fbY,fbR,0,Math.PI*2);ctx.fill();
     ctx.strokeStyle=fireTouch?'rgba(255,150,0,0.6)':'rgba(255,100,0,0.25)';ctx.lineWidth=2;ctx.stroke();
@@ -4190,6 +4262,11 @@ setTimeout(applySavedName, 100);
 // Register Service Worker for offline support
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
+
+// Lock orientation to portrait for mobile
+if (screen.orientation && screen.orientation.lock) {
+    screen.orientation.lock('portrait').catch(() => {});
 }
 
 // =====================================================

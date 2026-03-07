@@ -5047,6 +5047,181 @@ section('146. Height-Fit Viewport — Tablet Controls Visible');
     assert(code.includes('lobbyScreen') || code.includes('lobby'), 'lobby screen present');
 }
 
+// ═══════════════════════════════════════════════════════════════
+{ section('164. Shield Break vs ShieldHit Logic');
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    assert(code.includes('if (p.shield > 0 && !force)'), 'shield absorb condition checks force flag');
+    assert(code.includes('p.shield--'), 'shield decrements on hit');
+    assert(code.includes("if (p.shield === 0)"), 'checks if shield fully broken');
+    assert(code.includes("'shieldBreak'"), 'shieldBreak event emitted');
+    assert(code.includes("'shieldHit'"), 'shieldHit event emitted');
+    assert(code.includes("case 'shieldBreak':"), 'shieldBreak sound handler present');
+    assert(code.includes("case 'shieldHit':"), 'shieldHit sound handler present');
+}
+
+// ═══════════════════════════════════════════════════════════════
+{ section('165. WallHit Speed Threshold');
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    assert(code.includes("Math.abs(me.vy) > 0.5) snd('wallHit')") ||
+           code.includes("Math.abs(me.vy) > 0.5)  snd('wallHit')") ||
+           (code.includes('Math.abs(me.vy) > 0.5') && code.includes("snd('wallHit')")),
+           'wallHit only triggers above 0.5 vy threshold');
+    assert(code.includes("case 'wallHit':"), 'wallHit sound handler present');
+}
+
+// ═══════════════════════════════════════════════════════════════
+{ section('166. Pickup Spawn Event Emission');
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    assert(code.includes('function spawnPickup'), 'spawnPickup function present');
+    assert(code.includes('PICKUP_SPAWN_INTERVAL'), 'PICKUP_SPAWN_INTERVAL constant present');
+    assert(code.includes("n:'pickupSpawn'"), 'pickupSpawn event emitted on spawn');
+    assert(code.includes("n:'pickup'"), 'pickup event emitted on collection');
+    assert(code.includes("case 'pickupSpawn':"), 'pickupSpawn sound handler present');
+    assert(code.includes('function applyPickup'), 'applyPickup function present');
+}
+
+// ═══════════════════════════════════════════════════════════════
+{ section('167. Engine Pitch Modulation');
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    assert(code.includes('function engineSnd(engineId, vol, speed)'), 'engineSnd function with speed param present');
+    assert(code.includes('const pm = 1 + (speed || 0) * 0.4'), 'pitch multiplier formula: 1.0→1.4');
+    assert(code.includes('Math.min(spd / MAX_SPD, 1)'), 'speed normalized to 0-1 range');
+    assert(code.includes('function engineSndAt(engineId, x, y, speed)'), 'engineSndAt positional wrapper present');
+}
+
+// ═══════════════════════════════════════════════════════════════
+{ section('168. Music Stingers (Kill, Victory, Defeat, Wave)');
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    assert(code.includes('function musicStinger(type)'), 'musicStinger function present');
+    assert(code.includes("if (type === 'kill')"), 'kill stinger branch present');
+    assert(code.includes("type === 'victory'"), 'victory stinger branch present');
+    assert(code.includes("type === 'defeat'"), 'defeat stinger branch present');
+    assert(code.includes("type === 'wave'"), 'wave stinger branch present');
+    assert(code.includes("musicStinger('kill')"), 'kill stinger called on kill');
+    assert(code.includes("musicStinger('victory')"), 'victory stinger called');
+    assert(code.includes("musicStinger('defeat')"), 'defeat stinger called');
+    assert(code.includes("musicStinger('wave')"), 'wave stinger called on wave complete');
+}
+
+// ═══════════════════════════════════════════════════════════════
+{ section('169. Menu Theme Lifecycle');
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    assert(code.includes('let menuThemePlaying = false'), 'menuThemePlaying state variable present');
+    assert(code.includes('function startMenuTheme()'), 'startMenuTheme function present');
+    assert(code.includes('function stopMenuTheme()'), 'stopMenuTheme function present');
+    assert(code.includes('if (menuThemePlaying) return'), 'startMenuTheme guards against double-start');
+    assert(code.includes('menuThemePlaying = true'), 'startMenuTheme sets flag true');
+    assert(code.includes('menuThemePlaying = false'), 'stopMenuTheme sets flag false');
+    assert(code.includes('menuThemeInterval = setInterval(playMenuBeat'), 'menu theme loops via setInterval');
+    assert(code.includes('clearInterval(menuThemeInterval)'), 'stopMenuTheme clears interval');
+    assert(code.includes('const MENU_BPM = 80'), 'MENU_BPM tempo constant present');
+    assert(code.includes('startMenuTheme()'), 'startMenuTheme called from showMenu');
+    assert(code.includes('stopMenuTheme()'), 'stopMenuTheme called on game start');
+}
+
+// ═══════════════════════════════════════════════════════════════
+{ section('170. Dynamic Music Layer Transitions');
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    assert(code.includes('let prevMusicLayer = 0'), 'prevMusicLayer state variable present');
+    assert(code.includes('let combatIntensity = 0'), 'combatIntensity state variable present');
+    assert(code.includes('ci > 0.4 ? 3 : ci > 0.12 ? 2 : 1'), 'three-tier layer calculation present');
+    assert(code.includes('curLayer !== prevMusicLayer'), 'layer change detection present');
+    assert(code.includes('curLayer > prevMusicLayer'), 'escalation branch present');
+    assert(code.includes('function bumpCombat'), 'bumpCombat function present');
+    assert(code.includes('COMBAT_DECAY_RATE'), 'combat intensity decay rate constant present');
+}
+
+// ═══════════════════════════════════════════════════════════════
+{ section('171. Low-Life Heartbeat Trigger');
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    assert(code.includes('mep.lives <= 2'), 'heartbeat triggers at 2 or fewer lives');
+    assert(code.includes("mep.lives === 1 ? 1.2 : 0.7"), 'heartbeat louder at 1 life than 2');
+    assert(code.includes('LOW-LIFE HEARTBEAT'), 'heartbeat section comment present');
+    // Verify double-beat pattern (lub-dub)
+    assert(code.includes('55, 30') || code.includes('55,30'), 'heartbeat lub sweep 55→30Hz');
+    assert(code.includes('70, 35') || code.includes('70,35'), 'heartbeat dub sweep 70→35Hz');
+}
+
+// ═══════════════════════════════════════════════════════════════
+{ section('172. Base-on-Fire Siren Trigger');
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    assert(code.includes('BASE-ON-FIRE SIREN'), 'base fire siren section comment present');
+    assert(code.includes('myBaseBurning'), 'myBaseBurning detection variable present');
+    assert(code.includes('urgency'), 'urgency factor calculated from fire progress');
+    assert(code.includes('sirenVol'), 'sirenVol scales with urgency');
+    // Rising/falling alarm pattern
+    assert(code.includes("'square', 400") || code.includes("'square',400"), 'square wave siren sweep present');
+}
+
+// ═══════════════════════════════════════════════════════════════
+{ section('173. Kill Sound Pitch Variation');
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    assert(code.includes("case 'explode':"), 'explode sound handler present');
+    assert(code.includes('0.85+Math.random()*0.3') || code.includes('0.85 + Math.random() * 0.3'),
+           'pitch variation 0.85-1.15 range');
+    assert(code.includes('150*pv') || code.includes('150 * pv'), 'explode frequency modulated by pitch variation');
+}
+
+// ═══════════════════════════════════════════════════════════════
+{ section('174. Draw Condition in checkGameEnd');
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    assert(code.includes('function checkGameEnd'), 'checkGameEnd function present');
+    assert(code.includes("p.lives > 0 && !p.disconnected"), 'alive filter checks lives and disconnect');
+    assert(code.includes('alive.length <= 1'), 'game ends when 0 or 1 player alive');
+    assert(code.includes("'DRAW!'") || code.includes('"DRAW!"'), 'DRAW displayed when 0 alive');
+}
+
+// ═══════════════════════════════════════════════════════════════
+{ section('175. Client Over Event Handler');
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    assert(code.includes("case 'over':"), 'client handles over event');
+    assert(code.includes('cancelAnimationFrame(af)'), 'animation loop stopped on game over');
+    assert(code.includes("musicStinger('defeat')"), 'defeat stinger played on game over');
+    assert(code.includes('showScoreboard'), 'scoreboard shown with stats');
+    assert(code.includes("showScreen('gameOverScreen')"), 'game over screen shown');
+}
+
+// ═══════════════════════════════════════════════════════════════
+{ section('176. Bullet Whizz & Near-Miss Sounds');
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    assert(code.includes('function checkBulletWhizz()'), 'checkBulletWhizz function present');
+    assert(code.includes('WHIZZ_RADIUS'), 'WHIZZ_RADIUS constant present');
+    assert(code.includes('WHIZZ_COOLDOWN'), 'WHIZZ_COOLDOWN throttle constant present');
+    assert(code.includes('lastWhizzFrame'), 'whizz cooldown frame tracking present');
+    assert(code.includes('b.owner === mi'), 'own bullets skipped');
+    assert(code.includes("whizzType = 'whizzHeavy'") || code.includes('whizzHeavy'), 'heavy bullet whizz variant');
+    assert(code.includes("whizzType = 'whizzHoming'") || code.includes('whizzHoming'), 'homing bullet whizz variant');
+    assert(code.includes("whizzType = 'whizzRapid'") || code.includes('whizzRapid'), 'rapid fire whizz variant');
+    assert(code.includes("snd('whizzBeam'") || code.includes("snd('whizzBeam',"), 'laser beam whizz sound present');
+}
+
+// ═══════════════════════════════════════════════════════════════
+{ section('177. Safeguard — Visual Polish Present');
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    assert(code.includes("globalCompositeOperation") && code.includes("'lighter'"), 'additive blending used');
+    assert(code.includes('createRadialGradient'), 'radial gradients used for glow effects');
+    assert(code.includes('vignette') || code.includes('rgba(0,0,0,0.35)'), 'ambient vignette overlay present');
+}
+
+// ═══════════════════════════════════════════════════════════════
+{ section('178. Safeguard — Mobile/PWA Readiness');
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    assert(code.includes('viewport-fit=cover'), 'viewport-fit=cover for notch/safe-area');
+    assert(code.includes('safe-area-inset'), 'safe-area-inset CSS used');
+    assert(code.includes('theme-color'), 'theme-color meta tag present');
+    assert(code.includes('apple-mobile-web-app-capable'), 'apple-mobile-web-app-capable meta present');
+    assert(code.includes('orientation.lock') || code.includes("orientation: 'portrait'"), 'orientation lock present');
+    // Check manifest.json exists
+    const mExists = fs.existsSync(require('path').join(__dirname, 'manifest.json'));
+    assert(mExists, 'manifest.json file exists');
+    if (mExists) {
+        const manifest = JSON.parse(fs.readFileSync(require('path').join(__dirname, 'manifest.json'), 'utf8'));
+        assert(manifest.name === 'Thrustfall', 'manifest name is Thrustfall');
+        assert(manifest.display === 'standalone', 'manifest display is standalone');
+        assert(manifest.orientation === 'portrait', 'manifest orientation is portrait');
+    }
+}
+
 console.log(`\n${'='.repeat(50)}`);
 console.log(`RESULTS: ${passed}/${total} passed, ${failed} failed`);
 console.log(`${'='.repeat(50)}`);

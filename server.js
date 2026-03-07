@@ -274,6 +274,7 @@ class Room {
         this.isPublic = !!isPublic;
         this.lobbyPlayers = [{ ws: creatorWs, name: creatorName, index: 0, color: COLORS[0], ready: false, skin: 'default', trail: 'default', engineSound: 'default', killEffect: 'default', perks: [] }];
         this.creatorWs = creatorWs;
+        this.createdAt = Date.now();
         this.running = false;
         this.autoTimer = null; // 60s countdown interval
         this.autoCountdown = -1; // seconds remaining (-1 = not started)
@@ -961,10 +962,27 @@ const server = http.createServer((req, res) => {
 // =====================================================
 // WEBSOCKET SERVER
 // =====================================================
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocket.Server({ server, maxPayload: 2048 });
+
+// Idle room cleanup — destroy rooms with no players after 5 minutes
+setInterval(() => {
+    for (const [code, room] of rooms) {
+        if (!room.running && room.lobbyPlayers.length <= 1) {
+            const age = Date.now() - (room.createdAt || Date.now());
+            if (age > 5 * 60 * 1000) { room.destroy(); }
+        }
+    }
+}, 60 * 1000);
 
 wss.on('connection', (ws) => {
+    let msgCount = 0, msgResetTime = Date.now();
+
     ws.on('message', (raw) => {
+        // Rate limiting: max 60 messages per second
+        const now = Date.now();
+        if (now - msgResetTime > 1000) { msgCount = 0; msgResetTime = now; }
+        if (++msgCount > 60) return;
+
         let data;
         try { data = JSON.parse(raw); } catch (e) { return; }
 
@@ -973,7 +991,8 @@ wss.on('connection', (ws) => {
                 let code;
                 do { code = randomCode(); } while (rooms.has(code));
                 const isPublic = !!data.pub;
-                const room = new Room(code, data.map, ws, data.name || 'HOST', isPublic);
+                const safeName = String(data.name || 'HOST').slice(0, 16);
+                const room = new Room(code, data.map, ws, safeName, isPublic);
                 // Store cosmetic data from creator
                 if (data.skin) room.lobbyPlayers[0].skin = data.skin;
                 if (data.trail) room.lobbyPlayers[0].trail = data.trail;
@@ -992,7 +1011,8 @@ wss.on('connection', (ws) => {
                 if (!room) { ws.send(JSON.stringify({ t: 'error', msg: 'Room not found' })); return; }
                 if (room.running) { ws.send(JSON.stringify({ t: 'error', msg: 'Game already started' })); return; }
                 if (room.lobbyPlayers.length >= 8) { ws.send(JSON.stringify({ t: 'error', msg: 'Room is full' })); return; }
-                const idx = room.addPlayer(ws, data.name || 'PLAYER');
+                const safeJoinName = String(data.name || 'PLAYER').slice(0, 16);
+                const idx = room.addPlayer(ws, safeJoinName);
                 if (idx < 0) { ws.send(JSON.stringify({ t: 'error', msg: 'Could not join' })); return; }
                 // Store cosmetic data from joiner
                 if (data.skin) room.lobbyPlayers[idx].skin = data.skin;
@@ -1054,7 +1074,7 @@ wss.on('connection', (ws) => {
                 const playerIdx = room.lobbyPlayers.findIndex(p => p.ws === ws);
                 if (playerIdx >= 0 && room.playerInputs[playerIdx]) {
                     room.playerInputs[playerIdx] = {
-                        rot: data.r || 0,
+                        rot: Math.max(-1, Math.min(1, Number(data.r) || 0)),
                         thrust: !!data.th,
                         revThrust: !!data.rv,
                         fire: !!data.f
