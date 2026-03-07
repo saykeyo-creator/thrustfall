@@ -45,17 +45,17 @@ node server.js
 node tests.js
 ```
 
-Pure Node.js — no test framework needed. Currently **3072 assertions** across **163 sections**, all passing.
+Pure Node.js — no test framework needed. Currently **4733 assertions** across **233 sections**, all passing.
 
 ---
 
 ## File Structure
 
 ```
-index.html           (~4200 lines)  — THE ENTIRE GAME: HTML, CSS, JS, Canvas rendering, audio, UI
-server.js            (~1050 lines)  — Dedicated WebSocket game server (authoritative for PVP)
-tests.js             (~4500 lines)  — Comprehensive test suite (3072 assertions)
-sw.js                (~44 lines)    — Service worker for offline caching (PWA)
+index.html           (~5000 lines)  — THE ENTIRE GAME: HTML, CSS, JS, Canvas rendering, audio, UI
+server.js            (~1180 lines)  — Dedicated WebSocket game server (authoritative for PVP)
+tests.js             (~6670 lines)  — Comprehensive test suite (4733 assertions)
+sw.js                (~43 lines)    — Service worker for offline caching (PWA)
 capacitor.config.json               — Capacitor config for native Android/iOS builds
 package.json                        — Node.js config (only dependency: ws ^8.16.0)
 ```
@@ -66,28 +66,33 @@ Everything is in one file. The rough layout:
 
 | Lines (approx) | Section |
 |---|---|
-| 1–40 | HTML structure: `<canvas>`, menu screens, overlays |
-| 41–230 | Shop/perk UI HTML (perkShopScreen, cosmeticShopScreen) |
-| 230–340 | CSS — all styling, responsive layout |
-| 340–490 | `<script>` — Constants, XP/Perk/Cosmetic data structures & helpers |
-| 490–540 | Bullet whizz sound system (`checkBulletWhizz`, weapon-type detection) |
-| 540–700 | Audio system — `snd()` switch (all SFX including 5 whizz variants) |
-| 700–1100 | WebSocket connection, lobby system, message handling |
-| 1100–1300 | Game mode launchers (Survival, Practice, Multiplayer) |
-| 1300–1500 | Survival wave system, bot spawning |
-| 1500–1750 | Bot AI system (personalities, terrain avoidance, targeting) |
-| 1750–1850 | `beginGame()` — initializes players, applies perks, sets up game state |
-| 1850–2200 | `hostUpdate()` — authoritative game loop for solo/survival modes |
-| 2200–2400 | Physics, collisions, bullets, pickups, beams |
-| 2400–2600 | `clientUpdate()` — interpolation, client prediction for PVP |
-| 2600–2700 | Client-side prediction physics |
-| 2700–3000 | `draw()` — Canvas rendering (ships, terrain, particles, HUD, cosmetics) |
-| 3000–3100 | UI rendering (HUD, kill feed, score floats, weapon timer bar) |
-| 2950–3100 | Player-centered radar (`drawRadar`, `wrapDelta`, `toRadar`, direction indicators) |
-| 3100–3300 | Input handling (touch, keyboard, gamepad) |
-| 3300–3500 | Adaptive music system (4-layer Doom/Halo-style, spatial SFX) |
-| 3500–3700 | Shop JS functions (perk shop, cosmetic shop, buy/equip/unlock) |
-| 3700–4200 | Stats, XP system, game over screen |
+| 1–12 | HTML structure: `<canvas>`, menu screens, overlays |
+| 13–250 | CSS — all styling, responsive layout, splash screen |
+| 253–520 | `<script>` — Constants, XP/Perk/Cosmetic data, settings, pickup types, maps |
+| 519–575 | Bullet whizz sound system (`checkBulletWhizz`, weapon-type detection) |
+| 579–640 | Audio system — `snd()` switch (all SFX including EMP + whizz variants), `sndAt()` spatial audio |
+| 640–950 | WebSocket connection, lobby system, message handling, reconnect logic |
+| 948–1200 | Screen management (`showScreen`), menu/create/join/browse/solo/survival UI |
+| 1200–1290 | Onboarding tutorial, game mode launchers (Survival, Practice, Multiplayer) |
+| 1289–1425 | Survival wave system, bot spawning, wave modifiers, bot types |
+| 1426–1625 | Bot AI system (`computeBotInput` — personalities, terrain avoidance, targeting) |
+| 1626–2200 | `beginGame()` — initializes players, applies perks, sets up game state; physics helpers |
+| 2206–2535 | `hostUpdate()` — authoritative game loop for solo/survival (physics, collisions, EMP, pickups) |
+| 2535–2750 | `clientUpdate()` — interpolation, client prediction, delta compression merge |
+| 2753–2917 | Ship shape drawing (`drawShipShape` — all 11 skins), shared by game + shop |
+| 2917–3480 | `draw()` — Canvas rendering (terrain, ships, particles, HUD, cosmetics, kill effects) |
+| 3480–3600 | Player-centered radar (`drawRadar`, `wrapDelta`, `toRadar`, direction indicators) |
+| 3600–3747 | Touch controls (`drawControls`, touch input handling) |
+| 3747–3800 | Keyboard & gamepad input |
+| 3801–3855 | Daily challenge system (`getDailyChallenge`, `checkDailyChallenge`) |
+| 3819–3896 | Settings system (sensitivity, left-handed, music/SFX volume) |
+| 3856–3895 | Stats display (`showStats`) |
+| 3896–3980 | Perk shop JS (XP-based loadout) |
+| 3980–4110 | Cosmetic shop JS (mock payments, buy/equip/unlock) |
+| 4113–4230 | Cosmetic rendering (`renderCosmeticShop`, ship/trail/kill previews) |
+| 4232–4295 | Splash screen, service worker registration, audio init |
+| 4297–4780 | Adaptive music system (4-layer + dynamic systems, stingers, combat intensity) |
+| 4783–5002 | Menu theme music (`startMenuTheme`), resize, main game loop (fixed timestep) |
 
 ### server.js — Dedicated Multiplayer Server
 
@@ -98,8 +103,12 @@ Key server features:
 - Full game simulation: physics, bullets, beams, pickups, shields, kills, scoring
 - Perk system: validates and applies player perks server-side (budget enforcement, PVP multipliers)
 - Cosmetic sync: stores skin/trail/engineSound/killEffect per player, broadcasts to all clients
+- Delta compression: broadcasts only changed fields between full syncs (`FULL_SYNC_INTERVAL = 60` frames)
+- Rate limiting: 120 messages/second per connection
+- Idle room cleanup: rooms with ≤1 player auto-destroyed after 5 minutes
+- Health endpoint: `GET /health` returns 200 OK for load balancer heartbeat
 - Auto-countdown for public rooms (60s when 2+ players)
-- Graceful disconnect handling
+- Graceful disconnect handling, rematch voting system
 
 ### tests.js — Test Suite
 
@@ -114,17 +123,23 @@ section('N. Test Group Name');
 ```
 
 Test sections cover:
-- **1–31**: Core physics, collisions, weapons, shields, pickups, terrain, maps
-- **32–57**: Spatial audio, kill streaks, scoring, spectator, bot AI
-- **58–94**: Survival mode, network sync, client prediction, platforms
-- **95–114**: Viewport, weapon balance, XP progression, world wrap rendering
+- **1–31**: Core physics, collisions, weapons, shields, pickups, terrain, maps, constants
+- **32–57**: Spatial audio, kill streaks, scoring, spectator, bot AI, kill/death tracking
+- **58–94**: Survival mode, network sync, client prediction, platforms, bullet lifetime
+- **95–114**: Viewport, weapon balance, XP progression, world wrap rendering, fixed timestep
 - **115–141**: Perk definitions, cosmetic shop, loadout system, perk gameplay integration, bug fix verification
-- **142–143**: Server-side perk validation, server perk integration
-- **144–146**: Unique ship shapes, music Layer 4 warzone trigger, height-fit tablet viewport
-- **147–153**: Engine sounds, kill effects, cosmetic sync (client & server)
-- **154**: Bullet whizz sound system (5 weapon-type variants, throttling, beam proximity)
-- **155**: Player-centered radar (wrapDelta, toRadar, canvas clipping, direction indicators)
-- **156–163**: **Safeguard integrity tests** — prevent accidental game gutting by verifying minimum file sizes and existence of all major systems (core gameplay, adaptive music, shop & cosmetics, XP & progression, settings, survival mode, multiplayer)
+- **142–143**: Server-side perk validation, server perk integration (respawn shield)
+- **144–146**: Unique ship shapes (11 skins), music Layer 4 warzone trigger, height-fit tablet viewport
+- **180**: EMP powerup full system
+- **181–191**: Server mechanics (EMP gap, shield grace, disconnect, auto-countdown, room cap, creator leave, rate limiting, perk validation, input clamping)
+- **192–197**: Achievements, daily challenges, XP scaling, multi-level-up, spendable XP, loadout budget
+- **198–210**: Pickup placement, EMP events, survival guards/modifiers/state preservation, bot types, bot pickup AI, landing, client prediction, cleanup, combat intensity, score floats, interpolation
+- **211–222**: Server deep tests (random codes, laser raycast, base explosion bug, broadcast safety, rematch, idle cleanup, events, broadcast fields, weapon cooldowns, pickup application, perk application, respawn multiplier)
+- **223–227**: Special weapon shield damage, public join cosmetics, server lobby/start/join cosmetic sync
+- **228–232**: Delta compression (structure, merge, periodic full sync, empty delta, client reset)
+- **233**: Rematch countdown timer
+
+Note: sections 147–179 are reserved (numbering gap).
 
 ---
 
@@ -141,7 +156,7 @@ Test sections cover:
 ### Multiplayer Flow
 
 1. Player opens menu → clicks MULTIPLAYER → Create or Join
-2. Client connects WebSocket to server, sends `{t:'create', name, map, pub, perks, skin, trail}` or `{t:'join', code, name, perks, skin, trail}`
+2. Client connects WebSocket to server, sends `{t:'create', name, map, pub, perks, skin, trail, engine, kill}` or `{t:'join', code, name, perks, skin, trail, engine, kill}`
 3. Server creates/joins Room, broadcasts lobby state
 4. When all ready (or auto-countdown expires), server calls `Room.startGame()` → 3-2-1 countdown → `Room.beginGame()`
 5. Server runs physics at 60fps, broadcasts state at 30Hz (`{t:'s', f, p, b, bm, be, pk}`)
@@ -195,7 +210,7 @@ Viewport is fixed: `VIEW_W = 412, VIEW_H = 732` (height-fit scaling — all devi
 ## XP & Perk System
 
 ### XP Progression
-- `XP_PER_KILL = 25`, `XP_PER_WIN = 100`, `XP_PER_WAVE = 50`
+- `XP_PER_KILL = 25`, `XP_PER_WIN = 100`, `XP_PER_WAVE = 50`, `XP_PER_LAND = 5`, `XP_PER_PICKUP = 10`
 - Level formula: `XP_LEVEL_BASE = 100`, `XP_LEVEL_SCALE = 1.4` (each level costs `floor(100 * 1.4^(level-1))`)
 - XP stored in `playerStats` (localStorage key: `'gravStats'`)
 
@@ -218,11 +233,51 @@ Viewport is fixed: `VIEW_W = 412, VIEW_H = 732` (height-fit scaling — all devi
 - Stored in `shopData.unlockedPerks[]` and `shopData.equippedPerks[]` (localStorage key: `'gravShop'`)
 
 ### Cosmetics
-- 6 ship skins (each with a unique ship silhouette + canvas preview in shop): default, neon, stealth, phoenix, gold, ghost
+- 11 ship skins (each with a unique `drawShipShape` silhouette + canvas preview in shop): default, neon, stealth, phoenix, gold, ghost, trident, manta, blade, fortress, falcon
 - 6 trail effects: default (free), ice, fire, plasma, rainbow, toxic
+- 6 engine sounds: default (free), rumble, whine, pulse, roar, hum
+- 6 kill effects: default (free), vortex, electric, shatter, nova, void
 - Mock purchase system (no real payments implemented)
-- Visible to other players in PVP (server stores skin/trail per player, broadcasts in start data)
-- Stored in `shopData.ownedSkins[]`, `shopData.activeSkin`, `shopData.ownedTrails[]`, `shopData.activeTrail`
+- Visible to other players in PVP (server stores skin/trail/engine/kill per player, broadcasts in start data)
+- Stored in `shopData.ownedSkins[]`, `shopData.activeSkin`, `shopData.ownedTrails[]`, `shopData.activeTrail`, `shopData.ownedEngines[]`, `shopData.activeEngine`, `shopData.ownedKills[]`, `shopData.activeKill`
+
+### Achievements
+
+14 achievements tracked via `playerStats`:
+
+| Achievement | Requirement |
+|---|---|
+| First Blood | 1 kill |
+| Serial Killer | 50 kills |
+| Centurion | 100 kills |
+| Survivor | Wave 5 in Survival |
+| Iron Will | Wave 10 in Survival |
+| Champion | Win a multiplayer match |
+| Dominator | Win 10 matches |
+| Triple Threat | 3-kill streak |
+| Unstoppable | 5+ kill streak |
+| Pacifist | Wave 3 with 0 kills |
+| Collector | 100 powerups collected |
+| Ace Pilot | 200 landings |
+| Veteran | 50 games played |
+| Dedicated | 5 hours total playtime |
+
+### Daily Challenges
+
+7 rotating challenges, one per day (seeded by `Math.floor(Date.now() / 86400000)`):
+- Get 3 kills with homing weapon (50 XP)
+- Win a match without dying (75 XP)
+- Land on 5 different surfaces (30 XP)
+- Survive to wave 4 (60 XP)
+- Get 10 kills in a single game (40 XP)
+- Collect 5 powerups in one game (35 XP)
+- Get a triple kill streak (50 XP)
+
+### Onboarding & Splash Screen
+
+- First visit shows a splash screen overlay (`menuSplash` div: "TAP TO START")
+- Tapping initializes Web Audio API (browser requires user gesture) and transitions to main menu
+- `localStorage` key `tf_played` tracks if player has seen tutorial; splash is skipped on return visits
 
 ---
 
@@ -237,6 +292,15 @@ Viewport is fixed: `VIEW_W = 412, VIEW_H = 732` (height-fit scaling — all devi
 | Laser | `BEAM_DUR + BEAM_CD` (99) | Instant | Beam, hits every 8 frames |
 | Burst | `FIRE_CD * 1.3` (18) | 1.05x | 7 bullets, slight jitter |
 | Homing | `FIRE_CD * 1.1` (15) | 0.9x | Tracks nearest enemy |
+
+### EMP (Special Pickup)
+
+EMP is a unique pickup — not a standard weapon replacement. Collecting it activates an AoE pulse:
+- `EMP_PULSE_DUR = 300` (5 seconds active field)
+- `EMP_DISABLE_DUR = 240` (4 seconds — disables thrust/weapons/shields on hit enemies)
+- `EMP_RADIUS = 180` (blast radius in world pixels)
+- Client-only (not implemented on server — solo/survival mode only)
+- 4 custom sounds: `empSpawn`, `empActivate`, `empStruck`, `empPulse`
 
 Fire rate perk (`fireMul`) applies to all except laser.
 
@@ -272,13 +336,24 @@ Key features:
 
 ## Audio System
 
-Adaptive 4-layer music system (Doom/Halo inspired):
+Adaptive 4-layer music system (Doom/Halo inspired) + 3 dynamic systems:
+
+**Music Layers:**
 1. **Layer 1 (Dread Drone)**: Always playing, low ambient
 2. **Layer 2 (War Drums)**: Activates during combat
 3. **Layer 3 (Palm-Mute Chugs)**: Activates during intense combat
 4. **Layer 4 (Warzone Chaos)**: Activates when 3+ enemies are on screen and intensity > 0.6 — sirens, 32nd-note kicks, dissonant stabs, war horns
 
-BPM ramps from 110 (calm) to 130 (combat). Kill stingers play on kills.
+**Dynamic Systems:**
+- **Layer transitions**: Smooth crossfade between combat intensity tiers
+- **Low-life heartbeat**: Rhythmic pulse when player health is critically low
+- **Base-on-fire siren**: Warning siren when a base is being destroyed
+
+**Menu Theme:** Separate orchestral theme (`startMenuTheme`) plays on the main menu.
+
+**Kill Stingers:** Short musical stabs play on kills (pitch/timbre varies by streak).
+
+BPM ramps from 110 (calm) to 130 (combat).
 
 **Bullet whizz sounds** — incoming projectiles near the player trigger weapon-specific audio cues:
 - Standard bullets → sine wave descending pitch
@@ -286,6 +361,8 @@ BPM ramps from 110 (calm) to 130 (combat). Kill stingers play on kills.
 - Homing missiles → warbling triangle wave
 - Rapid fire → short square wave chirps
 - Laser beams → high sawtooth hiss (proximity-based via perpendicular distance)
+
+**EMP sounds:** `empSpawn` (rising siren), `empActivate` (descending sweep), `empStruck` (bass hit), `empPulse` (short sine blip).
 
 Throttled to max ~7 per second (`WHIZZ_COOLDOWN = 8` frames) to prevent audio spam.
 
@@ -295,12 +372,26 @@ All audio is generated via Web Audio API — no external audio files.
 
 ## Bot AI (Survival Mode)
 
-- 7 bot personalities: NOVA, BLAZE, VIPER, STORM, GHOST, COBRA, FANG
+- 7 bot personalities: NOVA, VEGA, APEX, STORM, SONIC, PRISM, FANG
 - Each has aggression, accuracy, reactionRate, preferredRange traits
+- 4 bot types with distinct properties:
+
+| Type | Speed | Size | Extra Lives | Notes |
+|---|---|---|---|---|
+| Normal | 1.0x | 1.0x | 0 | Default |
+| Fast | 1.4x | 0.85x | 0 | Smaller and quicker |
+| Tank | 0.7x | 1.2x | +2 | Slower but durable |
+| Sniper | 0.9x | 1.0x | 0 | Slightly slower |
+
 - Terrain avoidance with look-ahead raycasting
 - Target selection (nearest enemy, threat assessment)
-- Wave progression: more bots, shields on higher waves, boss waves every 5th wave
-- Life bonus between waves: `min(3, floor(wave/2))`
+- Wave progression: more bots, shields on wave 5+, boss waves every 5th wave
+- Boss waves spawn tanks with star-prefixed names
+- Wave modifiers:
+  - **Low Grav** (wave 3+, every 3rd wave): gravity halved — higher jumps, longer flight
+  - **Heavy Weapons** (wave 7+, every 7th wave): bots spawn with random weapons (spread/homing/laser)
+- Bot difficulty scales with wave (1–10): affects reaction rate (`max(2, 12-difficulty)` frames per decision)
+- Life bonus between waves: `+1 life` (capped at `LIVES + wave`)
 
 ---
 
@@ -348,11 +439,13 @@ git commit --allow-empty -m "Trigger Render redeploy" && git push
 
 | Key | Contents |
 |---|---|
-| `gravStats` | `{xp, level, kills, deaths, gamesPlayed, wins, survivalBest, ...}` |
-| `gravShop` | `{unlockedPerks[], equippedPerks[], ownedSkins[], ownedTrails[], activeSkin, activeTrail, coins}` |
+| `gravStats` | `{xp, level, totalKills, totalDeaths, gamesPlayed, wins, bestWave, bestStreak, totalPickups, totalLandings, playTimeMin, ...}` |
+| `gravShop` | `{unlockedPerks[], equippedPerks[], ownedSkins[], ownedTrails[], ownedEngines[], ownedKills[], activeSkin, activeTrail, activeEngine, activeKill, coins}` |
 | `gravName` | Player name string |
 | `gravSensitivity` | Input sensitivity (0.5–2.0) |
 | `gravLeftHanded` | Boolean — left-handed control layout |
+| `gravSurvivalBest` | `{caves: N, canyon: N, ...}` — best wave per map |
+| `tf_played` | Boolean — set after first play (skips splash on return) |
 
 ---
 
