@@ -972,6 +972,17 @@ class Room {
 // =====================================================
 // HTTP SERVER — serve static files
 // =====================================================
+const MIME_TYPES = {
+    '.html': 'text/html',
+    '.css': 'text/css',
+    '.js': 'application/javascript',
+    '.json': 'application/json',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.svg': 'image/svg+xml',
+    '.ico': 'image/x-icon',
+    '.webmanifest': 'application/manifest+json',
+};
 const server = http.createServer((req, res) => {
     const url = req.url.split('?')[0]; // strip query string
     if (url === '/health') {
@@ -979,9 +990,31 @@ const server = http.createServer((req, res) => {
         res.end('OK');
         return;
     }
-    // Serve index.html for root and any other path (single-page app)
-    const filePath = path.join(__dirname, 'index.html');
-    fs.readFile(filePath, (err, data) => {
+    // Try to serve static file if it exists (icons, manifest, privacy, etc.)
+    if (url !== '/' && !url.includes('..')) {
+        const staticPath = path.join(__dirname, url);
+        const ext = path.extname(staticPath).toLowerCase();
+        if (MIME_TYPES[ext]) {
+            fs.readFile(staticPath, (err, data) => {
+                if (err) {
+                    // Fall through to index.html
+                    serveIndex(res);
+                } else {
+                    res.writeHead(200, {
+                        'Content-Type': MIME_TYPES[ext],
+                        'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=86400'
+                    });
+                    res.end(data);
+                }
+            });
+            return;
+        }
+    }
+    serveIndex(res);
+});
+
+function serveIndex(res) {
+    fs.readFile(path.join(__dirname, 'index.html'), (err, data) => {
         if (err) {
             console.error('Failed to read index.html:', err.message);
             res.writeHead(500);
@@ -994,7 +1027,7 @@ const server = http.createServer((req, res) => {
             res.end(data);
         }
     });
-});
+}
 
 // =====================================================
 // WEBSOCKET SERVER

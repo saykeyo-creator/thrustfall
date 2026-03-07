@@ -5,12 +5,20 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node tests.js"
+    "test": "node tests.js",
+    "build:mobile": "node build-mobile.js",
+    "cap:sync": "npm run build:mobile && npx cap sync"
   },
   "engines": {
     "node": ">=18.0.0"
   },
   "dependencies": {
     "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.2.0",
+    "@capacitor/cli": "^8.2.0",
+    "@capacitor/core": "^8.2.0",
+    "canvas": "^3.2.1"
   }
 }

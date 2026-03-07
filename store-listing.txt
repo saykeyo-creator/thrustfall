@@ -1,0 +1,57 @@
+THRUSTFALL — Google Play Store Listing
+======================================
+
+APP NAME: Thrustfall
+
+SHORT DESCRIPTION (80 chars max):
+Cave combat with physics, weapons, and online PVP. Fly, fight, survive.
+
+FULL DESCRIPTION (4000 chars max):
+Thrustfall is a fast-paced 2D cave combat game where you pilot a spaceship through procedurally generated caverns, battling enemies with physics-based flight and an arsenal of devastating weapons.
+
+★ CORE GAMEPLAY
+Master gravity-defying flight with precise thrust and rotation controls. Land on bases to heal. Collect weapon pickups scattered across the map. Every cave is different — procedurally generated terrain with seeded randomness ensures fair, unpredictable arenas.
+
+★ 9 WEAPON TYPES
+Stock rapid-fire, Spread shot, Rapid twin cannons, Heavy piercing rounds, Laser beam, Burst shotgun, Homing missiles, Shield pickup, and the EMP pulse — a devastating area-of-effect weapon that disables enemy thrust, weapons, and shields.
+
+★ ONLINE PVP MULTIPLAYER
+Create or join rooms for 2–8 player battles. The server runs authoritative physics at 60fps — no cheating, no lag exploits. Public matchmaking or private rooms with 4-character codes. Choose your loadout and cosmetics before battle.
+
+★ SURVIVAL MODE
+Fight waves of increasingly dangerous bots. Four bot types — Normal, Fast, Tank, and Sniper — each with unique stats. Boss waves every 5th round. Wave modifiers like Low Gravity and Heavy Weapons keep each run fresh. How far can you survive?
+
+★ DEEP PROGRESSION
+Earn XP from kills, wins, landings, and pickups. Level up to unlock 6 perks with distinct solo and PVP effects: Reinforced Shield, Quick Loader, Boost Jets, Thick Hull, Scavenger, and Quick Respawn. Build loadouts within a 3-point budget.
+
+★ 14 ACHIEVEMENTS & DAILY CHALLENGES
+Track milestones from First Blood to Unstoppable. Complete rotating daily challenges for bonus XP — get homing kills, survive without dying, collect powerups, and more.
+
+★ MASSIVE COSMETIC COLLECTION
+• 11 unique ship skins with custom silhouettes
+• 6 trail effects (ice, fire, plasma, rainbow, toxic)
+• 6 engine sounds (rumble, whine, pulse, roar, hum)
+• 6 kill effects (vortex, electric, shatter, nova, void)
+All cosmetics are visible to other players in multiplayer.
+
+★ 6 HANDCRAFTED MAPS
+The Caves, Deep Canyon, Asteroid Field (low gravity), Twin Fortress, The Labyrinth, and The Arena (open dogfight). Each with unique dimensions and terrain generation.
+
+★ ADAPTIVE MUSIC
+A 4-layer dynamic soundtrack responds to combat intensity — from ambient drones to full warzone chaos with war horns and 32nd-note kicks. Heartbeat pulses when health is low. All audio generated in real-time — no audio files, pure synthesis.
+
+★ PRACTICE MODE
+Fly solo against bots in any map with your full loadout. Perfect for learning controls and testing perk combinations.
+
+No ads. No pay-to-win. Pure skill-based combat.
+
+CATEGORY: Action / Arcade
+CONTENT RATING: Everyone 10+ (Fantasy Violence)
+TAGS: action, arcade, multiplayer, pvp, space, combat, physics, indie
+
+PRIVACY POLICY URL: https://thrustfall.onrender.com/privacy.html
+TERMS URL: https://thrustfall.onrender.com/terms.html
+
+DEVELOPER: Lakes Games
+EMAIL: (your developer contact email)
+WEBSITE: https://thrustfall.onrender.com

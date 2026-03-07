@@ -1,7 +1,7 @@
 {
   "appId": "com.lakesgames.thrustfall",
   "appName": "Thrustfall",
-  "webDir": "www",
+  "webDir": "dist",
   "bundledWebRuntime": false,
   "server": {
     "cleartext": false
