@@ -102,18 +102,25 @@ let events = [];
 let playerDeaths = [];
 let frame = 0;
 
-function killPlayer(p, force) {
+function killPlayer(p, force, shieldDmg) {
     if (!p.alive||p.invT>0) return;
     if (p.shield > 0 && !force) {
-        p.shield--;
+        p.shieldHP = (p.shieldHP || 2) - (shieldDmg || 1);
+        if (p.shieldHP < 0) p.shieldHP = 0;
         p.invT = 1;
         p.flashTimer = 12;
-        events.push({type:'shieldAbsorb', id:p.id});
+        if (p.shieldHP <= 0) {
+            p.shield--;
+            p.shieldHP = p.shield > 0 ? 2 : 0;
+            events.push({type:'shieldBreak', id:p.id});
+        } else {
+            events.push({type:'shieldAbsorb', id:p.id});
+        }
         return;
     }
     p.alive=false; p.lives--; p.respawnT=RESPAWN_T; p.vx=0; p.vy=0; p.landed=false;
     if (playerDeaths[p.id] !== undefined) playerDeaths[p.id]++;
-    p.weapon = 'normal'; p.shield = 0; p.weaponTimer = 0;
+    p.weapon = 'normal'; p.shield = 0; p.shieldHP = 0; p.weaponTimer = 0;
     events.push({type:'kill', id:p.id});
 }
 
@@ -145,6 +152,7 @@ function respawnPlayer(p) {
     p.x=p.spawnX; p.y=p.spawnY; p.vx=0; p.vy=0; p.angle=-Math.PI/2;
     p.alive=true; p.invT=INVINCE_T; p.landed=true; p.landedTimer=60;
     p.shield = 1; // spawn shield
+    p.shieldHP = 2;
 }
 
 function applyPickup(p, type) {
@@ -152,6 +160,7 @@ function applyPickup(p, type) {
         p.lives = (p.lives || 0) + 1;
     } else if (type === 'shield') {
         p.shield = (p.shield || 0) + 1;
+        p.shieldHP = 2;
     } else {
         p.weapon = type;
         p.weaponTimer = WEAPON_TIMER;
@@ -453,16 +462,23 @@ section('5. Kill Player Mechanics');
     assert(p2.alive, 'invincible player survives kill');
     assert(p2.lives === 5, 'invincible player keeps lives');
 
-    // Shield absorbs kill (single shield)
+    // Shield absorbs kill (single shield — 2 HP per layer)
     events = [];
     const p3 = makePlayer({id:2, alive:true, shield:1, lives:5});
     killPlayer(p3);
-    assert(p3.alive, 'shielded player survives');
+    assert(p3.alive, 'shielded player survives 1st hit');
     assert(p3.lives === 5, 'shielded player keeps lives');
-    assert(p3.shield === 0, 'single shield is consumed');
-    assert(p3.invT === 1, 'brief invincibility after shield pop (~10ms)');
+    assert(p3.shield === 1, 'single shield layer holds after 1st hit');
+    assert(p3.shieldHP === 1, 'shieldHP=1 after 1st hit');
+    assert(p3.invT === 1, 'brief invincibility after shield hit (~10ms)');
     assert(events.some(e=>e.type==='shieldAbsorb'), 'shield absorb event emitted');
-    // After invincibility
+    // Second hit breaks the layer
+    p3.invT = 0;
+    events = [];
+    killPlayer(p3);
+    assert(p3.alive, 'shielded player survives 2nd hit (layer breaks)');
+    assert(p3.shield === 0, 'single shield is consumed after 2 hits');
+    // After shield gone, player is killable
     p3.invT = 0;
     events = [];
     killPlayer(p3);
@@ -488,22 +504,25 @@ section('6. Stackable Shields');
     applyPickup(p, 'shield');
     assert(p.shield === 3, 'third shield pickup: shield = 3');
 
-    // Each kill attempt consumes one shield
+    // Each kill attempt takes 1 shieldHP; 2 hits per layer
     events = [];
     killPlayer(p);
     assert(p.alive, 'triple-shielded player survives 1st hit');
-    assert(p.shield === 2, 'shield decremented to 2 after 1st hit');
+    assert(p.shield === 3, 'shield layer holds after 1st hit (1 HP left)');
+    assert(p.shieldHP === 1, 'shieldHP decremented to 1');
     p.invT = 0; // clear invincibility for next test
     killPlayer(p);
-    assert(p.alive, 'double-shielded player survives 2nd hit');
-    assert(p.shield === 1, 'shield decremented to 1 after 2nd hit');
+    assert(p.alive, 'triple-shielded player survives 2nd hit');
+    assert(p.shield === 2, 'shield layer breaks after 2nd hit, now 2 layers');
+    assert(p.shieldHP === 2, 'shieldHP reset to 2 for next layer');
     p.invT = 0;
+    // 4 more hits to deplete remaining 2 layers
+    killPlayer(p); p.invT = 0; killPlayer(p); p.invT = 0;
+    assert(p.shield === 1, 'shield at 1 after 4 total hits');
+    killPlayer(p); p.invT = 0; killPlayer(p); p.invT = 0;
+    assert(p.shield === 0, 'shield depleted after 6 total hits');
     killPlayer(p);
-    assert(p.alive, 'single-shielded player survives 3rd hit');
-    assert(p.shield === 0, 'shield decremented to 0 after 3rd hit');
-    p.invT = 0;
-    killPlayer(p);
-    assert(!p.alive, 'unshielded player dies on 4th hit');
+    assert(!p.alive, 'unshielded player dies on 7th hit');
     assert(p.shield === 0, 'shield stays 0 after death');
 
     // Shield + weapon: shield doesn't affect weapon
@@ -519,9 +538,12 @@ section('6. Stackable Shields');
     assert(p3.shield === 3, 'shields unaffected by weapon pickup');
 
     // Death resets shields completely
-    const p4 = makePlayer({alive:true, shield:5, weapon:'heavy', lives:3});
-    killPlayer(p4); // shields absorb
-    assert(p4.shield === 4, 'shield absorb from 5 to 4');
+    const p4 = makePlayer({alive:true, shield:5, shieldHP:2, weapon:'heavy', lives:3});
+    killPlayer(p4); // 1st hit: shieldHP 2→1, layer holds
+    assert(p4.shield === 5, 'shield layer holds after 1st hit (HP=1)');
+    p4.invT = 0;
+    killPlayer(p4); // 2nd hit: shieldHP 1→0, layer breaks (5→4)
+    assert(p4.shield === 4, 'shield absorb from 5 to 4 after 2 hits');
     p4.invT = 0; p4.shield = 0; // simulate all shields drained
     killPlayer(p4);
     assert(p4.shield === 0, 'shield is 0 after death');
@@ -593,12 +615,16 @@ section('9. Bullet Hit Detection');
     events = [];
     killPlayer(invP);
     assert(invP.alive, 'invincible player survives bullet');
-    // Shielded player
-    const shieldP = makePlayer({id:1, x:500, y:500, alive:true, invT:0, shield:1});
+    // Shielded player — needs 2 hits to break 1 shield layer
+    const shieldP = makePlayer({id:1, x:500, y:500, alive:true, invT:0, shield:1, shieldHP:2});
     events = [];
     killPlayer(shieldP);
-    assert(shieldP.alive, 'shielded player survives bullet');
-    assert(shieldP.shield === 0, 'shield consumed by bullet');
+    assert(shieldP.alive, 'shielded player survives 1st bullet');
+    assert(shieldP.shield === 1, 'shield layer holds after 1st hit');
+    shieldP.invT = 0;
+    killPlayer(shieldP);
+    assert(shieldP.alive, 'shielded player survives 2nd bullet');
+    assert(shieldP.shield === 0, 'shield consumed after 2 hits');
 }
 
 // ── 10. BULLET KILLS LANDED PLAYER ON BASE ──
@@ -853,11 +879,11 @@ section('17. Ship-to-Ship Collision');
     assert(d2 >= SHIP_SZ * 2, 'ships outside collision range');
 
     // Shield absorbs ship collision (killPlayer with no force)
-    const sp = makePlayer({x: 100, y: 100, alive: true, invT: 0, shield: 1, lives: 5});
-    // killPlayer without force: shield should absorb
-    if (sp.shield > 0) { sp.shield--; sp.invT = 1; }
-    assert(sp.shield === 0, 'shield consumed by collision');
-    assert(sp.invT === 1, 'brief invincibility after shield pop (~10ms)');
+    const sp = makePlayer({x: 100, y: 100, alive: true, invT: 0, shield: 1, shieldHP: 2, lives: 5});
+    // killPlayer without force: shield should absorb (2 hits needed)
+    killPlayer(sp); sp.invT = 0; killPlayer(sp);
+    assert(sp.shield === 0, 'shield consumed by 2 collision hits');
+    assert(sp.alive, 'player survives with shield absorbing hits');
 
     // No shield = death
     const dp = makePlayer({x: 100, y: 100, alive: true, invT: 0, shield: 0, lives: 5});
@@ -1196,13 +1222,29 @@ section('34. All Weapons Hit Across Wrap Boundary');
 // ── 35. SHIELD ABSORBS ALL WEAPON TYPES ──
 section('35. Shield Absorbs All Weapon Types');
 {
-    const weaponNames = ['normal','spread','rapid','heavy','laser','burst','homing'];
-    for (const wn of weaponNames) {
+    // Normal weapons (shieldDmg=1): 2 hits to break a layer
+    const normalWeapons = ['normal','spread','burst','homing'];
+    for (const wn of normalWeapons) {
         events = [];
-        const p = makePlayer({alive:true, lives:5, shield:1, invT:0});
+        const p = makePlayer({alive:true, lives:5, shield:1, shieldHP:2, invT:0});
         killPlayer(p);
-        assert(p.alive, `shield absorbs ${wn} bullet`);
-        assert(p.shield === 0, `shield consumed by ${wn} bullet`);
+        assert(p.alive, `shield absorbs ${wn} bullet (1st hit)`);
+        assert(p.shield === 1, `shield layer holds after 1st ${wn} hit`);
+        p.invT = 0;
+        killPlayer(p);
+        assert(p.alive, `shield absorbs ${wn} bullet (2nd hit)`);
+        assert(p.shield === 0, `shield consumed by ${wn} bullet after 2 hits`);
+        assert(p.lives === 5, `no life lost from ${wn} with shield`);
+    }
+    // Power weapons (shieldDmg=2): 1 hit strips a layer
+    const powerWeapons = ['rapid','heavy','laser'];
+    for (const wn of powerWeapons) {
+        events = [];
+        const p = makePlayer({alive:true, lives:5, shield:1, shieldHP:2, invT:0});
+        killPlayer(p, false, 2);
+        assert(p.alive, `shield absorbs ${wn} bullet (shieldDmg=2)`);
+        assert(p.shield === 0, `shield layer stripped in one ${wn} hit`);
+        assert(p.shieldHP === 0, `shieldHP=0 after ${wn} one-shot`);
         assert(p.lives === 5, `no life lost from ${wn} with shield`);
     }
 }
@@ -1354,12 +1396,17 @@ section('41. Spawn Shield');
     assert(p1.alive, 'player alive after respawn');
     assert(p1.invT === INVINCE_T, 'player has invincibility after respawn');
 
-    // Spawn shield absorbs one hit
+    // Spawn shield absorbs hits (2 HP per layer)
     events = [];
-    const p2 = makePlayer({alive:true, lives:5, shield:1, invT:0});
+    const p2 = makePlayer({alive:true, lives:5, shield:1, shieldHP:2, invT:0});
     killPlayer(p2);
     assert(p2.alive, 'spawn shield absorbs first hit');
-    assert(p2.shield === 0, 'spawn shield consumed');
+    assert(p2.shield === 1, 'spawn shield layer holds after 1st hit');
+    assert(p2.shieldHP === 1, 'shieldHP=1 after 1st hit');
+    p2.invT = 0;
+    killPlayer(p2);
+    assert(p2.alive, 'spawn shield absorbs second hit');
+    assert(p2.shield === 0, 'spawn shield consumed after 2 hits');
     assert(p2.lives === 5, 'no life lost with spawn shield');
 
     // After shield consumed, next hit kills
@@ -1386,12 +1433,16 @@ section('42. Force Kill (Base Kamikaze Bypass)');
     assert(p1.lives === 4, 'force kill costs a life');
     assert(p1.shield === 0, 'shields reset on death');
 
-    // Normal kill still absorbs shield
+    // Normal kill still absorbs shield (2 HP per layer)
     events = [];
-    const p2 = makePlayer({alive:true, lives:5, shield:2, invT:0});
+    const p2 = makePlayer({alive:true, lives:5, shield:2, shieldHP:2, invT:0});
     killPlayer(p2, false);
     assert(p2.alive, 'non-force kill absorbed by shield');
-    assert(p2.shield === 1, 'shield decremented');
+    assert(p2.shield === 2, 'shield layer holds after 1st hit');
+    assert(p2.shieldHP === 1, 'shieldHP decremented');
+    p2.invT = 0;
+    killPlayer(p2, false);
+    assert(p2.shield === 1, 'shield decremented after 2 hits');
 
     // Force kill with no shield still kills
     events = [];
@@ -2445,6 +2496,7 @@ section('85. Respawn Grants Spawn Shield');
     respawnPlayer(p);
     assert(p.alive === true, 'respawned alive');
     assert(p.shield === 1, 'respawn grants 1 shield');
+    assert(p.shieldHP === 2, 'respawn grants 2 shieldHP');
     assert(p.invT === INVINCE_T, 'respawn grants invincibility');
     assert(p.x === 500, 'respawned at spawnX');
     assert(p.y === 300, 'respawned at spawnY');
@@ -2832,12 +2884,13 @@ section('99. Weapon Balance — Laser Nerf & Homing Buff');
 section('100. Hit Flash & Shield Absorb');
 // =====================================================
 {
-    const p = {id:0, alive:true, lives:5, shield:2, invT:0, vx:1, vy:1, landed:false, respawnT:0, weapon:'spread', weaponTimer:500, flashTimer:0};
+    const p = {id:0, alive:true, lives:5, shield:2, shieldHP:2, invT:0, vx:1, vy:1, landed:false, respawnT:0, weapon:'spread', weaponTimer:500, flashTimer:0};
     playerDeaths = [0];
     events = [];
     killPlayer(p);
     assert(p.alive === true, 'shield absorbs hit, player still alive');
-    assert(p.shield === 1, 'shield decremented');
+    assert(p.shield === 2, 'shield layer holds (1 HP left)');
+    assert(p.shieldHP === 1, 'shieldHP decremented to 1');
     assert(p.flashTimer === 12, 'flashTimer set to 12 on shield absorb');
     assert(p.invT === 1, 'short invincibility on shield absorb (~10ms)');
 
@@ -5089,8 +5142,8 @@ section('146. Height-Fit Viewport — Tablet Controls Visible');
 { section('164. Shield Break vs ShieldHit Logic');
     const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
     assert(code.includes('if (p.shield > 0 && !force)'), 'shield absorb condition checks force flag');
-    assert(code.includes('p.shield--'), 'shield decrements on hit');
-    assert(code.includes("if (p.shield === 0)"), 'checks if shield fully broken');
+    assert(code.includes('p.shieldHP <= 0'), 'checks if shieldHP depleted');
+    assert(code.includes('p.shield--'), 'shield layer decrements when HP exhausted');
     assert(code.includes("'shieldBreak'"), 'shieldBreak event emitted');
     assert(code.includes("'shieldHit'"), 'shieldHit event emitted');
     assert(code.includes("case 'shieldBreak':"), 'shieldBreak sound handler present');
@@ -5498,22 +5551,30 @@ section('181. Server EMP — Missing from Server Pickup Types');
 section('182. Server Shield Grace — 1-Frame Invincibility');
 // =====================================================
 {
-    const p = {id:0, x:100, y:100, vx:0, vy:0, alive:true, lives:5, shield:2, invT:0, angle:-Math.PI/2, weapon:'normal', weaponTimer:0, flashTimer:0, respawnT:0, landed:false};
+    const p = {id:0, x:100, y:100, vx:0, vy:0, alive:true, lives:5, shield:2, shieldHP:2, invT:0, angle:-Math.PI/2, weapon:'normal', weaponTimer:0, flashTimer:0, respawnT:0, landed:false};
     events = [];
-    // First hit: shield absorbs, invT becomes 1
+    // First hit: shieldHP drops from 2 to 1, shield stays 2
     killPlayer(p, false);
     assert(p.alive, 'first hit: player survives (shield absorbs)');
-    assert(p.shield === 1, 'first hit: shield reduced by 1');
+    assert(p.shield === 2, 'first hit: shield layer holds (1 HP left)');
+    assert(p.shieldHP === 1, 'first hit: shieldHP reduced to 1');
     assert(p.invT === 1, 'first hit: invT set to 1-frame grace');
     // Second immediate hit: should be blocked by invT
     killPlayer(p, false);
     assert(p.alive, 'second immediate hit: blocked by 1-frame invT');
-    assert(p.shield === 1, 'shield not reduced again during grace');
+    assert(p.shield === 2, 'shield unchanged during grace');
     // After grace period expires
     p.invT = 0;
     killPlayer(p, false);
-    assert(p.alive, 'third hit: shield absorbs again');
-    assert(p.shield === 0, 'third hit: last shield broken');
+    assert(p.alive, 'third hit: shield layer breaks');
+    assert(p.shield === 1, 'third hit: shield layer dropped to 1');
+    assert(p.shieldHP === 2, 'third hit: shieldHP reset for next layer');
+    // Two more hits to break last layer
+    p.invT = 0; killPlayer(p, false);
+    assert(p.shield === 1, 'fourth hit: last layer holds (1 HP)');
+    p.invT = 0; killPlayer(p, false);
+    assert(p.shield === 0, 'fifth hit: last shield broken');
+    assert(p.shieldHP === 0, 'shieldHP is 0 when shields depleted');
 }
 
 // =====================================================
@@ -6227,7 +6288,7 @@ section('218. Server State Broadcast Fields');
     const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
     // Verify all expected fields in player state broadcast
     const broadcastFields = ['x:','y:','vx:','vy:','a:','al:','l:','s:','iv:',
-        'th:','rv:','la:','fi:','rT:','wp:','sh:','wt:','ft:'];
+        'th:','rv:','la:','fi:','rT:','wp:','sh:','shp:','wt:','ft:'];
     for (const f of broadcastFields) {
         assert(sCode.includes(f), `server broadcasts field ${f}`);
     }
@@ -6304,6 +6365,72 @@ section('222. Server killPlayer — Perk Respawn Multiplier');
     const respawnT = Math.floor(RESPAWN_T * rMul);
     assert(respawnT < RESPAWN_T, 'respawn perk reduces respawn time');
     assert(respawnT === Math.floor(90 * 0.85), 'respawn time = floor(90*0.85) = 76');
+}
+
+// =====================================================
+section('223. Special Weapon Shield Damage (shieldDmg)');
+// =====================================================
+{
+    // Normal bullet (shieldDmg=1): takes 2 hits to break a layer
+    events = [];
+    let p = makePlayer({alive:true, lives:5, shield:1, shieldHP:2, invT:0});
+    killPlayer(p, false, 1);
+    assert(p.alive, 'normal shieldDmg=1 first hit: alive');
+    assert(p.shield === 1, 'normal shieldDmg=1 first hit: layer holds');
+    assert(p.shieldHP === 1, 'normal shieldDmg=1 first hit: HP=1');
+    p.invT = 0;
+    killPlayer(p, false, 1);
+    assert(p.alive, 'normal shieldDmg=1 second hit: alive');
+    assert(p.shield === 0, 'normal shieldDmg=1 second hit: layer broke');
+    assert(p.shieldHP === 0, 'normal shieldDmg=1 second hit: HP=0');
+
+    // Heavy/rapid/laser (shieldDmg=2): 1 hit strips a layer
+    events = [];
+    p = makePlayer({alive:true, lives:5, shield:1, shieldHP:2, invT:0});
+    killPlayer(p, false, 2);
+    assert(p.alive, 'shieldDmg=2 strips layer in one hit: alive');
+    assert(p.shield === 0, 'shieldDmg=2 strips layer: shield=0');
+    assert(p.shieldHP === 0, 'shieldDmg=2 strips layer: HP=0');
+    assert(events.some(e => e.type === 'shieldBreak'), 'shieldDmg=2 emits shieldBreak');
+
+    // Multi-layer: shieldDmg=2 peels one layer, next layer intact
+    events = [];
+    p = makePlayer({alive:true, lives:5, shield:3, shieldHP:2, invT:0});
+    killPlayer(p, false, 2);
+    assert(p.shield === 2, 'shieldDmg=2 on 3-layer: down to 2');
+    assert(p.shieldHP === 2, 'shieldDmg=2 on 3-layer: next layer full HP');
+    p.invT = 0;
+    killPlayer(p, false, 2);
+    assert(p.shield === 1, 'shieldDmg=2 second hit: down to 1');
+    p.invT = 0;
+    killPlayer(p, false, 2);
+    assert(p.shield === 0, 'shieldDmg=2 third hit: stripped all');
+
+    // shieldDmg=2 on shieldHP=1 (already hit once): should break layer, HP clamped to 0
+    events = [];
+    p = makePlayer({alive:true, lives:5, shield:1, shieldHP:1, invT:0});
+    killPlayer(p, false, 2);
+    assert(p.alive, 'shieldDmg=2 on HP=1: alive');
+    assert(p.shield === 0, 'shieldDmg=2 on HP=1: layer broke');
+    assert(p.shieldHP === 0, 'shieldDmg=2 on HP=1: HP clamped to 0');
+
+    // Default shieldDmg (no param) = 1
+    events = [];
+    p = makePlayer({alive:true, lives:5, shield:1, shieldHP:2, invT:0});
+    killPlayer(p);
+    assert(p.shieldHP === 1, 'default shieldDmg (no param) = 1');
+    assert(p.shield === 1, 'default shieldDmg: layer holds');
+
+    // Verify code: rapid/heavy bullets have shieldDmg:2
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    assert(code.includes('shieldDmg:2') || code.includes('shieldDmg: 2'), 'client bullets have shieldDmg property');
+    assert(sCode.includes('shieldDmg: 2'), 'server bullets have shieldDmg property');
+    assert(sCode.includes('b.shieldDmg'), 'server passes bullet shieldDmg at hit site');
+    assert(code.includes('b.shieldDmg'), 'client passes bullet shieldDmg at hit site');
+    // Laser beams pass shieldDmg=2 directly
+    assert(code.includes('bm.owner, 2)'), 'client beam hit passes shieldDmg=2');
+    assert(sCode.includes('false, 2)'), 'server beam hit passes shieldDmg=2');
 }
 
 console.log(`\n${'='.repeat(50)}`);

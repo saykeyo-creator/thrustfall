@@ -451,7 +451,7 @@ class Room {
                 base: { x: bs.x, y: bs.y, w: bs.w || BASE_W, h: bs.h || BASE_H },
                 landed: true, landedTimer: 120,
                 disconnected: false,
-                weapon: 'normal', shield: 1 + perkBonuses.shield, weaponTimer: 0, flashTimer: 0,
+                weapon: 'normal', shield: 1 + perkBonuses.shield, shieldHP: 2, weaponTimer: 0, flashTimer: 0,
                 streak: 0, lastKillFrame: -999,
                 thrusting: false, revThrusting: false, firing: false, fireCd: 0,
                 perkBonuses: perkBonuses
@@ -618,7 +618,7 @@ class Room {
             for (const p of this.players) {
                 const hitR = SHIP_SZ + (b.sz || 2.5);
                 if (p.id !== b.owner && p.alive && p.invT <= 0 && dist(b.x, b.y, p.x, p.y, this.worldW) < hitR) {
-                    this.killPlayer(p);
+                    this.killPlayer(p, false, b.shieldDmg);
                     if (!p.alive) this.awardKill(this.players[b.owner]);
                     if (b.pierce && b.pierce > 0) { b.pierce--; } else { this.bullets.splice(i, 1); hit = true; }
                     break;
@@ -664,7 +664,7 @@ class Room {
                     for (let d = SHIP_SZ * 2; d < endDist; d += step) {
                         const tx = bm.x + Math.cos(bm.angle) * d, ty = bm.y + Math.sin(bm.angle) * d;
                         if (dist(tx, ty, pl.x, pl.y, this.worldW) < SHIP_SZ + 4) {
-                            this.killPlayer(pl);
+                            this.killPlayer(pl, false, 2);
                             if (!pl.alive) this.awardKill(this.players[bm.owner]);
                             bm.hitCd = BEAM_HIT_INTERVAL;
                             break;
@@ -713,7 +713,7 @@ class Room {
                     x: rd(p.x), y: rd(p.y), vx: rd(p.vx), vy: rd(p.vy), a: rdA(p.angle),
                     al: p.alive, l: p.lives, s: p.score, iv: p.invT > 0,
                     th: p.thrusting, rv: p.revThrusting, la: p.landed, fi: p.firing,
-                    rT: p.respawnT, wp: p.weapon, sh: p.shield,
+                    rT: p.respawnT, wp: p.weapon, sh: p.shield, shp: p.shieldHP || 0,
                     wt: p.weaponTimer, ft: p.flashTimer
                 })),
                 b: this.bullets.map(b => ({
@@ -775,11 +775,11 @@ class Room {
                 }
                 p.fireCd = Math.floor(FIRE_CD * fMul); break;
             case 'rapid':
-                this.bullets.push({ x: bx + Math.cos(a + Math.PI / 2) * 3, y: by + Math.sin(a + Math.PI / 2) * 3, vx: Math.cos(a) * BULLET_SPD * 1.15 + vbx, vy: Math.sin(a) * BULLET_SPD * 1.15 + vby, owner: pi, life: BULLET_LIFE, color: p.color, sz: 2 });
-                this.bullets.push({ x: bx + Math.cos(a - Math.PI / 2) * 3, y: by + Math.sin(a - Math.PI / 2) * 3, vx: Math.cos(a) * BULLET_SPD * 1.15 + vbx, vy: Math.sin(a) * BULLET_SPD * 1.15 + vby, owner: pi, life: BULLET_LIFE, color: p.color, sz: 2 });
+                this.bullets.push({ x: bx + Math.cos(a + Math.PI / 2) * 3, y: by + Math.sin(a + Math.PI / 2) * 3, vx: Math.cos(a) * BULLET_SPD * 1.15 + vbx, vy: Math.sin(a) * BULLET_SPD * 1.15 + vby, owner: pi, life: BULLET_LIFE, color: p.color, sz: 2, shieldDmg: 2 });
+                this.bullets.push({ x: bx + Math.cos(a - Math.PI / 2) * 3, y: by + Math.sin(a - Math.PI / 2) * 3, vx: Math.cos(a) * BULLET_SPD * 1.15 + vbx, vy: Math.sin(a) * BULLET_SPD * 1.15 + vby, owner: pi, life: BULLET_LIFE, color: p.color, sz: 2, shieldDmg: 2 });
                 p.fireCd = Math.floor(FIRE_CD * 0.4 * fMul); break;
             case 'heavy':
-                this.bullets.push({ x: bx, y: by, vx: Math.cos(a) * BULLET_SPD * 0.9 + vbx, vy: Math.sin(a) * BULLET_SPD * 0.9 + vby, owner: pi, life: Math.floor(BULLET_LIFE * 1.5), color: p.color, sz: 7, heavy: true, pierce: 1 });
+                this.bullets.push({ x: bx, y: by, vx: Math.cos(a) * BULLET_SPD * 0.9 + vbx, vy: Math.sin(a) * BULLET_SPD * 0.9 + vby, owner: pi, life: Math.floor(BULLET_LIFE * 1.5), color: p.color, sz: 7, heavy: true, pierce: 1, shieldDmg: 2 });
                 p.fireCd = Math.floor(FIRE_CD * 1.2 * fMul); break;
             case 'laser':
                 this.beams.push({ x: p.x, y: p.y, angle: a, owner: pi, life: BEAM_DUR, maxLife: BEAM_DUR, color: p.color, hitCd: 0 });
@@ -802,19 +802,26 @@ class Room {
         this.emitEvent({ t: 'e', n: 'shoot', x: bx, y: by });
     }
 
-    killPlayer(p, force) {
+    killPlayer(p, force, shieldDmg) {
         if (!p.alive || p.invT > 0) return;
         if (p.shield > 0 && !force) {
-            p.shield--;
-            p.invT = 1; // ~10ms grace (1 frame at 60fps)
+            p.shieldHP = (p.shieldHP || 2) - (shieldDmg || 1);
+            if (p.shieldHP < 0) p.shieldHP = 0;
+            p.invT = 1;
             p.flashTimer = 12;
-            this.emitEvent({ t: 'e', n: 'shieldHit', x: p.x, y: p.y });
+            if (p.shieldHP <= 0) {
+                p.shield--;
+                p.shieldHP = p.shield > 0 ? 2 : 0;
+                this.emitEvent({ t: 'e', n: 'shieldBreak', x: p.x, y: p.y });
+            } else {
+                this.emitEvent({ t: 'e', n: 'shieldHit', x: p.x, y: p.y });
+            }
             return;
         }
         const rMul = (p.perkBonuses && p.perkBonuses.respawnMul) || 1;
         p.alive = false; p.lives--; p.respawnT = Math.floor(RESPAWN_T * rMul); p.vx = 0; p.vy = 0; p.landed = false;
         if (this.playerDeaths[p.id] !== undefined) this.playerDeaths[p.id]++;
-        p.weapon = 'normal'; p.shield = 0; p.weaponTimer = 0;
+        p.weapon = 'normal'; p.shield = 0; p.shieldHP = 0; p.weaponTimer = 0;
         this.emitEvent({ t: 'e', n: 'kill', i: p.id, x: p.x, y: p.y });
         this.checkGameEnd();
     }
@@ -839,10 +846,11 @@ class Room {
         p.alive = true; p.invT = INVINCE_T; p.landed = true; p.landedTimer = 60;
         const shBonus = (p.perkBonuses && p.perkBonuses.shield) || 0;
         p.shield = 1 + shBonus;
+        p.shieldHP = 2;
         for (const be of this.baseExps) {
             if (be.owner === p.id && be.t < be.dur && dist(p.x, p.y, be.x, be.y, this.worldW) < RESPAWN_KILL_R) {
                 const rMul = (p.perkBonuses && p.perkBonuses.respawnMul) || 1;
-                p.alive = false; p.lives--; p.respawnT = Math.floor(RESPAWN_T / 2 * rMul); p.shield = 0;
+                p.alive = false; p.lives--; p.respawnT = Math.floor(RESPAWN_T / 2 * rMul); p.shield = 0; p.shieldHP = 0;
                 this.emitEvent({ t: 'e', n: 'bugKill', i: p.id, x: p.x, y: p.y });
                 this.checkGameEnd();
                 return;
@@ -901,7 +909,7 @@ class Room {
 
     applyPickup(p, type) {
         if (type === 'heart') { p.lives = (p.lives || 0) + 1; }
-        else if (type === 'shield') { p.shield = (p.shield || 0) + 1; }
+        else if (type === 'shield') { p.shield = (p.shield || 0) + 1; p.shieldHP = 2; }
         else {
             const wMul = (p.perkBonuses && p.perkBonuses.wpnMul) || 1;
             p.weapon = type; p.weaponTimer = Math.floor(WEAPON_TIMER * wMul);
