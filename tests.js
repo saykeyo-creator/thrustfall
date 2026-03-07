@@ -6513,6 +6513,127 @@ section('227. Server Stores Cosmetics on Join');
     assert(sCode.includes("killEffect: 'default'"), 'lobbyPlayer defaults killEffect to default');
 }
 
+// =====================================================
+section('228. Delta Compression — Server Code Structure');
+// =====================================================
+{
+    const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    // FULL_SYNC_INTERVAL constant
+    assert(sCode.includes('FULL_SYNC_INTERVAL'), 'FULL_SYNC_INTERVAL constant defined');
+    // lastSentPlayers tracked on Room
+    assert(sCode.includes('lastSentPlayers'), 'Room tracks lastSentPlayers for delta');
+    // Delta flag 'd' in broadcast
+    assert(sCode.includes("d: isFull ? 0 : 1") || sCode.includes('d:isFull?0:1'), 'broadcast includes delta flag d');
+    // Delta comparison loop
+    assert(sCode.includes('cur[k] !== prev[k]'), 'delta compares current vs previous per field');
+    // Full state fallback when no lastSentPlayers
+    assert(sCode.includes('!this.lastSentPlayers'), 'full sync when no previous state');
+}
+
+// =====================================================
+section('229. Delta Compression — Merge Logic');
+// =====================================================
+{
+    // Simulate full state receive (d=0)
+    const fullState = {
+        t: 's', f: 2, d: 0,
+        p: [
+            { x: 100, y: 200, vx: 1, vy: -1, a: -1.571, al: true, l: 5, s: 0, iv: false, th: true, rv: false, la: false, fi: false, rT: 0, wp: 'normal', sh: 1, shp: 2, wt: 0, ft: 0 },
+            { x: 500, y: 300, vx: -0.5, vy: 0.5, a: 0.785, al: true, l: 5, s: 1, iv: false, th: false, rv: false, la: true, fi: false, rT: 0, wp: 'laser', sh: 0, shp: 0, wt: 300, ft: 0 }
+        ]
+    };
+
+    // Simulate client-side fullPlayerState after receiving full state
+    let fullPlayerState = fullState.p.map(p => Object.assign({}, p));
+    assert(fullPlayerState.length === 2, 'full state initializes 2 players');
+    assert(fullPlayerState[0].x === 100, 'player 0 x = 100');
+    assert(fullPlayerState[1].wp === 'laser', 'player 1 weapon = laser');
+
+    // Simulate delta receive (d=1) — only changed fields
+    const deltaState = {
+        t: 's', f: 4, d: 1,
+        p: [
+            { x: 105, y: 198, vx: 1.2, vy: -0.8, a: -1.55 },  // only position/velocity changed
+            { la: false, th: true, x: 502, y: 298 }              // took off, started thrusting, moved
+        ]
+    };
+
+    // Apply delta merge
+    for (let i = 0; i < deltaState.p.length; i++) {
+        const delta = deltaState.p[i];
+        for (const k in delta) fullPlayerState[i][k] = delta[k];
+    }
+
+    // Verify merged state
+    assert(fullPlayerState[0].x === 105, 'delta updated player 0 x');
+    assert(fullPlayerState[0].y === 198, 'delta updated player 0 y');
+    assert(fullPlayerState[0].al === true, 'unchanged field al preserved');
+    assert(fullPlayerState[0].l === 5, 'unchanged field lives preserved');
+    assert(fullPlayerState[0].sh === 1, 'unchanged field shield preserved');
+    assert(fullPlayerState[0].wp === 'normal', 'unchanged field weapon preserved');
+
+    assert(fullPlayerState[1].x === 502, 'delta updated player 1 x');
+    assert(fullPlayerState[1].la === false, 'delta updated player 1 landed');
+    assert(fullPlayerState[1].th === true, 'delta updated player 1 thrusting');
+    assert(fullPlayerState[1].wp === 'laser', 'unchanged field weapon preserved for p1');
+    assert(fullPlayerState[1].s === 1, 'unchanged field score preserved for p1');
+    assert(fullPlayerState[1].sh === 0, 'unchanged field shield preserved for p1');
+}
+
+// =====================================================
+section('230. Delta Compression — Periodic Full Sync');
+// =====================================================
+{
+    const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    // Full sync happens at FULL_SYNC_INTERVAL
+    assert(sCode.includes('frame % FULL_SYNC_INTERVAL === 0'), 'periodic full sync at FULL_SYNC_INTERVAL');
+    // Verify FULL_SYNC_INTERVAL is reasonable (30-120 frames)
+    const match = sCode.match(/FULL_SYNC_INTERVAL\s*=\s*(\d+)/);
+    assert(match, 'FULL_SYNC_INTERVAL has numeric value');
+    const interval = parseInt(match[1]);
+    assert(interval >= 30 && interval <= 120, 'FULL_SYNC_INTERVAL between 30-120 frames (' + interval + ')');
+}
+
+// =====================================================
+section('231. Delta Compression — Empty Delta');
+// =====================================================
+{
+    // When nothing changes, delta should produce empty objects
+    const prev = { x: 100, y: 200, al: true, l: 5, wp: 'normal' };
+    const cur = { x: 100, y: 200, al: true, l: 5, wp: 'normal' };
+    const delta = {};
+    for (const k in cur) { if (cur[k] !== prev[k]) delta[k] = cur[k]; }
+    assert(Object.keys(delta).length === 0, 'no changes = empty delta');
+
+    // Single field change
+    const cur2 = { x: 101, y: 200, al: true, l: 5, wp: 'normal' };
+    const delta2 = {};
+    for (const k in cur2) { if (cur2[k] !== prev[k]) delta2[k] = cur2[k]; }
+    assert(Object.keys(delta2).length === 1, 'one change = one field in delta');
+    assert(delta2.x === 101, 'delta contains changed field');
+    assert(delta2.y === undefined, 'delta omits unchanged field');
+
+    // All fields changed (e.g., respawn)
+    const cur3 = { x: 500, y: 400, al: false, l: 4, wp: 'spread' };
+    const delta3 = {};
+    for (const k in cur3) { if (cur3[k] !== prev[k]) delta3[k] = cur3[k]; }
+    assert(Object.keys(delta3).length === 5, 'all changed = full object in delta');
+}
+
+// =====================================================
+section('232. Delta Compression — Client fullPlayerState Reset');
+// =====================================================
+{
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    // fullPlayerState variable exists
+    assert(code.includes('fullPlayerState'), 'fullPlayerState variable exists in client');
+    // Reset in cleanup
+    assert(code.includes('fullPlayerState = []'), 'fullPlayerState reset in cleanup/beginGame');
+    // Delta merge logic in state receive
+    assert(code.includes("data.d === 1"), 'client checks delta flag');
+    assert(code.includes('fullPlayerState[i][k] = delta[k]') || code.includes('fullPlayerState[i][k]=delta[k]'), 'client merges delta fields');
+}
+
 console.log(`\n${'='.repeat(50)}`);
 console.log(`RESULTS: ${passed}/${total} passed, ${failed} failed`);
 console.log(`${'='.repeat(50)}`);

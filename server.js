@@ -21,6 +21,7 @@ const BASE_W = 50, BASE_H = 28;
 const BASE_EXP_DUR = 240, BASE_EXP_R = 65, RESPAWN_KILL_R = 58;
 const LAND_MAX_SPD = 2.2, LAND_MAX_ANGLE = 0.85;
 const STATE_INTERVAL = 2; // broadcast every 2 frames = 30 Hz
+const FULL_SYNC_INTERVAL = 60; // full state every 60 frames (~2s) as safety net
 const COLORS = ['#00ccff','#ff3366','#33ff66','#ffcc00','#ff66ff','#66ffcc','#ff8833','#aa66ff'];
 const PICKUP_R = 18, PICKUP_SPAWN_INTERVAL = 360, PICKUP_MAX = 5;
 const PICKUP_TYPES = [
@@ -294,6 +295,7 @@ class Room {
         this.baseExps = [];
         this.playerInputs = [];
         this.playerDeaths = [];
+        this.lastSentPlayers = null; // for delta compression
         this.ending = false;
     }
 
@@ -704,18 +706,35 @@ class Room {
             }
         }
 
-        // === BROADCAST STATE ===
+        // === BROADCAST STATE (delta compressed) ===
         if (this.frame % STATE_INTERVAL === 0) {
-            this.broadcast({
+            const fullPlayers = this.players.map(p => ({
+                x: rd(p.x), y: rd(p.y), vx: rd(p.vx), vy: rd(p.vy), a: rdA(p.angle),
+                al: p.alive, l: p.lives, s: p.score, iv: p.invT > 0,
+                th: p.thrusting, rv: p.revThrusting, la: p.landed, fi: p.firing,
+                rT: p.respawnT, wp: p.weapon, sh: p.shield, shp: p.shieldHP || 0,
+                wt: p.weaponTimer, ft: p.flashTimer
+            }));
+            const isFull = !this.lastSentPlayers || this.frame % FULL_SYNC_INTERVAL === 0;
+            let playerPayload;
+            if (isFull) {
+                playerPayload = fullPlayers;
+            } else {
+                // Delta: only send changed fields per player
+                playerPayload = fullPlayers.map((cur, i) => {
+                    const prev = this.lastSentPlayers[i];
+                    if (!prev) return cur;
+                    const d = {};
+                    for (const k in cur) { if (cur[k] !== prev[k]) d[k] = cur[k]; }
+                    return d;
+                });
+            }
+            this.lastSentPlayers = fullPlayers;
+            const msg = JSON.stringify({
                 t: 's',
                 f: this.frame,
-                p: this.players.map(p => ({
-                    x: rd(p.x), y: rd(p.y), vx: rd(p.vx), vy: rd(p.vy), a: rdA(p.angle),
-                    al: p.alive, l: p.lives, s: p.score, iv: p.invT > 0,
-                    th: p.thrusting, rv: p.revThrusting, la: p.landed, fi: p.firing,
-                    rT: p.respawnT, wp: p.weapon, sh: p.shield, shp: p.shieldHP || 0,
-                    wt: p.weaponTimer, ft: p.flashTimer
-                })),
+                d: isFull ? 0 : 1,
+                p: playerPayload,
                 b: this.bullets.map(b => ({
                     x: rd(b.x), y: rd(b.y), vx: rd(b.vx), vy: rd(b.vy),
                     o: b.owner, c: b.color, sz: b.sz || 2.5
@@ -731,6 +750,11 @@ class Room {
                     x: rd(pk.x), y: rd(pk.y), tp: pk.type, bp: rd(pk.bobPhase || 0)
                 }))
             });
+            for (const lp of this.lobbyPlayers) {
+                if (lp.ws.readyState === WebSocket.OPEN) {
+                    try { lp.ws.send(msg); } catch (e) { }
+                }
+            }
         }
     }
 

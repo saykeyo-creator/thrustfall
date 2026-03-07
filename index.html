@@ -358,6 +358,7 @@ let fireLatch = false; // latched fire input so quick taps aren't missed between
 const _li = { rot:0, thrust:false, revThrust:false, fire:false }; // reusable input object
 const _inputMsg = { t:'i', r:0, th:false, rv:false, f:false }; // reusable WS message
 let isMultiplayer = false; // true when using clientUpdate (enables perf shortcuts)
+let fullPlayerState = []; // maintained full player state for delta merging
 let screenShake = 0;
 let camAngle = -Math.PI/2; // smoothed camera rotation (ship-up view)
 let spectatingIdx = -1;
@@ -1066,6 +1067,17 @@ function handleServerMessage(data) {
             beginGame(data);
             break;
         case 's': // state update from server
+            // Delta merge: d=0 is full state, d=1 is delta (only changed fields)
+            if (data.d === 1 && fullPlayerState.length === data.p.length) {
+                for (let i = 0; i < data.p.length; i++) {
+                    const delta = data.p[i];
+                    for (const k in delta) fullPlayerState[i][k] = delta[k];
+                }
+            } else {
+                // Full state — deep copy player objects
+                fullPlayerState = data.p.map(p => Object.assign({}, p));
+            }
+            data.p = fullPlayerState.map(p => Object.assign({}, p));
             stateBuffer.push({ time: performance.now(), state: data });
             if (stateBuffer.length > 30) stateBuffer.shift();
             break;
@@ -1233,6 +1245,7 @@ function cleanup() {
     isRoomCreator = false;
     myIndex = -1;
     stateBuffer = [];
+    fullPlayerState = [];
     joystickTouch = null;
     fireTouch = null;
     survivalMode = false;
@@ -1659,6 +1672,7 @@ function beginGame(data) {
     killFeed = []; scoreFloats = [];
     playerDeaths = new Array(data.players.length).fill(0);
     stateBuffer = [];
+    fullPlayerState = [];
     draw._tg = null; draw._cg = null;
     lastLoopTime = 0; accumulator = 0; // reset fixed timestep
     dailyProgress = {homingKills:0,flawlessWin:false,uniqueLandings:0,survWave:0,gameKills:0,gamePickups:0,gameStreak:0};
