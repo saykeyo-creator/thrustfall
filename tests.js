@@ -3235,6 +3235,11 @@ const SHIP_SKINS = [
     {id:'phoenix', name:'PHOENIX',      desc:'Spread-wing firebird',       price:199,  color:'#ff4400',  shape:'phoenix'},
     {id:'gold',    name:'GOLD',         desc:'Ornate royal cruiser',       price:199,  color:'#ffcc00',  shape:'gold'},
     {id:'ghost',   name:'GHOST',        desc:'Ethereal phantom vessel',    price:149,  color:'#8866ff',  shape:'ghost'},
+    {id:'trident', name:'TRIDENT',      desc:'Three-pronged warfork',      price:149,  color:'#00ff88',  shape:'trident'},
+    {id:'manta',   name:'MANTA',        desc:'Wide curved stingray',       price:249,  color:'#0088ff',  shape:'manta'},
+    {id:'blade',   name:'BLADE',        desc:'Ultra-thin dagger ship',     price:149,  color:'#ff3366',  shape:'blade'},
+    {id:'fortress',name:'FORTRESS',     desc:'Heavy armored hexhull',      price:199,  color:'#ff8800',  shape:'fortress'},
+    {id:'falcon',  name:'FALCON',       desc:'Four-finned strike craft',   price:249,  color:'#44ddaa',  shape:'falcon'},
 ];
 const TRAIL_EFFECTS = [
     {id:'default', name:'STANDARD',    desc:'Default exhaust',             price:0,    free:true},
@@ -3355,7 +3360,7 @@ section('115. Perk Definitions & Constants');
 section('116. Cosmetic Definitions');
 // =====================================================
 {
-    assert(SHIP_SKINS.length === 6, 'exactly 6 ship skins defined');
+    assert(SHIP_SKINS.length === 11, 'exactly 11 ship skins defined');
     assert(TRAIL_EFFECTS.length === 6, 'exactly 6 trail effects defined');
 
     // Default items exist and are free
@@ -3807,9 +3812,39 @@ section('129. Cosmetic Rendering — Skin Properties');
     assert(ghost.color === '#8866ff', 'ghost skin is purple');
     assert(ghost.shape === 'ghost', 'ghost skin has unique ghost shape');
 
+    // Trident (three-pronged)
+    const trident = SHIP_SKINS.find(s => s.id === 'trident');
+    assert(trident.color === '#00ff88', 'trident skin is emerald green');
+    assert(trident.shape === 'trident', 'trident skin has unique trident shape');
+    assert(trident.price === 149, 'trident costs 149 cents');
+
+    // Manta (wide curved stingray)
+    const manta = SHIP_SKINS.find(s => s.id === 'manta');
+    assert(manta.color === '#0088ff', 'manta skin is ocean blue');
+    assert(manta.shape === 'manta', 'manta skin has unique manta shape');
+    assert(manta.price === 249, 'manta costs 249 cents');
+
+    // Blade (ultra-thin dagger)
+    const blade = SHIP_SKINS.find(s => s.id === 'blade');
+    assert(blade.color === '#ff3366', 'blade skin is hot pink');
+    assert(blade.shape === 'blade', 'blade skin has unique blade shape');
+    assert(blade.price === 149, 'blade costs 149 cents');
+
+    // Fortress (heavy hexagonal)
+    const fortress = SHIP_SKINS.find(s => s.id === 'fortress');
+    assert(fortress.color === '#ff8800', 'fortress skin is orange');
+    assert(fortress.shape === 'fortress', 'fortress skin has unique fortress shape');
+    assert(fortress.price === 199, 'fortress costs 199 cents');
+
+    // Falcon (four-finned)
+    const falcon = SHIP_SKINS.find(s => s.id === 'falcon');
+    assert(falcon.color === '#44ddaa', 'falcon skin is mint');
+    assert(falcon.shape === 'falcon', 'falcon skin has unique falcon shape');
+    assert(falcon.price === 249, 'falcon costs 249 cents');
+
     // Every skin has a unique shape
     const shapes = SHIP_SKINS.map(s => s.shape);
-    assert(new Set(shapes).size === SHIP_SKINS.length, 'all 6 skins have unique shapes');
+    assert(new Set(shapes).size === SHIP_SKINS.length, 'all 11 skins have unique shapes');
 
     // Skin color fallback: if no skin equipped, use player color
     const skinId = 'default';
@@ -4112,7 +4147,7 @@ section('138. Cosmetic Price Validation');
 
     // Total skin cost
     const totalSkinCost = SHIP_SKINS.reduce((s, sk) => s + (sk.price || 0), 0);
-    assert(totalSkinCost === 99 + 99 + 199 + 199 + 149, 'total skin cost = $7.45 (745 cents)');
+    assert(totalSkinCost === 99 + 99 + 199 + 199 + 149 + 149 + 249 + 149 + 199 + 249, 'total skin cost = $17.40 (1740 cents)');
 
     // Total trail cost
     const totalTrailCost = TRAIL_EFFECTS.reduce((s, t) => s + (t.price || 0), 0);
@@ -4386,7 +4421,7 @@ section('144. Unique Ship Shapes — All Skins');
     }
 
     // Known shape list
-    const validShapes = ['default', 'neon', 'stealth', 'phoenix', 'gold', 'ghost'];
+    const validShapes = ['default', 'neon', 'stealth', 'phoenix', 'gold', 'ghost', 'trident', 'manta', 'blade', 'fortress', 'falcon'];
     for (const s of SHIP_SKINS) {
         assert(validShapes.includes(s.shape), s.id + ' shape is a recognized shape type');
     }
@@ -5219,6 +5254,77 @@ section('146. Height-Fit Viewport — Tablet Controls Visible');
         assert(manifest.name === 'Thrustfall', 'manifest name is Thrustfall');
         assert(manifest.display === 'standalone', 'manifest display is standalone');
         assert(manifest.orientation === 'portrait', 'manifest orientation is portrait');
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+{ section('179. New Ship Designs — 5 Non-Triangle Hulls');
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+
+    // All 5 new skins exist in drawShipShape switch
+    assert(code.includes("case 'trident':"), 'drawShipShape handles trident');
+    assert(code.includes("case 'manta':"), 'drawShipShape handles manta');
+    assert(code.includes("case 'blade':"), 'drawShipShape handles blade');
+    assert(code.includes("case 'fortress':"), 'drawShipShape handles fortress');
+    assert(code.includes("case 'falcon':"), 'drawShipShape handles falcon');
+
+    // Trident uses 3 prong points (has at least 3 forward-facing moveTo/lineTo near -sz)
+    assert(code.includes('-sz * 0.75') && code.includes("case 'trident':"), 'trident has side prong geometry');
+
+    // Manta uses quadraticCurveTo for organic curves (not just lineTo)
+    const mantaIdx = code.indexOf("case 'manta':");
+    const mantaEnd = code.indexOf('break;', mantaIdx);
+    const mantaCode = code.substring(mantaIdx, mantaEnd);
+    assert(mantaCode.includes('quadraticCurveTo'), 'manta uses curved paths (not just straight lines)');
+
+    // Blade is narrow — its widest point uses small x-multiplier
+    const bladeIdx = code.indexOf("case 'blade':");
+    const bladeEnd = code.indexOf('break;', bladeIdx);
+    const bladeCode = code.substring(bladeIdx, bladeEnd);
+    assert(bladeCode.includes('-sz * 1.3'), 'blade has extra-long tip (1.3x size)');
+    assert(bladeCode.includes('sz * 0.4'), 'blade has crossguard');
+
+    // Fortress is wide/chunky — uses larger x-multipliers
+    // Search within drawShipShape specifically (not map terrain generators)
+    const drawShipIdx = code.indexOf('function drawShipShape');
+    const fortIdx = code.indexOf("case 'fortress':", drawShipIdx);
+    const fortEnd = code.indexOf('break;', fortIdx);
+    const fortCode = code.substring(fortIdx, fortEnd);
+    assert(fortCode.includes('-sz * 0.7') || fortCode.includes('sz * 0.7'), 'fortress has wide hull (0.7x)');
+    assert(!fortCode.includes('quadraticCurveTo'), 'fortress uses straight edges only (geometric)');
+
+    // Falcon has 4 fin tips (upper-left, upper-right, lower-left, lower-right)
+    const falcIdx = code.indexOf("case 'falcon':");
+    const falcEnd = code.indexOf('break;', falcIdx);
+    const falcCode = code.substring(falcIdx, falcEnd);
+    assert(falcCode.includes('-sz * 0.7, -sz * 0.6'), 'falcon has upper-left fin');
+    assert(falcCode.includes('sz * 0.7, -sz * 0.6'), 'falcon has upper-right fin');
+    assert(falcCode.includes('-sz * 0.75, sz * 0.45'), 'falcon has lower-left fin');
+    assert(falcCode.includes('sz * 0.75, sz * 0.45'), 'falcon has lower-right fin');
+
+    // Each new ship has a unique visual effect in game renderer
+    assert(code.includes("skinId==='trident'"), 'trident has in-game visual effect');
+    assert(code.includes("skinId==='manta'"), 'manta has in-game visual effect');
+    assert(code.includes("skinId==='blade'"), 'blade has in-game visual effect');
+    assert(code.includes("skinId==='fortress'"), 'fortress has in-game visual effect');
+    assert(code.includes("skinId==='falcon'"), 'falcon has in-game visual effect');
+
+    // No two new ships share the same visual geometry category
+    // Trident = multi-prong, Manta = curved organic, Blade = elongated thin,
+    // Fortress = hexagonal thick, Falcon = 4-fin splayed
+    const newSkins = SHIP_SKINS.filter(s => ['trident','manta','blade','fortress','falcon'].includes(s.id));
+    assert(newSkins.length === 5, 'all 5 new skins in SHIP_SKINS array');
+    const newIds = new Set(newSkins.map(s => s.id));
+    assert(newIds.size === 5, 'all 5 new skin IDs are unique');
+    const newShapes = new Set(newSkins.map(s => s.shape));
+    assert(newShapes.size === 5, 'all 5 new skins have unique shapes');
+
+    // All new skins are premium (non-free, priced)
+    for (const s of newSkins) {
+        assert(!s.free, s.id + ' is a premium skin');
+        assert(s.price >= 99, s.id + ' has a valid price');
+        assert(typeof s.color === 'string' && s.color.startsWith('#'), s.id + ' has a hex color');
+        assert(s.shape === s.id, s.id + ' shape matches its id');
     }
 }
 

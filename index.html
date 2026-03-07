@@ -403,6 +403,11 @@ const SHIP_SKINS = [
     {id:'phoenix', name:'PHOENIX',      desc:'Spread-wing firebird',       price:199,  color:'#ff4400',  shape:'phoenix'},
     {id:'gold',    name:'GOLD',         desc:'Ornate royal cruiser',       price:199,  color:'#ffcc00',  shape:'gold'},
     {id:'ghost',   name:'GHOST',        desc:'Ethereal phantom vessel',    price:149,  color:'#8866ff',  shape:'ghost'},
+    {id:'trident', name:'TRIDENT',      desc:'Three-pronged warfork',      price:149,  color:'#00ff88',  shape:'trident'},
+    {id:'manta',   name:'MANTA',        desc:'Wide curved stingray',       price:249,  color:'#0088ff',  shape:'manta'},
+    {id:'blade',   name:'BLADE',        desc:'Ultra-thin dagger ship',     price:149,  color:'#ff3366',  shape:'blade'},
+    {id:'fortress',name:'FORTRESS',     desc:'Heavy armored hexhull',      price:199,  color:'#ff8800',  shape:'fortress'},
+    {id:'falcon',  name:'FALCON',       desc:'Four-finned strike craft',   price:249,  color:'#44ddaa',  shape:'falcon'},
 ];
 const TRAIL_EFFECTS = [
     {id:'default', name:'STANDARD',    desc:'Default exhaust',             price:0,    free:true},
@@ -2694,6 +2699,87 @@ function drawShipShape(c, skinId, sz) {
             c.quadraticCurveTo(sz * 0.5, -sz * 0.5, 0, -sz * 1.0);
             c.closePath();
             break;
+        case 'trident':
+            // Three-pronged warfork — centre prong tallest, flanking prongs shorter
+            c.moveTo(0, -sz * 1.15);
+            c.lineTo(-sz * 0.12, -sz * 0.35);
+            c.lineTo(-sz * 0.5, -sz * 0.75);
+            c.lineTo(-sz * 0.6, -sz * 0.25);
+            c.lineTo(-sz * 0.45, sz * 0.3);
+            c.lineTo(-sz * 0.2, sz * 0.6);
+            c.lineTo(0, sz * 0.4);
+            c.lineTo(sz * 0.2, sz * 0.6);
+            c.lineTo(sz * 0.45, sz * 0.3);
+            c.lineTo(sz * 0.6, -sz * 0.25);
+            c.lineTo(sz * 0.5, -sz * 0.75);
+            c.lineTo(sz * 0.12, -sz * 0.35);
+            c.closePath();
+            break;
+        case 'manta':
+            // Manta ray — wide organic curved wings
+            c.moveTo(0, -sz * 0.9);
+            c.quadraticCurveTo(-sz * 0.3, -sz * 0.6, -sz * 0.5, -sz * 0.3);
+            c.quadraticCurveTo(-sz * 1.1, 0, -sz * 1.0, sz * 0.5);
+            c.quadraticCurveTo(-sz * 0.7, sz * 0.3, -sz * 0.3, sz * 0.4);
+            c.lineTo(-sz * 0.15, sz * 0.7);
+            c.lineTo(0, sz * 0.5);
+            c.lineTo(sz * 0.15, sz * 0.7);
+            c.lineTo(sz * 0.3, sz * 0.4);
+            c.quadraticCurveTo(sz * 0.7, sz * 0.3, sz * 1.0, sz * 0.5);
+            c.quadraticCurveTo(sz * 1.1, 0, sz * 0.5, -sz * 0.3);
+            c.quadraticCurveTo(sz * 0.3, -sz * 0.6, 0, -sz * 0.9);
+            c.closePath();
+            break;
+        case 'blade':
+            // Ultra-thin elongated dagger with crossguard
+            c.moveTo(0, -sz * 1.3);
+            c.lineTo(-sz * 0.08, -sz * 0.7);
+            c.lineTo(-sz * 0.18, -sz * 0.1);
+            c.lineTo(-sz * 0.4, sz * 0.15);
+            c.lineTo(-sz * 0.3, sz * 0.3);
+            c.lineTo(-sz * 0.15, sz * 0.25);
+            c.lineTo(-sz * 0.2, sz * 0.65);
+            c.lineTo(0, sz * 0.5);
+            c.lineTo(sz * 0.2, sz * 0.65);
+            c.lineTo(sz * 0.15, sz * 0.25);
+            c.lineTo(sz * 0.3, sz * 0.3);
+            c.lineTo(sz * 0.4, sz * 0.15);
+            c.lineTo(sz * 0.18, -sz * 0.1);
+            c.lineTo(sz * 0.08, -sz * 0.7);
+            c.closePath();
+            break;
+        case 'fortress':
+            // Heavy hexagonal armored hull
+            c.moveTo(0, -sz * 0.95);
+            c.lineTo(-sz * 0.6, -sz * 0.55);
+            c.lineTo(-sz * 0.7, sz * 0.0);
+            c.lineTo(-sz * 0.55, sz * 0.55);
+            c.lineTo(-sz * 0.2, sz * 0.7);
+            c.lineTo(0, sz * 0.6);
+            c.lineTo(sz * 0.2, sz * 0.7);
+            c.lineTo(sz * 0.55, sz * 0.55);
+            c.lineTo(sz * 0.7, sz * 0.0);
+            c.lineTo(sz * 0.6, -sz * 0.55);
+            c.closePath();
+            break;
+        case 'falcon':
+            // X-wing — four splayed fins from central fuselage
+            c.moveTo(0, -sz * 1.05);
+            c.lineTo(-sz * 0.15, -sz * 0.3);
+            c.lineTo(-sz * 0.7, -sz * 0.6);
+            c.lineTo(-sz * 0.35, -sz * 0.1);
+            c.lineTo(-sz * 0.75, sz * 0.45);
+            c.lineTo(-sz * 0.3, sz * 0.2);
+            c.lineTo(-sz * 0.15, sz * 0.55);
+            c.lineTo(0, sz * 0.45);
+            c.lineTo(sz * 0.15, sz * 0.55);
+            c.lineTo(sz * 0.3, sz * 0.2);
+            c.lineTo(sz * 0.75, sz * 0.45);
+            c.lineTo(sz * 0.35, -sz * 0.1);
+            c.lineTo(sz * 0.7, -sz * 0.6);
+            c.lineTo(sz * 0.15, -sz * 0.3);
+            c.closePath();
+            break;
         default:
             // Classic arrowhead
             c.moveTo(0, -sz);
@@ -2898,6 +2984,37 @@ function draw() {
         if (skinId==='ghost' && !flashing) {
             ctx.strokeStyle='rgba(136,102,255,'+(0.2+Math.sin(frame*0.12)*0.15)+')';ctx.lineWidth=1;
             ctx.beginPath();drawShipShape(ctx, skinId, SHIP_SZ*1.08);ctx.stroke();
+        }
+        // Trident prong energy
+        if (skinId==='trident' && !flashing) {
+            ctx.fillStyle='#00ff88';ctx.globalAlpha=0.4+Math.sin(frame*0.15)*0.25;
+            ctx.beginPath();ctx.arc(-SHIP_SZ*0.5,-SHIP_SZ*0.5,2.5,0,Math.PI*2);ctx.fill();
+            ctx.beginPath();ctx.arc(SHIP_SZ*0.5,-SHIP_SZ*0.5,2.5,0,Math.PI*2);ctx.fill();
+            ctx.beginPath();ctx.arc(0,-SHIP_SZ*0.9,2,0,Math.PI*2);ctx.fill();
+            ctx.globalAlpha=1;
+        }
+        // Manta wing pulse
+        if (skinId==='manta' && !flashing) {
+            ctx.strokeStyle='rgba(0,136,255,'+(0.25+Math.sin(frame*0.08)*0.2)+')';ctx.lineWidth=2;
+            ctx.beginPath();drawShipShape(ctx, skinId, SHIP_SZ*1.06);ctx.stroke();ctx.lineWidth=1;
+        }
+        // Blade edge shimmer
+        if (skinId==='blade' && !flashing) {
+            ctx.strokeStyle='rgba(255,51,102,'+(0.3+Math.sin(frame*0.18)*0.2)+')';ctx.lineWidth=1.5;
+            ctx.beginPath();ctx.moveTo(0,-SHIP_SZ*1.3);ctx.lineTo(0,SHIP_SZ*0.5);ctx.stroke();ctx.lineWidth=1;
+        }
+        // Fortress armor glow
+        if (skinId==='fortress' && !flashing) {
+            ctx.fillStyle='rgba(255,136,0,'+(0.12+Math.sin(frame*0.06)*0.08)+')';ctx.beginPath();drawShipShape(ctx,skinId,SHIP_SZ);ctx.fill();
+        }
+        // Falcon fin-tip thrusters
+        if (skinId==='falcon' && !flashing) {
+            ctx.fillStyle='#44ddaa';ctx.globalAlpha=0.5+Math.sin(frame*0.12)*0.3;
+            ctx.beginPath();ctx.arc(-SHIP_SZ*0.7,-SHIP_SZ*0.6,2,0,Math.PI*2);ctx.fill();
+            ctx.beginPath();ctx.arc(SHIP_SZ*0.7,-SHIP_SZ*0.6,2,0,Math.PI*2);ctx.fill();
+            ctx.beginPath();ctx.arc(-SHIP_SZ*0.75,SHIP_SZ*0.45,2,0,Math.PI*2);ctx.fill();
+            ctx.beginPath();ctx.arc(SHIP_SZ*0.75,SHIP_SZ*0.45,2,0,Math.PI*2);ctx.fill();
+            ctx.globalAlpha=1;
         }
         ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(0,-SHIP_SZ*.2,SHIP_SZ*.2,0,Math.PI*2);ctx.fill();
         // Color-blind shape indicator
