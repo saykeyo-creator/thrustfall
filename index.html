@@ -4215,7 +4215,8 @@ setTimeout(applySavedName, 100);
 (function() {
     const splash = document.getElementById('menuSplash');
     if (!splash) return;
-    function dismissSplash() {
+    function dismissSplash(e) {
+        if (e.type === 'touchstart') e.preventDefault(); // prevent ghost click hitting menu buttons
         splash.removeEventListener('click', dismissSplash);
         splash.removeEventListener('touchstart', dismissSplash);
         initAudio();
@@ -4224,7 +4225,7 @@ setTimeout(applySavedName, 100);
         startMenuTheme();
     }
     splash.addEventListener('click', dismissSplash);
-    splash.addEventListener('touchstart', dismissSplash);
+    splash.addEventListener('touchstart', dismissSplash, {passive: false});
 })();
 
 // Register Service Worker for offline support
