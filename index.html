@@ -231,33 +231,20 @@ Land on bases to refuel · Collect weapons · Survive!
 </div>
 
 <!-- PREMIUM COSMETIC SHOP -->
-<div class="overlay" id="cosmeticShopScreen" style="justify-content:flex-start;overflow:hidden;box-sizing:border-box;padding:max(.3em,env(safe-area-inset-top)) max(.5em,env(safe-area-inset-right)) max(.4em,env(safe-area-inset-bottom)) max(.5em,env(safe-area-inset-left))">
-<!-- Top bar: title + coins in one line -->
-<div style="flex-shrink:0;display:flex;align-items:center;justify-content:space-between;width:min(360px,95vw);margin:0 auto .2em auto">
-<h2 style="margin:0;font-size:clamp(1rem,3.5vw,1.3rem)">🎨 SHOP</h2>
-<div id="coinDisplay" style="color:#ffcc00;font-size:clamp(.8rem,2.8vw,.95rem);margin:0"></div>
+<div class="overlay" id="cosmeticShopScreen" style="justify-content:flex-start;overflow:hidden;box-sizing:border-box;padding:max(.4em,env(safe-area-inset-top)) max(.5em,env(safe-area-inset-right)) max(.4em,env(safe-area-inset-bottom)) max(.5em,env(safe-area-inset-left))">
+<div style="flex-shrink:0;display:flex;align-items:center;justify-content:space-between;width:min(380px,95vw);margin:0 auto .3em auto">
+<h2 style="margin:0;font-size:clamp(1.1rem,4vw,1.4rem)">🎨 SHOP</h2>
+<div id="coinDisplay" style="color:#ffcc00;font-size:clamp(.85rem,3vw,1rem);margin:0"></div>
 </div>
-<!-- Preview area: canvas + label side by side in a styled container -->
-<div style="flex-shrink:0;width:min(360px,95vw);margin:0 auto .3em auto;display:flex;align-items:center;gap:.6em;padding:.5em;border-radius:10px;border:1px solid #333;background:rgba(10,0,18,0.8)">
-<canvas id="shopPreviewCanvas" width="140" height="140" style="width:min(100px,28vw);height:min(100px,28vw);border-radius:8px;flex-shrink:0;background:#0a0012"></canvas>
-<div style="flex:1;min-width:0">
-<div id="shopPreviewLabel" style="color:#ccc;font-size:clamp(.8rem,2.8vw,.95rem);font-weight:bold;margin-bottom:.15em"></div>
-<div id="shopPreviewDesc" style="color:#777;font-size:clamp(.65rem,2.2vw,.8rem);margin-bottom:.3em"></div>
-<div id="shopPreviewAction"></div>
+<div id="shopCategoryTabs" style="display:flex;gap:.3em;margin:0 auto .3em auto;flex-shrink:0;width:min(380px,95vw)">
+<button class="btn sm" id="shopTab_skins" onclick="selectShopCategory('skins')" style="flex:1;font-size:clamp(.7rem,2.5vw,.9rem);padding:.45em .2em;min-width:0">🚀 SHIPS</button>
+<button class="btn sm" id="shopTab_trails" onclick="selectShopCategory('trails')" style="flex:1;font-size:clamp(.7rem,2.5vw,.9rem);padding:.45em .2em;min-width:0">🔥 TRAILS</button>
+<button class="btn sm" id="shopTab_engines" onclick="selectShopCategory('engines')" style="flex:1;font-size:clamp(.7rem,2.5vw,.9rem);padding:.45em .2em;min-width:0">🔊 ENGINES</button>
+<button class="btn sm" id="shopTab_killfx" onclick="selectShopCategory('killfx')" style="flex:1;font-size:clamp(.7rem,2.5vw,.9rem);padding:.45em .2em;min-width:0">💥 KILLS</button>
 </div>
-</div>
-<!-- Category tabs -->
-<div id="shopCategoryTabs" style="display:flex;gap:.3em;margin:0 auto .3em auto;flex-shrink:0;width:min(360px,95vw)">
-<button class="btn sm" id="shopTab_skins" onclick="selectShopCategory('skins')" style="flex:1;font-size:clamp(.7rem,2.2vw,.85rem);padding:.4em .2em;min-width:0">🚀 SHIPS</button>
-<button class="btn sm" id="shopTab_trails" onclick="selectShopCategory('trails')" style="flex:1;font-size:clamp(.7rem,2.2vw,.85rem);padding:.4em .2em;min-width:0">🔥 TRAILS</button>
-<button class="btn sm" id="shopTab_engines" onclick="selectShopCategory('engines')" style="flex:1;font-size:clamp(.7rem,2.2vw,.85rem);padding:.4em .2em;min-width:0">🔊 ENGINES</button>
-<button class="btn sm" id="shopTab_killfx" onclick="selectShopCategory('killfx')" style="flex:1;font-size:clamp(.7rem,2.2vw,.85rem);padding:.4em .2em;min-width:0">💥 KILLS</button>
-</div>
-<!-- Scrollable item list -->
-<div id="cosmeticList" style="width:min(360px,95vw);margin:0 auto;flex:1 1 0;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch"></div>
-<!-- Bottom -->
-<div style="flex-shrink:0;text-align:center;margin-top:.2em">
-<button class="btn sm" onclick="stopShopPreview();showMenu()">BACK</button>
+<div id="cosmeticList" style="width:min(380px,95vw);margin:0 auto;flex:1 1 0;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch"></div>
+<div style="flex-shrink:0;text-align:center;margin-top:.3em">
+<button class="btn sm" onclick="showMenu()">BACK</button>
 </div>
 </div>
 
@@ -3621,10 +3608,6 @@ function unequipPerk(id) {
 // COSMETIC SHOP (Premium — mock payments)
 // =====================================================
 let cosmeticTab = 'skins';
-let shopPreviewAF = null;
-let shopPreviewItemId = null; // which item is being previewed
-let shopPreviewParticles = []; // particles for animated previews
-let shopPreviewT = 0; // animation time counter
 
 function showCosmeticShop() {
     showScreen('cosmeticShopScreen');
@@ -3633,7 +3616,6 @@ function showCosmeticShop() {
 
 function selectShopCategory(tab) {
     cosmeticTab = tab;
-    // Highlight active tab
     ['skins','trails','engines','killfx'].forEach(t => {
         const btn = document.getElementById('shopTab_' + t);
         if (btn) {
@@ -3641,11 +3623,7 @@ function selectShopCategory(tab) {
             btn.style.color = t === tab ? '#ffcc00' : '';
         }
     });
-    // Select the currently equipped item by default
-    const cat = getShopCategory(tab);
-    shopPreviewItemId = cat.active;
     renderCosmeticShop();
-    startShopPreview();
 }
 
 function getShopCategory(tab) {
@@ -3655,340 +3633,124 @@ function getShopCategory(tab) {
     return                        { items: KILL_EFFECTS,  owned: shopData.ownedKillEffects, active: shopData.activeKillEffect };
 }
 
-function stopShopPreview() {
-    if (shopPreviewAF) { cancelAnimationFrame(shopPreviewAF); shopPreviewAF = null; }
-}
+function stopShopPreview() {} // no-op, kept for BACK button compat
 
-function startShopPreview() {
-    stopShopPreview();
-    shopPreviewParticles = [];
-    shopPreviewT = 0;
-    const cv = document.getElementById('shopPreviewCanvas');
-    if (!cv) return;
-    const c = cv.getContext('2d');
-    const W = cv.width, H = cv.height;
-
-    function loop() {
-        shopPreviewT++;
-        c.fillStyle = '#0a0012';
-        c.fillRect(0, 0, W, H);
-
-        const cat = getShopCategory(cosmeticTab);
-        const item = cat.items.find(i => i.id === shopPreviewItemId) || cat.items[0];
-        if (!item) { shopPreviewAF = requestAnimationFrame(loop); return; }
-
-        if (cosmeticTab === 'skins') drawSkinPreview(c, W, H, item);
-        else if (cosmeticTab === 'trails') drawTrailPreview(c, W, H, item);
-        else if (cosmeticTab === 'engines') drawEnginePreview(c, W, H, item);
-        else drawKillPreview(c, W, H, item);
-
-        shopPreviewAF = requestAnimationFrame(loop);
-    }
-    shopPreviewAF = requestAnimationFrame(loop);
-}
-
-function drawSkinPreview(c, W, H, item) {
-    const cx = W / 2, cy = H / 2 - 8;
-    const bob = Math.sin(shopPreviewT * 0.04) * 4;
-    const sz = 32;
+function drawInlineShip(canvas, item) {
+    const sz = canvas.width;
+    const c = canvas.getContext('2d');
+    c.clearRect(0, 0, sz, sz);
+    c.fillStyle = '#0a0012';
+    c.fillRect(0, 0, sz, sz);
+    const shipSz = sz * 0.32;
+    const cx = sz / 2, cy = sz / 2;
     const sColor = item.color || '#00ccff';
-
-    // Glow behind ship
+    // Glow
     c.save();
-    c.shadowColor = sColor;
-    c.shadowBlur = 25;
-    c.fillStyle = sColor;
-    c.globalAlpha = 0.15;
-    c.beginPath(); c.arc(cx, cy + bob, sz * 1.2, 0, Math.PI * 2); c.fill();
+    c.shadowColor = sColor; c.shadowBlur = 10;
+    c.fillStyle = sColor; c.globalAlpha = 0.15;
+    c.beginPath(); c.arc(cx, cy, shipSz * 1.1, 0, Math.PI * 2); c.fill();
     c.restore();
-
-    // Engine flame
-    c.save(); c.translate(cx, cy + bob);
-    const fLen = 14 + Math.sin(shopPreviewT * 0.15) * 6 + Math.random() * 4;
-    const trailItem = TRAIL_EFFECTS.find(t => t.id === shopData.activeTrail) || TRAIL_EFFECTS[0];
-    const fColors = trailItem.rainbow ? ['#ff0000','#ffaa00','#00ff00','#0088ff','#aa00ff'] : (trailItem.colors || ['#ff8800','#ffcc00']);
-    const fColor = fColors[Math.floor(shopPreviewT * 0.1) % fColors.length];
-    c.fillStyle = fColor;
-    c.globalAlpha = 0.7;
-    c.beginPath(); c.moveTo(-6, sz * 0.5); c.lineTo(0, sz * 0.5 + fLen); c.lineTo(6, sz * 0.5); c.closePath(); c.fill();
-    c.fillStyle = '#fff'; c.globalAlpha = 0.3;
-    c.beginPath(); c.moveTo(-2, sz * 0.5); c.lineTo(0, sz * 0.5 + fLen * 0.5); c.lineTo(2, sz * 0.5); c.closePath(); c.fill();
+    // Flame
+    c.save(); c.translate(cx, cy);
+    c.fillStyle = '#ff8800'; c.globalAlpha = 0.6;
+    c.beginPath(); c.moveTo(-4, shipSz * 0.5); c.lineTo(0, shipSz * 0.5 + 10); c.lineTo(4, shipSz * 0.5); c.closePath(); c.fill();
     c.restore();
-
-    // Ship body
-    c.save(); c.translate(cx, cy + bob);
-    if (item.id === 'neon') { c.shadowColor = sColor; c.shadowBlur = 12; }
+    // Ship
+    c.save(); c.translate(cx, cy);
+    if (item.id === 'neon') { c.shadowColor = sColor; c.shadowBlur = 8; }
     if (item.id === 'ghost') { c.globalAlpha = 0.6; }
     c.fillStyle = sColor;
-    c.beginPath(); drawShipShape(c, item.id, sz); c.fill();
+    c.beginPath(); drawShipShape(c, item.id, shipSz); c.fill();
     c.strokeStyle = item.id === 'gold' ? '#ffee88' : 'rgba(255,255,255,0.5)';
-    c.lineWidth = 1.2; c.stroke();
-    // Cockpit
-    c.fillStyle = '#fff';
-    c.beginPath(); c.arc(0, -sz * 0.2, sz * 0.2, 0, Math.PI * 2); c.fill();
-    c.shadowBlur = 0; c.globalAlpha = 1;
+    c.lineWidth = 1; c.stroke();
+    c.fillStyle = '#fff'; c.globalAlpha = 1;
+    c.beginPath(); c.arc(0, -shipSz * 0.2, shipSz * 0.18, 0, Math.PI * 2); c.fill();
+    c.shadowBlur = 0;
     c.restore();
-}
-
-function drawTrailPreview(c, W, H, item) {
-    const cx = W / 2, cy = 55;
-    const sz = 22;
-
-    // Spawn particles
-    if (shopPreviewT % 2 === 0) {
-        const cols = item.rainbow ? ['#ff0000','#ff8800','#ffff00','#00ff44','#0088ff','#8800ff'] : (item.colors || ['#ff8800','#ffcc00']);
-        shopPreviewParticles.push({
-            x: cx + (Math.random() - 0.5) * 6,
-            y: cy + sz * 0.5 + 3,
-            vx: (Math.random() - 0.5) * 0.5,
-            vy: 1.2 + Math.random() * 0.6,
-            life: 1,
-            color: cols[Math.floor(Math.random() * cols.length)],
-            sz: 2 + Math.random() * 2.5
-        });
-    }
-
-    // Update & draw particles
-    for (let i = shopPreviewParticles.length - 1; i >= 0; i--) {
-        const p = shopPreviewParticles[i];
-        p.x += p.vx; p.y += p.vy; p.life -= 0.012;
-        if (p.life <= 0 || p.y > H - 5) { shopPreviewParticles.splice(i, 1); continue; }
-        c.globalAlpha = p.life * 0.8;
-        c.fillStyle = p.color;
-        c.beginPath(); c.arc(p.x, p.y, p.sz * p.life, 0, Math.PI * 2); c.fill();
-    }
-    c.globalAlpha = 1;
-
-    // Ship on top
-    c.save(); c.translate(cx, cy);
-    const skinItem = SHIP_SKINS.find(s => s.id === shopData.activeSkin) || SHIP_SKINS[0];
-    c.fillStyle = skinItem.color || '#00ccff';
-    c.beginPath(); drawShipShape(c, skinItem.id, sz); c.fill();
-    c.strokeStyle = 'rgba(255,255,255,0.4)'; c.lineWidth = 0.8; c.stroke();
-    c.fillStyle = '#fff'; c.beginPath(); c.arc(0, -sz * 0.2, sz * 0.15, 0, Math.PI * 2); c.fill();
-    c.restore();
-}
-
-function drawEnginePreview(c, W, H, item) {
-    const cx = W / 2, cy = H / 2 - 10;
-    const sz = 26;
-    const bob = Math.sin(shopPreviewT * 0.04) * 3;
-
-    // Sound wave rings
-    const eColor = item.id === 'default' ? '#ff8800' : item.id === 'rumble' ? '#ff4400' : item.id === 'whine' ? '#88ddff' : item.id === 'pulse' ? '#44ff88' : item.id === 'roar' ? '#ff6600' : '#aaddff';
-    for (let i = 0; i < 3; i++) {
-        const phase = ((shopPreviewT * 0.03 + i * 0.33) % 1);
-        c.globalAlpha = (1 - phase) * 0.3;
-        c.strokeStyle = eColor;
-        c.lineWidth = 2;
-        c.beginPath();
-        c.arc(cx, cy + bob + sz * 0.6, 12 + phase * 45, 0, Math.PI * 2);
-        c.stroke();
-    }
-    c.globalAlpha = 1;
-
-    // Engine flame with pulsing
-    c.save(); c.translate(cx, cy + bob);
-    const fLen = 16 + Math.sin(shopPreviewT * 0.12) * 8 + Math.random() * 3;
-    c.fillStyle = eColor; c.globalAlpha = 0.65;
-    c.beginPath(); c.moveTo(-7, sz * 0.5); c.lineTo(0, sz * 0.5 + fLen); c.lineTo(7, sz * 0.5); c.closePath(); c.fill();
-    c.restore();
-
-    // Ship
-    c.save(); c.translate(cx, cy + bob);
-    const skinItem = SHIP_SKINS.find(s => s.id === shopData.activeSkin) || SHIP_SKINS[0];
-    c.fillStyle = skinItem.color || '#00ccff';
-    c.beginPath(); drawShipShape(c, skinItem.id, sz); c.fill();
-    c.strokeStyle = 'rgba(255,255,255,0.4)'; c.lineWidth = 0.8; c.stroke();
-    c.fillStyle = '#fff'; c.beginPath(); c.arc(0, -sz * 0.2, sz * 0.15, 0, Math.PI * 2); c.fill();
-    c.restore();
-
-    // Tap to hear label
-    c.fillStyle = '#666'; c.font = '10px monospace'; c.textAlign = 'center';
-    c.fillText('TAP PREVIEW TO HEAR', cx, H - 12);
-}
-
-function drawKillPreview(c, W, H, item) {
-    const cx = W / 2, cy = H / 2;
-    const kColor = item.color || '#ff4400';
-    const cycle = (shopPreviewT % 120) / 120; // loops every 2 seconds
-
-    if (item.id === 'vortex') {
-        // Spiraling inward vortex
-        for (let i = 0; i < 8; i++) {
-            const a = (i / 8) * Math.PI * 2 + shopPreviewT * 0.06;
-            const r = 45 * (1 - cycle) * (0.5 + Math.sin(a * 3) * 0.2);
-            c.globalAlpha = (1 - cycle) * 0.7;
-            c.fillStyle = kColor;
-            c.beginPath(); c.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r, 3 + (1 - cycle) * 4, 0, Math.PI * 2); c.fill();
-        }
-    } else if (item.id === 'electric') {
-        // Lightning bolts from center
-        for (let i = 0; i < 6; i++) {
-            const a = (i / 6) * Math.PI * 2 + shopPreviewT * 0.02;
-            c.strokeStyle = kColor; c.lineWidth = 1.5;
-            c.globalAlpha = (1 - cycle) * 0.8;
-            c.beginPath(); c.moveTo(cx, cy);
-            let px = cx, py = cy;
-            for (let j = 0; j < 4; j++) {
-                px += Math.cos(a) * 12 + (Math.random() - 0.5) * 8;
-                py += Math.sin(a) * 12 + (Math.random() - 0.5) * 8;
-                c.lineTo(px, py);
-            }
-            c.stroke();
-        }
-    } else if (item.id === 'shatter') {
-        // Glass shards flying outward
-        for (let i = 0; i < 10; i++) {
-            const a = (i / 10) * Math.PI * 2 + i * 0.5;
-            const r = cycle * 50;
-            c.globalAlpha = (1 - cycle) * 0.7;
-            c.fillStyle = kColor;
-            c.save(); c.translate(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
-            c.rotate(a + shopPreviewT * 0.05);
-            c.fillRect(-3, -1.5, 6, 3);
-            c.restore();
-        }
-    } else if (item.id === 'nova') {
-        // Expanding ring
-        c.globalAlpha = (1 - cycle) * 0.6;
-        c.strokeStyle = kColor; c.lineWidth = 3 * (1 - cycle);
-        c.beginPath(); c.arc(cx, cy, cycle * 55, 0, Math.PI * 2); c.stroke();
-        c.strokeStyle = '#fff'; c.lineWidth = 1;
-        c.beginPath(); c.arc(cx, cy, cycle * 40, 0, Math.PI * 2); c.stroke();
-        // Center flash
-        if (cycle < 0.2) {
-            c.globalAlpha = (0.2 - cycle) * 3;
-            c.fillStyle = '#fff';
-            c.beginPath(); c.arc(cx, cy, 8 * (1 - cycle * 5), 0, Math.PI * 2); c.fill();
-        }
-    } else if (item.id === 'void') {
-        // Dark matter pulling inward
-        for (let i = 0; i < 12; i++) {
-            const a = (i / 12) * Math.PI * 2 + shopPreviewT * 0.03;
-            const r = 50 * (1 - cycle);
-            c.globalAlpha = cycle * 0.6;
-            c.fillStyle = kColor;
-            c.beginPath(); c.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r, 2, 0, Math.PI * 2); c.fill();
-        }
-        // Central dark spot
-        c.globalAlpha = cycle * 0.5;
-        c.fillStyle = '#110022';
-        c.beginPath(); c.arc(cx, cy, 8 + cycle * 10, 0, Math.PI * 2); c.fill();
-    } else {
-        // Default explosion — expanding particles
-        for (let i = 0; i < 8; i++) {
-            const a = (i / 8) * Math.PI * 2;
-            const r = cycle * 45;
-            c.globalAlpha = (1 - cycle) * 0.8;
-            c.fillStyle = i % 2 === 0 ? '#ff4400' : '#ffaa00';
-            c.beginPath(); c.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r, 3 * (1 - cycle), 0, Math.PI * 2); c.fill();
-        }
-        if (cycle < 0.3) {
-            c.globalAlpha = (0.3 - cycle) * 2;
-            c.fillStyle = '#ff8800';
-            c.beginPath(); c.arc(cx, cy, 12 * (1 - cycle * 3), 0, Math.PI * 2); c.fill();
-        }
-    }
-    c.globalAlpha = 1;
 }
 
 function renderCosmeticShop() {
-    document.getElementById('coinDisplay').innerHTML = '💰 Balance: <span style="color:#ffcc00">$' + (shopData.coins / 100).toFixed(2) + '</span>';
+    document.getElementById('coinDisplay').innerHTML = '💰 <span style="color:#ffcc00">$' + (shopData.coins / 100).toFixed(2) + '</span>';
     const list = document.getElementById('cosmeticList');
     list.innerHTML = '';
-
     const cat = getShopCategory(cosmeticTab);
-    const item = cat.items.find(i => i.id === shopPreviewItemId) || cat.items[0];
-
-    // Update preview info beside canvas
-    const label = document.getElementById('shopPreviewLabel');
-    const descEl = document.getElementById('shopPreviewDesc');
-    const actionEl = document.getElementById('shopPreviewAction');
-    if (item) {
-        const isOwned = cat.owned.includes(item.id) || item.free;
-        const isEquipped = cat.active === item.id;
-        label.textContent = item.name + (isEquipped ? ' ✓' : '');
-        label.style.color = isEquipped ? '#ffcc00' : '#ccc';
-        descEl.textContent = item.desc + (cosmeticTab === 'engines' ? ' — tap preview to hear' : '');
-        // Action button next to preview
-        actionEl.innerHTML = '';
-        if (!isEquipped) {
-            const abtn = document.createElement('button');
-            abtn.className = 'btn sm';
-            abtn.style.cssText = 'font-size:clamp(.7rem,2.5vw,.9rem);padding:.35em .8em;margin:0';
-            if (isOwned) {
-                abtn.textContent = 'EQUIP';
-                abtn.onclick = () => equipCosmetic(cosmeticTab, item.id);
-            } else {
-                abtn.textContent = 'BUY $' + (item.price / 100).toFixed(2);
-                abtn.style.borderColor = '#ffcc00'; abtn.style.color = '#ffcc00';
-                abtn.onclick = () => buyCosmetic(cosmeticTab, item.id, item.price);
-            }
-            actionEl.appendChild(abtn);
-        }
-    }
-
-    // Tap-to-hear for engine previews
-    const cv = document.getElementById('shopPreviewCanvas');
-    cv.onclick = cosmeticTab === 'engines' ? () => { initAudio(); engineSnd(shopPreviewItemId || 'default', 0.5); } : null;
-    cv.style.cursor = cosmeticTab === 'engines' ? 'pointer' : 'default';
 
     for (const itm of cat.items) {
         const isOwned = cat.owned.includes(itm.id) || itm.free;
         const isActive = cat.active === itm.id;
-        const isSelected = shopPreviewItemId === itm.id;
+
         const row = document.createElement('div');
-        row.style.cssText = 'padding:.6em .7em;margin:.25em 0;border-radius:8px;border:2px solid ' +
-            (isSelected ? '#ffcc00' : isActive ? '#666' : '#333') + ';background:' +
-            (isSelected ? 'rgba(255,204,0,0.12)' : isActive ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.02)') +
-            ';display:flex;align-items:center;gap:.6em;cursor:pointer;user-select:none;box-sizing:border-box;min-height:48px';
-        row.addEventListener('click', ((id) => () => {
-            shopPreviewItemId = id;
-            shopPreviewParticles = [];
-            renderCosmeticShop();
-        })(itm.id));
+        row.style.cssText = 'padding:.5em;margin:.3em 0;border-radius:10px;border:2px solid ' +
+            (isActive ? '#ffcc00' : '#333') + ';background:' +
+            (isActive ? 'rgba(255,204,0,0.08)' : 'rgba(255,255,255,0.025)') +
+            ';display:flex;align-items:center;gap:.6em;box-sizing:border-box';
 
-        // Color swatch — visible on mobile
-        const dot = document.createElement('div');
-        dot.style.cssText = 'width:18px;height:18px;border-radius:50%;flex-shrink:0;border:1px solid rgba(255,255,255,0.15)';
+        // INLINE PREVIEW — what this cosmetic looks like
         if (cosmeticTab === 'skins') {
-            dot.style.background = itm.color || '#00ccff';
+            const pc = document.createElement('canvas');
+            pc.width = 64; pc.height = 64;
+            pc.style.cssText = 'width:56px;height:56px;border-radius:8px;flex-shrink:0';
+            drawInlineShip(pc, itm);
+            row.appendChild(pc);
         } else if (cosmeticTab === 'trails') {
-            dot.style.background = itm.rainbow ? 'linear-gradient(135deg,red,blue,green)' : (itm.colors ? itm.colors[0] : '#ff8800');
+            const sw = document.createElement('div');
+            sw.style.cssText = 'width:56px;height:56px;border-radius:8px;flex-shrink:0;overflow:hidden';
+            if (itm.rainbow) {
+                sw.style.background = 'linear-gradient(180deg,red,orange,yellow,green,blue,purple)';
+            } else if (itm.colors) {
+                sw.style.background = 'linear-gradient(180deg,' + itm.colors.join(',') + ')';
+            } else {
+                sw.style.background = 'linear-gradient(180deg,#ff8800,#ffcc00)';
+            }
+            row.appendChild(sw);
         } else if (cosmeticTab === 'engines') {
-            dot.style.background = itm.id === 'default' ? '#ff8800' : itm.id === 'rumble' ? '#ff4400' : itm.id === 'whine' ? '#88ddff' : itm.id === 'pulse' ? '#44ff88' : itm.id === 'roar' ? '#ff6600' : '#aaddff';
+            const eColor = itm.id === 'default' ? '#ff8800' : itm.id === 'rumble' ? '#ff4400' : itm.id === 'whine' ? '#88ddff' : itm.id === 'pulse' ? '#44ff88' : itm.id === 'roar' ? '#ff6600' : '#aaddff';
+            const eBox = document.createElement('div');
+            eBox.style.cssText = 'width:56px;height:56px;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:28px;background:rgba(255,255,255,0.03);border:1px solid #333;cursor:pointer;color:' + eColor;
+            eBox.textContent = '🔊';
+            eBox.addEventListener('click', ((id) => (e) => { e.stopPropagation(); initAudio(); engineSnd(id, 0.5); })(itm.id));
+            row.appendChild(eBox);
         } else {
-            dot.style.background = itm.color || '#ff4400';
+            const kColor = itm.color || '#ff4400';
+            const kBox = document.createElement('div');
+            kBox.style.cssText = 'width:56px;height:56px;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:28px;background:rgba(255,255,255,0.03);border:1px solid #333;color:' + kColor;
+            kBox.textContent = '💥';
+            row.appendChild(kBox);
         }
-        if (isSelected) { dot.style.boxShadow = '0 0 8px ' + dot.style.background; }
-        row.appendChild(dot);
 
-        // Info — name + desc
-        const info = document.createElement('div');
-        info.style.cssText = 'flex:1;min-width:0;overflow:hidden';
-        info.innerHTML = '<div style="color:' + (isOwned ? '#eee' : '#aaa') + ';font-size:clamp(.8rem,2.8vw,1rem);font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' +
-            itm.name + (isActive ? ' <span style="color:#ffcc00">✓</span>' : '') + '</div>' +
-            '<div style="color:#666;font-size:clamp(.6rem,2vw,.75rem);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + itm.desc + '</div>';
-        row.appendChild(info);
+        // INFO + ACTION column
+        const right = document.createElement('div');
+        right.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;gap:.2em';
 
-        // Action button — proper touch target
+        const name = document.createElement('div');
+        name.style.cssText = 'color:' + (isOwned ? '#eee' : '#aaa') + ';font-size:clamp(.85rem,3vw,1.05rem);font-weight:bold';
+        name.textContent = itm.name;
+        right.appendChild(name);
+
+        const desc = document.createElement('div');
+        desc.style.cssText = 'color:#777;font-size:clamp(.65rem,2.2vw,.8rem)';
+        desc.textContent = itm.desc;
+        right.appendChild(desc);
+
+        // Action button inside the row
         const btn = document.createElement('button');
         btn.className = 'btn sm';
-        btn.style.cssText = 'min-width:70px;font-size:clamp(.7rem,2.2vw,.85rem);padding:.4em .6em;flex-shrink:0';
+        btn.style.cssText = 'align-self:flex-start;font-size:clamp(.7rem,2.2vw,.85rem);padding:.3em .8em;margin-top:.1em';
         if (isActive) {
-            btn.textContent = 'EQUIPPED';
+            btn.textContent = '✓ EQUIPPED';
             btn.disabled = true;
-            btn.style.borderColor = '#555'; btn.style.color = '#555';
+            btn.style.borderColor = '#ffcc00'; btn.style.color = '#ffcc00'; btn.style.opacity = '0.6';
         } else if (isOwned) {
             btn.textContent = 'EQUIP';
             btn.onclick = (e) => { e.stopPropagation(); equipCosmetic(cosmeticTab, itm.id); };
         } else {
-            btn.textContent = '$' + (itm.price / 100).toFixed(2);
+            btn.textContent = 'BUY $' + (itm.price / 100).toFixed(2);
             btn.style.borderColor = '#ffcc00'; btn.style.color = '#ffcc00';
             btn.onclick = (e) => { e.stopPropagation(); buyCosmetic(cosmeticTab, itm.id, itm.price); };
         }
-        row.appendChild(btn);
+        right.appendChild(btn);
+
+        row.appendChild(right);
         list.appendChild(row);
     }
 }
@@ -3998,7 +3760,6 @@ function equipCosmetic(tab, id) {
     else if (tab === 'trails') shopData.activeTrail = id;
     else if (tab === 'engines') shopData.activeEngine = id;
     else if (tab === 'killfx') shopData.activeKillEffect = id;
-    shopPreviewItemId = id;
     saveShop();
     renderCosmeticShop();
 }
@@ -4009,7 +3770,6 @@ function buyCosmetic(tab, id, price) {
     else if (tab === 'trails') { if (!shopData.ownedTrails.includes(id)) shopData.ownedTrails.push(id); }
     else if (tab === 'engines') { if (!shopData.ownedEngines.includes(id)) shopData.ownedEngines.push(id); }
     else if (tab === 'killfx') { if (!shopData.ownedKillEffects.includes(id)) shopData.ownedKillEffects.push(id); }
-    shopPreviewItemId = id;
     saveShop();
     renderCosmeticShop();
 }
