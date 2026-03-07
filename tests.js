@@ -25,7 +25,7 @@ function section(name) { console.log(`\n── ${name} ──`); }
 // =====================================================
 // REPLICATED CONSTANTS (must match index.html v2.1 + server.js)
 // =====================================================
-const G = 0.0396, THRUST = 0.092, ROT_SPD_MAX = 0.045, MAX_SPD = 2.24;
+const G = 0.0396, THRUST = 0.138, ROT_SPD_MAX = 0.045, MAX_SPD = 2.24;
 const REV_THRUST = THRUST;
 const BULLET_SPD = 5.5, BULLET_LIFE = 110, FIRE_CD = 14, SHIP_SZ = 10;
 const LIVES = 10, RESPAWN_T = 90, INVINCE_T = 120;
@@ -1106,7 +1106,7 @@ section('30. Pickup Cap');
 section('31. Constants Sanity Checks');
 {
     assertApprox(G, 0.0396, 0.0001, 'gravity = 0.0396 (reduced 10% from 0.044)');
-    assertApprox(THRUST, 0.092, 0.001, 'thrust = 0.092 (increased 15% from 0.08)');
+    assertApprox(THRUST, 0.138, 0.001, 'thrust = 0.138 (1.5x boost from 0.092)');
     assertApprox(REV_THRUST, THRUST, 0.001, 'rev thrust equals forward thrust');
     assert(G > 0, 'gravity is positive');
     assert(THRUST > 0, 'thrust is positive');
@@ -1943,7 +1943,7 @@ section('67. Client-Server Constant Alignment');
     // server (server.js), and tests (this file).
     // If any constant here differs from server.js or index.html, the game desyncs.
     assert(G === 0.0396, 'G matches across files');
-    assert(THRUST === 0.092, 'THRUST matches');
+    assert(THRUST === 0.138, 'THRUST matches');
     assert(ROT_SPD_MAX === 0.045, 'ROT_SPD_MAX matches');
     assert(MAX_SPD === 2.24, 'MAX_SPD matches');
     assert(REV_THRUST === THRUST, 'REV_THRUST equals THRUST');

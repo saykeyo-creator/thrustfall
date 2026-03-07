@@ -168,8 +168,8 @@ These constants appear in BOTH `index.html` and `server.js`. If you change one, 
 
 ```
 G = 0.0396          Gravity
-THRUST = 0.092       Thrust force
-REV_THRUST = 0.092   Reverse thrust (= THRUST)
+THRUST = 0.138       Thrust force (1.5x boost)
+REV_THRUST = 0.138   Reverse thrust (= THRUST)
 ROT_SPD_MAX = 0.045  Rotation speed
 MAX_SPD = 2.24       Speed cap
 BULLET_SPD = 5.5     Bullet speed

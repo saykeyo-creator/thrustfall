@@ -13,7 +13,7 @@ const PORT = process.env.PORT || 3000;
 // =====================================================
 // GAME CONSTANTS (must match client exactly)
 // =====================================================
-const G = 0.0396, THRUST = 0.092, ROT_SPD_MAX = 0.045, MAX_SPD = 2.24;
+const G = 0.0396, THRUST = 0.138, ROT_SPD_MAX = 0.045, MAX_SPD = 2.24;
 const REV_THRUST = THRUST;
 const BULLET_SPD = 5.5, BULLET_LIFE = 110, FIRE_CD = 14, SHIP_SZ = 10;
 const LIVES = 10, RESPAWN_T = 90, INVINCE_T = 120;
