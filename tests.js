@@ -4849,6 +4849,216 @@ section('146. Height-Fit Viewport — Tablet Controls Visible');
     assert(clientCode.includes('killEffect: shopData.activeKillEffect'), 'Client sends activeKillEffect in create/join');
 }
 
+// ── 154. Bullet Whizz Sound System ──
+{
+    section('Bullet Whizz Sound System');
+
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+
+    // Constants exist
+    assert(code.includes('WHIZZ_RADIUS = 70'), 'WHIZZ_RADIUS constant is 70');
+    assert(code.includes('WHIZZ_COOLDOWN = 8'), 'WHIZZ_COOLDOWN constant is 8');
+
+    // Core function exists
+    assert(code.includes('function checkBulletWhizz'), 'checkBulletWhizz function exists');
+    assert(code.includes('lastWhizzFrame'), 'whizz cooldown tracking via lastWhizzFrame');
+
+    // All five whizz sound variants in snd()
+    assert(code.includes("case 'whizz':"), 'snd() has whizz sound (standard bullet)');
+    assert(code.includes("case 'whizzHeavy':"), 'snd() has whizzHeavy sound');
+    assert(code.includes("case 'whizzHoming':"), 'snd() has whizzHoming sound');
+    assert(code.includes("case 'whizzRapid':"), 'snd() has whizzRapid sound');
+    assert(code.includes("case 'whizzBeam':"), 'snd() has whizzBeam sound');
+
+    // Weapon type detection logic in checkBulletWhizz
+    assert(code.includes('b.heavy') || code.includes('.heavy'), 'whizz detects heavy bullets');
+    assert(code.includes('b.homing') || code.includes('.homing'), 'whizz detects homing bullets');
+    assert(code.includes("whizzRapid") && code.includes("whizzHeavy"), 'whizz differentiates weapon types');
+
+    // Beam proximity detection
+    assert(code.includes('whizzBeam') && code.includes('beams'), 'laser beam whizz detection exists');
+
+    // Wired into game loop
+    assert(code.includes('checkBulletWhizz()'), 'checkBulletWhizz called in game loop');
+}
+
+// ── 155. Player-Centered Radar ──
+{
+    section('Player-Centered Radar');
+
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+
+    // Core radar function
+    assert(code.includes('function drawRadar'), 'drawRadar function exists');
+
+    // Player-centering helpers
+    assert(code.includes('wrapDelta'), 'wrapDelta helper for toroidal distance');
+    assert(code.includes('toRadar'), 'toRadar coordinate mapping helper');
+    assert(code.includes('viewRadius'), 'viewRadius defines visible radar area');
+
+    // Canvas clipping for circular radar
+    assert(code.includes('ctx.clip'), 'radar uses canvas clipping for circular bounds');
+
+    // Direction indicator (edge arrows for off-screen players)
+    const drawRadarStart = code.indexOf('function drawRadar');
+    const drawRadarBlock = code.substring(drawRadarStart, drawRadarStart + 5000);
+    assert(drawRadarBlock.includes('wrapDelta'), 'drawRadar contains wrapDelta for player centering');
+    assert(drawRadarBlock.includes('toRadar'), 'drawRadar contains toRadar mapping');
+
+    // Player dot rendered at centre
+    assert(drawRadarBlock.includes('rCx') && drawRadarBlock.includes('rCy'), 'radar has center point coordinates');
+}
+
+// ── 156. Safeguard — File Integrity Minimum Sizes ──
+{
+    section('Safeguard — File Integrity Minimum Sizes');
+
+    const indexCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    const testCode = fs.readFileSync(require('path').join(__dirname, 'tests.js'), 'utf8');
+    const serverCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+
+    const indexLines = indexCode.split('\n').length;
+    const testLines = testCode.split('\n').length;
+    const serverLines = serverCode.split('\n').length;
+
+    // Minimum line thresholds (well below current counts to catch catastrophic gutting)
+    assert(indexLines > 3500, `index.html must have >3500 lines (has ${indexLines}) — game may be gutted`);
+    assert(testLines > 3500, `tests.js must have >3500 lines (has ${testLines}) — tests may be gutted`);
+    assert(serverLines > 900, `server.js must have >900 lines (has ${serverLines}) — server may be gutted`);
+
+    // Character count sanity (index.html should be >150KB)
+    assert(indexCode.length > 150000, `index.html must be >150KB (is ${Math.round(indexCode.length/1024)}KB) — game may be gutted`);
+}
+
+// ── 157. Safeguard — Core Gameplay Systems Exist ──
+{
+    section('Safeguard — Core Gameplay Systems Exist');
+
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+
+    // Ship & physics
+    assert(code.includes('THRUST') && code.includes('G = '), 'core physics constants present');
+    assert(code.includes('SHIP_SZ'), 'SHIP_SZ constant present');
+    assert(code.includes('function hostUpdate'), 'hostUpdate game loop function exists');
+    assert(code.includes('function beginGame'), 'beginGame function exists');
+    assert(code.includes('function drawRadar'), 'drawRadar function exists');
+
+    // Weapons
+    assert(code.includes('FIRE_CD'), 'FIRE_CD constant present');
+    assert(code.includes('BULLET_SPD'), 'BULLET_SPD constant present');
+    assert(code.includes('LASER_DUR'), 'LASER_DUR constant present');
+    assert(code.includes('BEAM_RANGE'), 'BEAM_RANGE constant present');
+
+    // Combat
+    assert(code.includes('function checkBulletWhizz'), 'bullet whizz system present');
+    assert(code.includes('combatIntensity'), 'combat intensity tracking present');
+    assert(code.includes('updateCombatIntensity'), 'updateCombatIntensity function present');
+
+    // HUD & rendering
+    assert(code.includes('function drawHUD') || code.includes('drawHUD'), 'HUD drawing present');
+    assert(code.includes('<canvas'), 'canvas element present');
+}
+
+// ── 158. Safeguard — Adaptive Music System Exists ──
+{
+    section('Safeguard — Adaptive Music System Exists');
+
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+
+    assert(code.includes('startMusic'), 'startMusic function present');
+    assert(code.includes('stopMusic'), 'stopMusic function present');
+    assert(code.includes('musicStinger') || code.includes('stinger'), 'music stinger system present');
+    assert(code.includes('combatIntensity'), 'combat intensity variable present');
+    assert(code.includes('updateCombatIntensity'), 'updateCombatIntensity function present');
+    assert(code.includes('musicVol'), 'musicVol setting present');
+    assert(code.includes('initAudio') || code.includes('function snd'), 'audio initialisation present');
+    assert(code.includes("case 'whizz':"), 'whizz audio in snd switch');
+}
+
+// ── 159. Safeguard — Shop & Cosmetics System Exists ──
+{
+    section('Safeguard — Shop & Cosmetics System Exists');
+
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+
+    // Shop screens
+    assert(code.includes('perkShopScreen') || code.includes('perk-shop'), 'perk shop screen present');
+    assert(code.includes('cosmeticShopScreen') || code.includes('cosmetic-shop'), 'cosmetic shop screen present');
+    assert(code.includes('showPerkShop') || code.includes('perkShop'), 'showPerkShop function present');
+    assert(code.includes('showCosmeticShop') || code.includes('cosmeticShop'), 'showCosmeticShop function present');
+
+    // Cosmetic types
+    assert(code.includes('SHIP_SKINS'), 'SHIP_SKINS cosmetic data present');
+    assert(code.includes('TRAIL_EFFECTS'), 'TRAIL_EFFECTS cosmetic data present');
+    assert(code.includes('ENGINE_SOUNDS'), 'ENGINE_SOUNDS cosmetic data present');
+    assert(code.includes('KILL_EFFECTS'), 'KILL_EFFECTS cosmetic data present');
+
+    // Perks
+    assert(code.includes('PERKS'), 'PERKS data present');
+    assert(code.includes('LOADOUT_POINTS'), 'LOADOUT_POINTS constant present');
+    assert(code.includes('getActivePerks') || code.includes('activePerks'), 'perk activation logic present');
+}
+
+// ── 160. Safeguard — XP & Progression System Exists ──
+{
+    section('Safeguard — XP & Progression System Exists');
+
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+
+    assert(code.includes('playerStats'), 'playerStats object present');
+    assert(code.includes('xpForLevel') || code.includes('XP_FOR_LEVEL'), 'XP level function/table present');
+    assert(code.includes('spendableXP') || code.includes('spendable'), 'spendable XP logic present');
+    assert(code.includes('saveStats') || code.includes('localStorage'), 'stats persistence present');
+}
+
+// ── 161. Safeguard — Settings System Exists ──
+{
+    section('Safeguard — Settings System Exists');
+
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+
+    assert(code.includes('settingsScreen') || code.includes('settings-screen'), 'settings screen present');
+    assert(code.includes('showSettings') || code.includes('openSettings'), 'show settings function present');
+    assert(code.includes('saveSettings') || code.includes('applySettings'), 'save settings logic present');
+    assert(code.includes('musicVol'), 'music volume setting present');
+    assert(code.includes('sfxVol'), 'SFX volume setting present');
+}
+
+// ── 162. Safeguard — Survival Mode Exists ──
+{
+    section('Safeguard — Survival Mode Exists');
+
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+
+    assert(code.includes('survivalMode') || code.includes('survival'), 'survival mode flag present');
+    assert(code.includes('spawnSurvivalWave') || code.includes('survivalWave'), 'survival wave spawning present');
+    assert(code.includes('BOT_NAMES') || code.includes('botNames'), 'bot names present');
+}
+
+// ── 163. Safeguard — Multiplayer System Exists ──
+{
+    section('Safeguard — Multiplayer System Exists');
+
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+
+    assert(code.includes('wsConnect') || code.includes('WebSocket'), 'WebSocket connection present');
+    assert(code.includes('clientUpdate'), 'clientUpdate multiplayer function present');
+    assert(code.includes('stateBuffer'), 'stateBuffer for network interpolation present');
+    assert(code.includes('lobbyScreen') || code.includes('lobby'), 'lobby screen present');
+}
+
+// ── 164. Safeguard — Branding Correct ──
+{
+    section('Safeguard — Branding Correct');
+
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    const lower = code.toLowerCase();
+
+    assert(code.includes('THRUSTFALL') || code.includes('Thrustfall'), 'Thrustfall branding present');
+    assert(!lower.includes('gravitation') || lower.indexOf('gravitation') === lower.lastIndexOf('gravitation') && lower.includes('gravitational'), 'no old Gravitation branding remains');
+    assert(!lower.includes('net yaroze'), 'no Net Yaroze references remain');
+}
+
 console.log(`\n${'='.repeat(50)}`);
 console.log(`RESULTS: ${passed}/${total} passed, ${failed} failed`);
 console.log(`${'='.repeat(50)}`);

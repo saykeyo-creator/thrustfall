@@ -484,6 +484,53 @@ const COMBAT_HIT_BUMP = 0.12;
 const COMBAT_PROXIMITY_BUMP = 0.003; // per nearby enemy per frame
 function bumpCombat(amount) { combatIntensity = Math.min(1, combatIntensity + amount); combatDecayTimer = 90; }
 
+// ---------- BULLET WHIZZ (client-side only, zero server cost) ----------
+let lastWhizzFrame = -999; // throttle: min frames between whizz sounds
+const WHIZZ_RADIUS = 70;   // px — how close a bullet must pass to trigger
+const WHIZZ_COOLDOWN = 8;  // frames between whizz sounds (~130ms at 60fps, max ~7/sec)
+function checkBulletWhizz() {
+    if (!ac || frame - lastWhizzFrame < WHIZZ_COOLDOWN) return;
+    const mi = myIndex >= 0 ? myIndex : 0;
+    const me = players[mi];
+    if (!me || !me.alive) return;
+    let closest = null, closestDist = WHIZZ_RADIUS;
+    for (let i = 0; i < bullets.length; i++) {
+        const b = bullets[i];
+        if (b.owner === mi) continue; // skip own bullets
+        const d = dist(b.x, b.y, me.x, me.y);
+        if (d < closestDist) { closestDist = d; closest = b; }
+    }
+    if (closest) {
+        const vol = Math.max(0.15, 1 - closestDist / WHIZZ_RADIUS);
+        let whizzType = 'whizz';
+        if (closest.heavy || closest.sz >= 6) whizzType = 'whizzHeavy';
+        else if (closest.homing) whizzType = 'whizzHoming';
+        else if (closest.sz <= 2) whizzType = 'whizzRapid';
+        snd(whizzType, vol);
+        lastWhizzFrame = frame;
+    }
+    // Laser beam proximity check
+    for (const bm of beams) {
+        if (bm.owner === mi) continue;
+        // Check perpendicular distance from me to beam line
+        const bx = bm.x, by = bm.y;
+        const ex = bx + Math.cos(bm.angle) * (bm.endDist || BEAM_RANGE);
+        const ey = by + Math.sin(bm.angle) * (bm.endDist || BEAM_RANGE);
+        const dx = ex - bx, dy = ey - by;
+        const len2 = dx * dx + dy * dy;
+        if (len2 < 1) continue;
+        const t = Math.max(0, Math.min(1, ((me.x - bx) * dx + (me.y - by) * dy) / len2));
+        const px = bx + t * dx, py = by + t * dy;
+        const bd = Math.sqrt((me.x - px) * (me.x - px) + (me.y - py) * (me.y - py));
+        if (bd < WHIZZ_RADIUS && bd > SHIP_SZ + 5) {
+            const bvol = Math.max(0.15, 1 - bd / WHIZZ_RADIUS);
+            snd('whizzBeam', bvol);
+            lastWhizzFrame = frame;
+            break;
+        }
+    }
+}
+
 // ---------- NETWORK RESILIENCE ----------
 let lastPing = 0, pingMs = 0, reconnectAttempts = 0, reconnectTimer = null;
 let pendingReconnect = null; // {code, name, wasInGame}
@@ -519,6 +566,12 @@ function snd(t, vol) {
             case 'shieldHit': o.type='triangle'; o.frequency.setValueAtTime(1200,n); o.frequency.exponentialRampToValueAtTime(200,n+.2); g.gain.setValueAtTime(.12*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.25); o.start(n); o.stop(n+.25); break;
             case 'thrust': o.type='sawtooth'; o.frequency.setValueAtTime(80,n); o.frequency.exponentialRampToValueAtTime(60,n+.06); g.gain.setValueAtTime(.025*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.06); o.start(n); o.stop(n+.06); break;
             case 'laser': o.type='sawtooth'; o.frequency.setValueAtTime(1800,n); o.frequency.linearRampToValueAtTime(1400,n+.15); g.gain.setValueAtTime(.06*vol,n); g.gain.linearRampToValueAtTime(.04*vol,n+.1); g.gain.exponentialRampToValueAtTime(.001,n+.15); o.start(n); o.stop(n+.15); break;
+            // Bullet whizz variants — pitch rises then falls as bullet passes
+            case 'whizz': o.type='sine'; o.frequency.setValueAtTime(800+Math.random()*400,n); o.frequency.exponentialRampToValueAtTime(300+Math.random()*200,n+.12); g.gain.setValueAtTime(.06*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.12); o.start(n); o.stop(n+.13); break;
+            case 'whizzHeavy': o.type='sawtooth'; o.frequency.setValueAtTime(200+Math.random()*60,n); o.frequency.exponentialRampToValueAtTime(80,n+.2); g.gain.setValueAtTime(.09*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.2); o.start(n); o.stop(n+.21); break;
+            case 'whizzHoming': o.type='triangle'; o.frequency.setValueAtTime(1200,n); o.frequency.setValueAtTime(1400,n+.04); o.frequency.setValueAtTime(1100,n+.08); o.frequency.exponentialRampToValueAtTime(600,n+.15); g.gain.setValueAtTime(.05*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.15); o.start(n); o.stop(n+.16); break;
+            case 'whizzRapid': o.type='square'; o.frequency.setValueAtTime(1500+Math.random()*500,n); o.frequency.exponentialRampToValueAtTime(500,n+.06); g.gain.setValueAtTime(.04*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.06); o.start(n); o.stop(n+.07); break;
+            case 'whizzBeam': o.type='sawtooth'; o.frequency.setValueAtTime(2200,n); o.frequency.linearRampToValueAtTime(1800,n+.1); g.gain.setValueAtTime(.04*vol,n); g.gain.linearRampToValueAtTime(.02*vol,n+.06); g.gain.exponentialRampToValueAtTime(.001,n+.1); o.start(n); o.stop(n+.11); break;
         }
     } catch (e) {}
 }
@@ -4462,6 +4515,7 @@ function loop(timestamp) {
     while (accumulator >= FIXED_DT) {
         if (isHost) hostUpdate(); else clientUpdate();
         updateCombatIntensity();
+        checkBulletWhizz();
         accumulator -= FIXED_DT;
         stepped = true;
     }
