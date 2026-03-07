@@ -1,0 +1,370 @@
+﻿// PROCEDURAL MUSIC ΓÇö Adaptive Combat System
+// =====================================================
+// Combat intensity tracking ΓÇö updated once per frame from loop()
+function updateCombatIntensity() {
+    // Proximity bump: nearby alive enemies raise tension
+    const mi = myIndex >= 0 ? myIndex : 0;
+    const me = players[mi];
+    let nearCount = 0;
+    if (me && me.alive) {
+        for (let i = 0; i < players.length; i++) {
+            if (i === mi || !players[i] || !players[i].alive) continue;
+            const d = dist(me.x, me.y, players[i].x, players[i].y);
+            if (d < 500) {
+                bumpCombat(COMBAT_PROXIMITY_BUMP * (1 - d / 500));
+                nearCount++;
+            }
+        }
+    }
+    nearbyPlayerCount = nearCount;
+    // Active bullets also raise a little tension
+    if (bullets.length > 0) bumpCombat(Math.min(bullets.length * 0.001, 0.01));
+
+    // Decay
+    if (combatDecayTimer > 0) { combatDecayTimer--; }
+    else { combatIntensity = Math.max(0, combatIntensity - COMBAT_DECAY_RATE); }
+}
+
+// --- Music note tables ---
+// E minor / E phrygian ΓÇö dark, aggressive, cinematic
+const M_DRONE = [41.2, 41.2, 41.2, 41.2, 43.65, 41.2, 41.2, 38.89]; // E1 drone, near-static
+const M_TENSE_LOW  = [82.41, 87.31, 82.41, 77.78, 82.41, 87.31, 82.41, 73.42]; // E2 phrygian creep
+const M_TENSE_HIGH = [329.63, 349.23, 329.63, 311.13, 293.66, 311.13, 329.63, 349.23]; // E4 phrygian melody
+const M_COMBAT_ROOT = [82.41, 82.41, 87.31, 82.41, 82.41, 77.78, 82.41, 82.41]; // E2 chugs
+const M_COMBAT_5TH  = [123.47, 123.47, 130.81, 123.47, 116.54, 123.47, 123.47, 130.81]; // B2 power 5th
+const M_COMBAT_LEAD = [659.25, 698.46, 659.25, 587.33, 523.25, 587.33, 659.25, 783.99]; // E5 lead
+
+let musicBeatIdx = 0, musicBpm = 130;
+
+function startMusic() {
+    if (musicPlaying || settings.musicVol <= 0) return;
+    initAudio();
+    if (!ac) return;
+    musicPlaying = true;
+    musicBeatIdx = 0;
+    combatIntensity = 0;
+    combatDecayTimer = 0;
+    const beatLen = 60 / musicBpm;
+
+    // --- Helper: one-shot oscillator ---
+    function mOsc(type, freq, vol, dur, startT) {
+        try {
+            const o = ac.createOscillator(), g = ac.createGain();
+            o.type = type;
+            o.frequency.setValueAtTime(freq, startT);
+            g.gain.setValueAtTime(Math.min(vol, 0.5), startT);
+            g.gain.exponentialRampToValueAtTime(0.001, startT + dur);
+            o.connect(g); g.connect(ac.destination);
+            o.start(startT); o.stop(startT + dur + 0.01);
+        } catch(e) {}
+    }
+
+    // --- Helper: pitch-sweep oscillator (for risers, drops) ---
+    function mSweep(type, f1, f2, vol, dur, startT) {
+        try {
+            const o = ac.createOscillator(), g = ac.createGain();
+            o.type = type;
+            o.frequency.setValueAtTime(f1, startT);
+            o.frequency.exponentialRampToValueAtTime(f2, startT + dur * 0.8);
+            g.gain.setValueAtTime(Math.min(vol, 0.5), startT);
+            g.gain.exponentialRampToValueAtTime(0.001, startT + dur);
+            o.connect(g); g.connect(ac.destination);
+            o.start(startT); o.stop(startT + dur + 0.01);
+        } catch(e) {}
+    }
+
+    // --- Helper: noise burst (snare, hats) ---
+    function mNoise(vol, dur, startT, hiFreq) {
+        try {
+            const o = ac.createOscillator(), g = ac.createGain();
+            o.type = 'square';
+            o.frequency.setValueAtTime(hiFreq || (6000 + Math.random() * 4000), startT);
+            g.gain.setValueAtTime(Math.min(vol, 0.4), startT);
+            g.gain.exponentialRampToValueAtTime(0.001, startT + dur);
+            o.connect(g); g.connect(ac.destination);
+            o.start(startT); o.stop(startT + dur + 0.01);
+        } catch(e) {}
+    }
+
+    // --- Helper: heavy distorted bass (two detuned saws + sub) ---
+    function mHeavyBass(freq, vol, dur, startT) {
+        mOsc('sawtooth', freq, vol * 0.5, dur, startT);
+        mOsc('sawtooth', freq * 1.005, vol * 0.4, dur, startT); // detune
+        mOsc('square', freq * 0.5, vol * 0.35, dur * 0.8, startT); // sub octave
+    }
+
+    // --- Helper: synth kick ---
+    function mKick(vol, startT) {
+        mSweep('sine', 150, 30, vol * 0.7, 0.15, startT);
+        mOsc('triangle', 55, vol * 0.3, 0.08, startT);
+    }
+
+    // --- Helper: heavy snare ---
+    function mSnare(vol, startT) {
+        mNoise(vol * 0.2, 0.08, startT, 4000);
+        mNoise(vol * 0.15, 0.12, startT, 7000);
+        mSweep('triangle', 250, 100, vol * 0.25, 0.06, startT);
+    }
+
+    function playBeat() {
+        if (!musicPlaying || !ac) return;
+        const now = ac.currentTime;
+        const vol = settings.musicVol * 0.14;
+        const ci = combatIntensity;
+        const bi = musicBeatIdx;
+        const bl = beatLen;
+
+        // ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+        // LAYER 1: DREAD AMBIENT (always ΓÇö ominous drone)
+        // ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+        const ambVol = vol * (1 - ci * 0.3);
+        // Deep sub drone ΓÇö E1, sustained, barely moving
+        if (bi % 8 === 0) {
+            mOsc('sine', M_DRONE[bi % M_DRONE.length], ambVol * 0.45, bl * 7, now);
+            mOsc('sine', M_DRONE[bi % M_DRONE.length] * 1.002, ambVol * 0.3, bl * 6, now); // detune for unease
+            // Dark overtone ΓÇö tritone hint
+            mOsc('sine', M_DRONE[bi % M_DRONE.length] * 1.498, ambVol * 0.06, bl * 5, now);
+        }
+        // Sparse low pulse every 4 beats ΓÇö heartbeat of the void
+        if (bi % 4 === 0) {
+            mOsc('triangle', M_DRONE[bi % M_DRONE.length] * 2, ambVol * 0.2, bl * 0.3, now);
+        }
+
+        // ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+        // LAYER 2: TENSION / HALO-STYLE RAMP (0.15ΓÇô0.55)
+        // Building dread, war drums, minor-key strings
+        // ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+        const tFade = Math.max(0, Math.min(1, (ci - 0.12) / 0.4));
+        if (tFade > 0.01) {
+            const tv = vol * tFade;
+
+            // War drums ΓÇö deep toms, slow at first
+            if (bi % 4 === 0) {
+                mSweep('sine', 100, 50, tv * 0.45, 0.2, now);
+                mOsc('triangle', 65, tv * 0.25, 0.15, now + 0.03);
+            }
+            if (bi % 4 === 2 && tFade > 0.4) {
+                mSweep('sine', 85, 42, tv * 0.3, 0.18, now); // second tom, comes in later
+            }
+
+            // Phrygian string line ΓÇö minor 2nd intervals for menace
+            if (bi % 2 === 0) {
+                const note = M_TENSE_LOW[bi % M_TENSE_LOW.length];
+                mOsc('sawtooth', note, tv * 0.12, bl * 1.6, now);
+                mOsc('sawtooth', note * 1.498, tv * 0.06, bl * 1.4, now); // dim 5th
+            }
+
+            // High eerie tone ΓÇö Halo monk-choir vibe (slow sine with vibrato-like detune)
+            if (bi % 8 === 0) {
+                const hi = M_TENSE_HIGH[bi % M_TENSE_HIGH.length];
+                mOsc('sine', hi, tv * 0.08, bl * 5, now);
+                mOsc('sine', hi * 1.003, tv * 0.06, bl * 4.5, now);
+            }
+
+            // Suspense riser every 16 beats
+            if (bi % 16 === 14) {
+                mSweep('sawtooth', 200, 800, tv * 0.07, bl * 2, now);
+            }
+        }
+
+        // ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+        // LAYER 3: DOOM-STYLE COMBAT (0.45ΓÇô1.0)
+        // Crushing chugs, blast beats, relentless aggression
+        // ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+        const cFade = Math.max(0, Math.min(1, (ci - 0.4) / 0.5));
+        if (cFade > 0.01) {
+            const cv = vol * cFade;
+            const root = M_COMBAT_ROOT[bi % M_COMBAT_ROOT.length];
+            const fifth = M_COMBAT_5TH[bi % M_COMBAT_5TH.length];
+
+            // ΓöÇΓöÇ CHUGGING RHYTHM: 8th note palm-mute guitar sim ΓöÇΓöÇ
+            // Every beat: root chug
+            mHeavyBass(root, cv * 0.4, bl * 0.25, now);
+            // Offbeat chug (8th notes, relentless)
+            if (cFade > 0.3) {
+                mHeavyBass(root, cv * 0.25, bl * 0.2, now + bl * 0.5);
+            }
+            // Power 5th on strong beats
+            if (bi % 2 === 0) {
+                mOsc('sawtooth', fifth, cv * 0.15, bl * 0.3, now);
+            }
+            // 16th note chugs at max intensity
+            if (ci > 0.85) {
+                mHeavyBass(root, cv * 0.15, bl * 0.12, now + bl * 0.25);
+                mHeavyBass(root, cv * 0.15, bl * 0.12, now + bl * 0.75);
+            }
+
+            // ΓöÇΓöÇ HEAVY DRUMS ΓöÇΓöÇ
+            // Kick on 1 and 3 (basic), double-kick at high intensity
+            if (bi % 4 === 0 || bi % 4 === 2) {
+                mKick(cv * 0.6, now);
+            }
+            // Double kick fills at high intensity
+            if (ci > 0.7 && (bi % 4 === 1 || bi % 4 === 3)) {
+                mKick(cv * 0.35, now);
+                mKick(cv * 0.35, now + bl * 0.5);
+            }
+            // Snare on 2 and 4
+            if (bi % 4 === 1 || bi % 4 === 3) {
+                mSnare(cv * 0.5, now);
+            }
+            // Ride cymbal ΓÇö constant 8th notes
+            mNoise(cv * 0.04, 0.03, now, 10000);
+            mNoise(cv * 0.03, 0.025, now + bl * 0.5, 11000);
+            // Crash on bar downbeat
+            if (bi % 8 === 0) {
+                mNoise(cv * 0.08, 0.2, now, 5000);
+                mNoise(cv * 0.06, 0.15, now, 8000);
+            }
+            // Blast beat fill every 8 bars
+            if (bi % 32 >= 28 && ci > 0.8) {
+                for (let f = 0; f < 4; f++) {
+                    mKick(cv * 0.2, now + f * bl * 0.25);
+                    mSnare(cv * 0.15, now + f * bl * 0.25 + bl * 0.125);
+                }
+            }
+
+            // ΓöÇΓöÇ LEAD: aggressive melody line ΓöÇΓöÇ
+            if (bi % 4 === 0 && cFade > 0.5) {
+                const lead = M_COMBAT_LEAD[bi % M_COMBAT_LEAD.length];
+                mOsc('sawtooth', lead, cv * 0.07, bl * 0.5, now);
+                mOsc('square', lead * 0.501, cv * 0.04, bl * 0.4, now); // dirty octave
+            }
+
+            // ΓöÇΓöÇ BREAKDOWN: half-time stomp every 16 beats ΓöÇΓöÇ
+            if (bi % 16 >= 12 && bi % 16 <= 15) {
+                if (bi % 2 === 0) {
+                    mHeavyBass(root * 0.5, cv * 0.5, bl * 0.6, now); // drop-tune chug
+                    mKick(cv * 0.7, now);
+                }
+            }
+        }
+
+        // ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+        // LAYER 4: WARZONE CHAOS (3+ enemies on screen)
+        // Overwhelming ΓÇö dissonant swarm, sirens, 32nd-note kicks
+        // Triggers when nearbyPlayerCount >= 3 and intensity > 0.6
+        // ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+        const warzoneActive = nearbyPlayerCount >= 3 && ci > 0.6;
+        if (warzoneActive) {
+            const wv = vol * Math.min(1, (ci - 0.5) / 0.4) * 0.85;
+
+            // ΓöÇΓöÇ WALL OF NOISE: triple-detuned saws for swarm feeling ΓöÇΓöÇ
+            const wRoot = M_COMBAT_ROOT[bi % M_COMBAT_ROOT.length];
+            mOsc('sawtooth', wRoot * 2, wv * 0.2, bl * 0.18, now);
+            mOsc('sawtooth', wRoot * 2.01, wv * 0.18, bl * 0.18, now + bl * 0.25);
+            mOsc('sawtooth', wRoot * 1.99, wv * 0.15, bl * 0.15, now + bl * 0.5);
+            mOsc('sawtooth', wRoot * 2.005, wv * 0.12, bl * 0.12, now + bl * 0.75);
+
+            // ΓöÇΓöÇ ALARM SIREN: rising warzone alert ΓöÇΓöÇ
+            if (bi % 8 === 0) {
+                mSweep('square', 400, 900, wv * 0.06, bl * 2, now);
+                mSweep('square', 410, 890, wv * 0.04, bl * 1.8, now + bl * 0.1);
+            }
+            // Descending counter-siren
+            if (bi % 8 === 4) {
+                mSweep('square', 800, 350, wv * 0.05, bl * 2, now);
+            }
+
+            // ΓöÇΓöÇ RELENTLESS 32ND-NOTE KICKS ΓöÇΓöÇ
+            for (let k = 0; k < 4; k++) {
+                mKick(wv * 0.25, now + k * bl * 0.25);
+            }
+            // Snare on every 8th note
+            mSnare(wv * 0.3, now);
+            mSnare(wv * 0.2, now + bl * 0.5);
+
+            // ΓöÇΓöÇ DISSONANT STABS: tritone + minor 2nd cluster ΓöÇΓöÇ
+            if (bi % 2 === 0) {
+                const stab = M_COMBAT_LEAD[bi % M_COMBAT_LEAD.length];
+                mOsc('square', stab * 1.059, wv * 0.06, bl * 0.15, now); // minor 2nd
+                mOsc('square', stab * 1.414, wv * 0.05, bl * 0.12, now); // tritone
+                mOsc('sawtooth', stab * 0.5, wv * 0.08, bl * 0.2, now);  // sub octave
+            }
+
+            // ΓöÇΓöÇ WAR HORN: massive low brass blast every 16 beats ΓöÇΓöÇ
+            if (bi % 16 === 0) {
+                mOsc('sawtooth', 55, wv * 0.35, bl * 3, now);
+                mOsc('sawtooth', 55.5, wv * 0.3, bl * 2.8, now);
+                mOsc('sine', 27.5, wv * 0.25, bl * 4, now); // sub bass
+                mNoise(wv * 0.1, 0.3, now, 3000); // impact
+            }
+
+            // ΓöÇΓöÇ CHAOS FILL: random glitch bursts ΓöÇΓöÇ
+            if (bi % 4 === 3) {
+                for (let g = 0; g < 3; g++) {
+                    const gt = now + Math.random() * bl * 0.8;
+                    mNoise(wv * 0.06, 0.03, gt, 6000 + Math.random() * 6000);
+                }
+            }
+        }
+
+        musicBeatIdx++;
+    }
+
+    musicInterval = setInterval(playBeat, beatLen * 1000);
+    playBeat();
+}
+
+// Kill stinger ΓÇö brutal impact
+function musicStinger(type) {
+    if (!ac || !musicPlaying || settings.musicVol <= 0) return;
+    const now = ac.currentTime;
+    const vol = settings.musicVol * 0.14;
+    try {
+        if (type === 'kill') {
+            // Doom-style kill riff: dissonant power chord slam + sub drop
+            // Root + tritone crash
+            const o1 = ac.createOscillator(), g1 = ac.createGain();
+            o1.type = 'sawtooth'; o1.frequency.setValueAtTime(82.41, now); // E2
+            g1.gain.setValueAtTime(vol * 0.5, now);
+            g1.gain.setValueAtTime(vol * 0.5, now + 0.06);
+            g1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+            o1.connect(g1); g1.connect(ac.destination); o1.start(now); o1.stop(now + 0.36);
+
+            // Tritone dissonance ΓÇö Bb2 against E
+            const o2 = ac.createOscillator(), g2 = ac.createGain();
+            o2.type = 'sawtooth'; o2.frequency.setValueAtTime(116.54, now); // Bb2
+            g2.gain.setValueAtTime(vol * 0.35, now);
+            g2.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+            o2.connect(g2); g2.connect(ac.destination); o2.start(now); o2.stop(now + 0.31);
+
+            // Sub drop
+            const o3 = ac.createOscillator(), g3 = ac.createGain();
+            o3.type = 'sine'; o3.frequency.setValueAtTime(80, now);
+            o3.frequency.exponentialRampToValueAtTime(20, now + 0.3);
+            g3.gain.setValueAtTime(vol * 0.6, now);
+            g3.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+            o3.connect(g3); g3.connect(ac.destination); o3.start(now); o3.stop(now + 0.41);
+
+            // Noise burst ΓÇö violence
+            const o4 = ac.createOscillator(), g4 = ac.createGain();
+            o4.type = 'square'; o4.frequency.setValueAtTime(3000 + Math.random() * 3000, now);
+            g4.gain.setValueAtTime(vol * 0.12, now);
+            g4.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+            o4.connect(g4); g4.connect(ac.destination); o4.start(now); o4.stop(now + 0.09);
+        }
+    } catch(e) {}
+}
+
+function stopMusic() {
+    musicPlaying = false;
+    combatIntensity = 0;
+    combatDecayTimer = 0;
+    if (musicInterval) { clearInterval(musicInterval); musicInterval = null; }
+}
+
+function updateMusicVolume() {
+    // Music volume changes take effect on next beat (no need to recreate nodes)
+}
+
+// =====================================================
+// NETWORK RESILIENCE
+// =====================================================
+function wsConnectWithRetry(onOpen) {
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    wsConnect(onOpen);
+}
+
+function attemptReconnect() {
+    if (reconnectAttempts >= 5) {
