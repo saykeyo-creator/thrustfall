@@ -1911,12 +1911,95 @@ function prerenderTerrain() {
     for (let i = 0; i < ceiling.length; i++) { if(i===0) tc.moveTo(ceiling[i].x, ceiling[i].y); else tc.lineTo(ceiling[i].x, ceiling[i].y); }
     tc.stroke();
 
-    // Platforms
+    // Platforms — per-map styled
     for (const pl of platforms) {
-        tc.fillStyle = theme.platFill; tc.fillRect(pl.x, pl.y, pl.width, pl.height);
-        tc.strokeStyle = theme.platStroke; tc.lineWidth = 1; tc.strokeRect(pl.x, pl.y, pl.width, pl.height);
-        tc.strokeStyle = theme.platTop; tc.lineWidth = 1.5;
-        tc.beginPath(); tc.moveTo(pl.x, pl.y); tc.lineTo(pl.x + pl.width, pl.y); tc.stroke();
+        const px = pl.x, py = pl.y, pw = pl.width, ph = pl.height;
+
+        // Body: vertical gradient from lighter top to darker bottom
+        const pg = tc.createLinearGradient(0, py, 0, py + ph);
+        pg.addColorStop(0, theme.platStroke);
+        pg.addColorStop(1, theme.platFill);
+        tc.fillStyle = pg;
+        tc.fillRect(px, py, pw, ph);
+
+        // Side edge lines
+        tc.strokeStyle = theme.platStroke; tc.lineWidth = 1;
+        tc.strokeRect(px, py, pw, ph);
+
+        // Bright top surface with glow
+        tc.save();
+        tc.shadowColor = theme.platTop; tc.shadowBlur = 6;
+        tc.strokeStyle = theme.platTop; tc.lineWidth = 2;
+        tc.beginPath(); tc.moveTo(px, py); tc.lineTo(px + pw, py); tc.stroke();
+        tc.restore();
+
+        // Per-map surface detail
+        switch (lobbyMap) {
+            case 'caves': {
+                // Mossy cracks — short vertical lines along the top
+                tc.strokeStyle = theme.terrainStroke; tc.lineWidth = 1; tc.globalAlpha = 0.5;
+                for (let cx2 = px + 10; cx2 < px + pw - 10; cx2 += 18) {
+                    tc.beginPath(); tc.moveTo(cx2, py); tc.lineTo(cx2 + 4, py + ph); tc.stroke();
+                }
+                tc.globalAlpha = 1;
+                break;
+            }
+            case 'canyon': {
+                // Layered rock strata — horizontal lines inside body
+                tc.strokeStyle = theme.platTop; tc.lineWidth = 1; tc.globalAlpha = 0.2;
+                for (let sy = py + Math.floor(ph * 0.35); sy < py + ph - 2; sy += Math.max(3, Math.floor(ph * 0.25))) {
+                    tc.beginPath(); tc.moveTo(px + 2, sy); tc.lineTo(px + pw - 2, sy); tc.stroke();
+                }
+                tc.globalAlpha = 1;
+                break;
+            }
+            case 'asteroid': {
+                // Bolt/rivet dots along the top edge
+                tc.fillStyle = theme.platTop; tc.globalAlpha = 0.85;
+                for (let bx2 = px + 8; bx2 < px + pw - 8; bx2 += 20) {
+                    tc.beginPath(); tc.arc(bx2, py + 2, 2, 0, Math.PI * 2); tc.fill();
+                }
+                tc.globalAlpha = 1;
+                break;
+            }
+            case 'fortress': {
+                // Metal panel seams — vertical dividers
+                tc.strokeStyle = theme.platTop; tc.lineWidth = 1; tc.globalAlpha = 0.35;
+                const panelW = 40;
+                for (let sx = px + panelW; sx < px + pw; sx += panelW) {
+                    tc.beginPath(); tc.moveTo(sx, py); tc.lineTo(sx, py + ph); tc.stroke();
+                }
+                // Corner rivets
+                tc.fillStyle = theme.platTop; tc.globalAlpha = 0.7;
+                [[px + 4, py + 2],[px + pw - 4, py + 2],[px + 4, py + ph - 2],[px + pw - 4, py + ph - 2]].forEach(([rx, ry]) => {
+                    tc.beginPath(); tc.arc(rx, ry, 1.5, 0, Math.PI * 2); tc.fill();
+                });
+                tc.globalAlpha = 1;
+                break;
+            }
+            case 'tunnels': {
+                // Glowing energy conduit strip down the centre
+                tc.save();
+                tc.shadowColor = theme.padColor; tc.shadowBlur = 8;
+                tc.fillStyle = theme.padColor; tc.globalAlpha = 0.25;
+                tc.fillRect(px + 4, py + 2, pw - 8, ph - 4);
+                tc.globalAlpha = 0.6;
+                tc.fillRect(px + pw * 0.3, py + 1, pw * 0.4, 2);
+                tc.restore();
+                break;
+            }
+            case 'arena': {
+                // Clean reflective surface — soft highlight band
+                const ag = tc.createLinearGradient(px, py, px + pw, py);
+                ag.addColorStop(0,   'rgba(255,255,255,0)');
+                ag.addColorStop(0.3, `rgba(255,255,255,0.12)`);
+                ag.addColorStop(0.7, `rgba(255,255,255,0.12)`);
+                ag.addColorStop(1,   'rgba(255,255,255,0)');
+                tc.fillStyle = ag;
+                tc.fillRect(px, py, pw, ph);
+                break;
+            }
+        }
     }
 
     // Landing zones — find flat terrain runs and draw per-map pad style

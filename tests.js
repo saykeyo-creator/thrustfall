@@ -1014,7 +1014,7 @@ section('19b. Spawn Placement');
 {
     for (const key of Object.keys(MAPS)) {
         const map = generateMap(key);
-        for (const n of [1, 2, 4]) {
+        for (const n of [1, 2, 4, 8]) {
             const sb = computeSpawns(n, map.worldW, map.worldH, map.terrain, map.ceiling, map.platforms);
             assert(sb.bases.length === n, `${key} ${n}p: correct base count`);
             assert(sb.spawns.length === n, `${key} ${n}p: correct spawn count`);
@@ -1038,6 +1038,21 @@ section('19b. Spawn Placement');
                 // So min spread between first and last = worldW * (n-1)/n * 0.3
                 const minSpread = map.worldW * ((n - 1) / n) * 0.3;
                 assert(spread > minSpread, `${key} ${n}p: bases are spread (${Math.round(spread)}px > ${Math.round(minSpread)}px)`);
+            }
+            // No two bases overlap (rect-rect check)
+            for (let a = 0; a < n; a++) {
+                for (let b2 = a + 1; b2 < n; b2++) {
+                    const A = sb.bases[a], B = sb.bases[b2];
+                    const overlap = A.x < B.x + B.w && A.x + A.w > B.x &&
+                                    A.y < B.y + B.h && A.y + A.h > B.y;
+                    assert(!overlap, `${key} ${n}p: bases ${a} and ${b2} do not overlap`);
+                }
+            }
+            // With 8 players, bases should use vertical variety (not all within top 20% of map)
+            if (n === 8) {
+                const ys = sb.bases.map(b => b.y);
+                const vertSpread = Math.max(...ys) - Math.min(...ys);
+                assert(vertSpread > map.worldH * 0.2, `${key} 8p: bases have vertical spread > 20% map height (${Math.round(vertSpread)}px)`);
             }
         }
     }
