@@ -993,6 +993,23 @@ const server = http.createServer((req, res) => {
         res.end('OK');
         return;
     }
+    // Explicit routes for policy pages (no extension in URL)
+    if (url === '/privacy') {
+        fs.readFile(path.join(__dirname, 'privacy.html'), (err, data) => {
+            if (err) { res.writeHead(404); res.end('Not found'); return; }
+            res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache' });
+            res.end(data);
+        });
+        return;
+    }
+    if (url === '/terms') {
+        fs.readFile(path.join(__dirname, 'terms.html'), (err, data) => {
+            if (err) { res.writeHead(404); res.end('Not found'); return; }
+            res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache' });
+            res.end(data);
+        });
+        return;
+    }
     // Try to serve static file if it exists (icons, manifest, privacy, etc.)
     if (url !== '/' && !url.includes('..')) {
         const staticPath = path.join(__dirname, url);
