@@ -249,15 +249,61 @@ function generateMap(key) {
     return { terrain: t, ceiling: c, platforms: p, stars: st, worldW: w, worldH: h };
 }
 
-function computeSpawns(numPlayers, wW, wH, terr) {
+function computeSpawns(numPlayers, wW, wH, terr, ceil, plats) {
+    const MARGIN = 120;
+    const BASE_CLEAR = BASE_H + 80;
+    const MIN_DIST = wW / (numPlayers + 1) * 0.5;
     const spawns = [], bases = [];
     for (let i = 0; i < numPlayers; i++) {
-        const pct = numPlayers === 1 ? 0.5 : 0.08 + 0.84 * i / (numPlayers - 1);
-        const x = wW * pct;
-        const si = getTerrainYAt(x, terr);
-        const surfY = si ? si.y : wH * 0.8;
-        bases.push({ x: x - BASE_W / 2, y: surfY - BASE_H - 8, w: BASE_W, h: BASE_H });
-        spawns.push({ x, y: surfY - BASE_H - 70 });
+        const zoneW = wW / numPlayers;
+        const zoneStart = i * zoneW + zoneW * 0.15;
+        const zoneEnd   = i * zoneW + zoneW * 0.85;
+        const cx = (zoneStart + zoneEnd) / 2;
+        let bestX = cx, bestY = null, bestScore = -1;
+        const candidates = 6;
+        for (let ci = 0; ci < candidates; ci++) {
+            const tx = zoneStart + (zoneEnd - zoneStart) * (ci / (candidates - 1));
+            const floor = getTerrainYAt(tx, terr);
+            const ceiling = ceil ? getTerrainYAt(tx, ceil) : null;
+            if (!floor) continue;
+            const floorY = floor.y;
+            const ceilY  = ceiling ? ceiling.y : 0;
+            const openH  = floorY - ceilY;
+            if (openH < BASE_CLEAR + MARGIN * 2) continue;
+            const thirds = [
+                ceilY + MARGIN + BASE_H,
+                ceilY + openH * 0.4,
+                floorY - BASE_CLEAR - MARGIN,
+            ];
+            for (const candY of thirds) {
+                if (candY < ceilY + MARGIN || candY + BASE_H > floorY - MARGIN) continue;
+                let blocked = false;
+                if (plats) {
+                    for (const pl of plats) {
+                        if (tx > pl.x - BASE_W && tx < pl.x + pl.width + BASE_W &&
+                            candY < pl.y + pl.height + 20 && candY + BASE_H > pl.y - 20) {
+                            blocked = true; break;
+                        }
+                    }
+                }
+                if (blocked) continue;
+                const score = Math.abs(candY - floorY) + Math.min(tx, wW - tx) * 0.1;
+                if (score > bestScore) { bestScore = score; bestX = tx; bestY = candY; }
+            }
+        }
+        if (bestY === null) {
+            const si = getTerrainYAt(cx, terr);
+            const surfY = si ? si.y : wH * 0.8;
+            bestY = surfY - BASE_H - 8;
+            bestX = cx;
+        }
+        for (const existing of bases) {
+            if (Math.abs(bestX - (existing.x + BASE_W / 2)) < MIN_DIST) {
+                bestX = Math.min(zoneEnd, bestX + MIN_DIST * 0.5);
+            }
+        }
+        bases.push({ x: bestX - BASE_W / 2, y: bestY, w: BASE_W, h: BASE_H });
+        spawns.push({ x: bestX, y: bestY - 60 });
     }
     return { spawns, bases };
 }
@@ -426,7 +472,7 @@ class Room {
 
     beginGame() {
         const mapData = generateMap(this.mapKey);
-        const sb = computeSpawns(this.lobbyPlayers.length, mapData.worldW, mapData.worldH, mapData.terrain);
+        const sb = computeSpawns(this.lobbyPlayers.length, mapData.worldW, mapData.worldH, mapData.terrain, mapData.ceiling, mapData.platforms);
 
         this.worldW = mapData.worldW;
         this.worldH = mapData.worldH;

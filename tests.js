@@ -309,15 +309,74 @@ function generateMap(key) {
     return { terrain:t, ceiling:c, platforms:p, worldW:w, worldH:h, seg };
 }
 
-function computeSpawns(numPlayers, wW, wH, terr) {
+function computeSpawns(numPlayers, wW, wH, terr, ceil, plats) {
+    // Divide map horizontally into numPlayers zones, pick a safe position within each zone.
+    // Tries to use vertical space — places bases in open air above terrain, not just on ground.
+    // Falls back to terrain surface if no open space found.
+    const MARGIN = 120;            // min clearance above terrain / below ceiling
+    const BASE_CLEAR = BASE_H + 80; // vertical space needed for base + ship to escape
+    const MIN_DIST = wW / (numPlayers + 1) * 0.5; // min horizontal separation between bases
     const spawns = [], bases = [];
+
     for (let i = 0; i < numPlayers; i++) {
-        const pct = numPlayers === 1 ? 0.5 : 0.08 + 0.84 * i / (numPlayers - 1);
-        const x = wW * pct;
-        const si = getTerrainYAt(x, terr);
-        const surfY = si ? si.y : wH * 0.8;
-        bases.push({ x: x - BASE_W / 2, y: surfY - BASE_H - 8, w: BASE_W, h: BASE_H });
-        spawns.push({ x, y: surfY - BASE_H - 70 });
+        // Horizontal zone for this player — spread evenly with margins
+        const zoneW = wW / numPlayers;
+        const zoneStart = i * zoneW + zoneW * 0.15;
+        const zoneEnd   = i * zoneW + zoneW * 0.85;
+        const cx = (zoneStart + zoneEnd) / 2;
+
+        // Sample several candidate X positions within zone and score them
+        let bestX = cx, bestY = null, bestScore = -1;
+        const candidates = 6;
+        for (let ci = 0; ci < candidates; ci++) {
+            const tx = zoneStart + (zoneEnd - zoneStart) * (ci / (candidates - 1));
+            const floor = getTerrainYAt(tx, terr);
+            const ceiling = ceil ? getTerrainYAt(tx, ceil) : null;
+            if (!floor) continue;
+            const floorY = floor.y;
+            const ceilY  = ceiling ? ceiling.y : 0;
+            const openH  = floorY - ceilY;
+            if (openH < BASE_CLEAR + MARGIN * 2) continue; // too tight
+
+            // Try thirds: upper, middle, and just-above-floor
+            const thirds = [
+                ceilY + MARGIN + BASE_H,                   // upper region
+                ceilY + openH * 0.4,                       // mid-upper
+                floorY - BASE_CLEAR - MARGIN,              // just above floor
+            ];
+            for (const candY of thirds) {
+                if (candY < ceilY + MARGIN || candY + BASE_H > floorY - MARGIN) continue;
+                // Check no platform collision
+                let blocked = false;
+                if (plats) {
+                    for (const pl of plats) {
+                        if (tx > pl.x - BASE_W && tx < pl.x + pl.width + BASE_W &&
+                            candY < pl.y + pl.height + 20 && candY + BASE_H > pl.y - 20) {
+                            blocked = true; break;
+                        }
+                    }
+                }
+                if (blocked) continue;
+                // Score: prefer vertical variety (not all on floor), prefer away from edges
+                const score = Math.abs(candY - floorY) + Math.min(tx, wW - tx) * 0.1;
+                if (score > bestScore) { bestScore = score; bestX = tx; bestY = candY; }
+            }
+        }
+        // Fallback: place on terrain surface at zone centre
+        if (bestY === null) {
+            const si = getTerrainYAt(cx, terr);
+            const surfY = si ? si.y : wH * 0.8;
+            bestY = surfY - BASE_H - 8;
+            bestX = cx;
+        }
+        // Ensure minimum distance from already-placed bases
+        for (const existing of bases) {
+            if (Math.abs(bestX - (existing.x + BASE_W / 2)) < MIN_DIST) {
+                bestX = Math.min(zoneEnd, bestX + MIN_DIST * 0.5);
+            }
+        }
+        bases.push({ x: bestX - BASE_W / 2, y: bestY, w: BASE_W, h: BASE_H });
+        spawns.push({ x: bestX, y: bestY - 60 });
     }
     return { spawns, bases };
 }
@@ -933,7 +992,7 @@ section('19. Map Generation');
         assertApprox(map.terrain[map.terrain.length-1].x, m.w, 1, `${key}: terrain ends at x=${m.w}`);
         assertApprox(map.terrain[0].y, map.terrain[map.terrain.length-1].y, 1, `${key}: terrain wraps seamlessly`);
         assertApprox(map.ceiling[0].y, map.ceiling[map.ceiling.length-1].y, 1, `${key}: ceiling wraps seamlessly`);
-        const minGap = key === 'tunnels' ? 100 : 140;
+        const minGap = key === 'tunnels' ? 100 : key === 'arena' ? 300 : 140;
         let gapOK = true;
         for (let i = 0; i < map.terrain.length; i++) {
             if (map.terrain[i].y - map.ceiling[i].y < minGap - 1) { gapOK = false; break; }
@@ -950,6 +1009,40 @@ section('19. Map Generation');
             if (dy < 0.5) flatZones++;
         }
         assert(flatZones >= 3, `${key}: has ${flatZones} flat landing segments (need >=3)`);
+    }
+}
+
+// ── 19b. SPAWN PLACEMENT ──
+section('19b. Spawn Placement');
+{
+    for (const key of Object.keys(MAPS)) {
+        const map = generateMap(key);
+        for (const n of [1, 2, 4]) {
+            const sb = computeSpawns(n, map.worldW, map.worldH, map.terrain, map.ceiling, map.platforms);
+            assert(sb.bases.length === n, `${key} ${n}p: correct base count`);
+            assert(sb.spawns.length === n, `${key} ${n}p: correct spawn count`);
+            for (let i = 0; i < n; i++) {
+                const b = sb.bases[i];
+                const s = sb.spawns[i];
+                // Base within map bounds
+                assert(b.x >= 0 && b.x + b.w <= map.worldW, `${key} ${n}p p${i}: base x within map`);
+                assert(b.y >= 0 && b.y + b.h <= map.worldH, `${key} ${n}p p${i}: base y within map`);
+                // Spawn above base
+                assert(s.y < b.y, `${key} ${n}p p${i}: spawn above base`);
+                // Spawn within map bounds
+                assert(s.x >= 0 && s.x <= map.worldW, `${key} ${n}p p${i}: spawn x within map`);
+                assert(s.y >= 0 && s.y <= map.worldH, `${key} ${n}p p${i}: spawn y within map`);
+            }
+            // Bases are horizontally spread (not all at same x)
+            if (n > 1) {
+                const xs = sb.bases.map(b => b.x + b.w / 2);
+                const spread = Math.max(...xs) - Math.min(...xs);
+                // Minimum meaningful spread: each player in their own zone (worldW / n width)
+                // So min spread between first and last = worldW * (n-1)/n * 0.3
+                const minSpread = map.worldW * ((n - 1) / n) * 0.3;
+                assert(spread > minSpread, `${key} ${n}p: bases are spread (${Math.round(spread)}px > ${Math.round(minSpread)}px)`);
+            }
+        }
     }
 }
 
@@ -2349,7 +2442,7 @@ section('79. Compute Spawns & Bases');
 {
     const map = generateMap('caves');
     worldW = map.worldW; worldH = map.worldH;
-    const { spawns, bases } = computeSpawns(4, map.worldW, map.worldH, map.terrain);
+    const { spawns, bases } = computeSpawns(4, map.worldW, map.worldH, map.terrain, map.ceiling, map.platforms);
 
     assert(spawns.length === 4, '4 spawn points for 4 players');
     assert(bases.length === 4, '4 bases for 4 players');
@@ -2365,9 +2458,9 @@ section('79. Compute Spawns & Bases');
     const spread = bases[bases.length-1].x - bases[0].x;
     assert(spread > map.worldW * 0.5, 'bases spread across at least 50% of map width');
 
-    // Single player spawn at 50%
-    const solo = computeSpawns(1, map.worldW, map.worldH, map.terrain);
-    assertApprox(solo.spawns[0].x, map.worldW * 0.5, 1, 'solo spawn at map center');
+    // Single player spawn near map center zone
+    const solo = computeSpawns(1, map.worldW, map.worldH, map.terrain, map.ceiling, map.platforms);
+    assert(solo.spawns[0].x > map.worldW * 0.15 && solo.spawns[0].x < map.worldW * 0.85, 'solo spawn within central 70% of map');
 }
 
 // =====================================================
