@@ -1,6 +1,6 @@
 # Thrustfall
 
-A 2D physics-based spaceship cave combat game built entirely in a single HTML file with a dedicated Node.js WebSocket multiplayer server.
+A 2D physics-based spaceship cave combat game built in a single `index.html` with a dedicated Node.js WebSocket multiplayer server.
 
 ---
 
@@ -10,30 +10,54 @@ A 2D physics-based spaceship cave combat game built entirely in a single HTML fi
 |---|---|
 | **GitHub** | `https://github.com/saykeyo-creator/thrustfall.git` |
 | **Branch** | `main` |
-| **Hosting** | [Render](https://render.com) — Web Service (auto-deploys on push to `main`) |
+| **Hosting** | [Render](https://render.com) — Web Service, auto-deploys on push to `main` |
 | **Live URL** | `https://thrustfall-qr58.onrender.com` |
-| **Local dev** | `http://localhost:3000` |
-| **Local port** | `3000` (configurable via `PORT` env var) |
+| **Render plan** | Starter — $7/month, 0.5 vCPU, 512MB RAM |
+| **Developer** | KeyoGames — `saykeyo@gmail.com` |
+| **Play Store** | `com.lakesgames.thrustfall` (permanent package ID — do NOT change) |
+| **Local dev** | `http://localhost:3000` (configurable via `PORT` env var) |
 
-### Deploying
+### Deploying to web
 
-1. Push to `main` → Render auto-deploys.
-2. Force redeploy: `git commit --allow-empty -m "Trigger Render redeploy" && git push`
-3. Render uses `npm install` then `npm start` (which runs `node server.js`).
-4. The server serves `index.html` for all HTTP requests and upgrades `/` to WebSocket for multiplayer.
+Push to `main` → Render auto-deploys. No action needed.
+
+```bash
+git add -A && git commit -m "message" && git push
+```
+
+Force redeploy without code changes:
+```bash
+git commit --allow-empty -m "Trigger Render redeploy" && git push
+```
+
+### Deploying to Android (Play Store)
+
+Run `deploy.bat` from the project root. It will:
+1. Auto-increment `versionCode` AND `versionName` patch (e.g. 1.2.3 → 1.2.4) using `increment-version.ps1`
+2. Run `node build-mobile.js` — rebuilds `dist/` from root `index.html` (injects version string)
+3. Run `npx cap sync android` — copies `dist/` into Android assets + ensures plugins are up to date
+4. Run `gradlew bundleRelease` — builds a signed AAB
+5. Copy output to `thrustfall-release.aab` in the project root
+
+Upload `thrustfall-release.aab` to Play Console → Internal testing → select release.
+
+**Requirements for deploy.bat:**
+- Java: `C:\Program Files\Android\Android Studio\jbr`
+- Android SDK: `%LOCALAPPDATA%\Android\Sdk` (API 36)
+- Signing keystore: `thrustfall-upload.keystore` in project root (gitignored)
+- Keystore props: `android/keystore.properties` (gitignored) — passwords `thrustfall2026`, alias `thrustfall`
 
 ### Running locally
 
 ```bash
-npm install        # only need once — installs 'ws' package
-node server.js     # starts on http://localhost:3000
+npm install    # only needed once — installs 'ws' package
+node server.js
 ```
 
-Open `http://localhost:3000` in a browser. For multiplayer testing, open multiple tabs.
+Open `http://localhost:3000`. For multiplayer testing, open multiple tabs.
 
-If port 3000 is already in use (common issue — stale node processes):
+Kill stale processes if port 3000 in use:
 ```powershell
-# Windows — kill anything on port 3000 then start
 Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Seconds 1
 node server.js
@@ -45,101 +69,195 @@ node server.js
 node tests.js
 ```
 
-Pure Node.js — no test framework needed. Currently **4733 assertions** across **233 sections**, all passing.
+Pure Node.js — no framework. Currently **4772 assertions**, all passing.
+
+---
+
+## Versioning
+
+Version is stored in one authoritative place: `android/app/build.gradle`.
+
+```groovy
+versionCode 3         // integer — must increment for every Play Store upload
+versionName "1.2.0"   // x.y.z — patch auto-increments with every deploy.bat run
+```
+
+`deploy.bat` calls `increment-version.ps1` which increments BOTH values atomically.
+`build-mobile.js` reads `versionName` and injects it as `__VERSION__` into `index.html` in `dist/`.
+The UI displays it (e.g. "v1.2.3 • KeyoGames • 2026") — always in sync with the build.
+
+**Never manually edit versionCode in build.gradle** — always run deploy.bat so both values increment together.
 
 ---
 
 ## File Structure
 
 ```
-index.html           (~5000 lines)  — THE ENTIRE GAME: HTML, CSS, JS, Canvas rendering, audio, UI
-server.js            (~1180 lines)  — Dedicated WebSocket game server (authoritative for PVP)
-tests.js             (~6670 lines)  — Comprehensive test suite (4733 assertions)
-sw.js                (~43 lines)    — Service worker for offline caching (PWA)
-capacitor.config.json               — Capacitor config for native Android/iOS builds
-package.json                        — Node.js config (only dependency: ws ^8.16.0)
+index.html              (~5000 lines) — THE ENTIRE GAME: HTML, CSS, JS, canvas, audio, UI
+server.js               (~1200 lines) — Dedicated authoritative WebSocket game server
+tests.js                              — Test suite (4772 assertions)
+build-mobile.js                       — Builds dist/ for Capacitor; injects version string
+increment-version.ps1                 — Increments versionCode + versionName.patch in build.gradle (gitignored)
+deploy.bat                            — Full deploy pipeline: increment → build → cap sync → AAB (gitignored)
+capacitor.config.json                 — Capacitor config (webDir: "dist")
+package.json                          — Node.js config; dependencies: ws; devDependencies: capacitor, cordova-plugin-purchase
+sw.js                                 — Service worker for PWA offline caching
+privacy.html / terms.html            — Policy pages served at /privacy and /terms
+manifest.json                         — PWA manifest
+android/                              — Capacitor Android project
+  app/src/main/AndroidManifest.xml   — Includes com.android.vending.BILLING permission
+  app/src/main/assets/public/        — Synced from dist/ by cap sync
+  app/build.gradle                   — versionCode, versionName, signing config
+  keystore.properties                — (gitignored) keystore path + passwords
+dist/                                 — (gitignored) built web assets, copied to Android by cap sync
+thrustfall-upload.keystore            — (gitignored) Play Store upload signing key
+thrustfall-release.aab                — (gitignored) output AAB from deploy.bat
 ```
 
-### index.html — The Game (Single File)
+---
 
-Everything is in one file. The rough layout:
+## Build Pipeline (Important)
+
+The correct order is always:
+```
+index.html (source)
+    └─ node build-mobile.js        → dist/index.html (with __VERSION__ replaced)
+        └─ npx cap sync android    → android/.../assets/public/index.html + cordova_plugins.js
+            └─ gradlew bundleRelease → app-release.aab
+```
+
+`cap sync` also registers Cordova plugins (including `cordova-plugin-purchase`). If you skip it, the billing plugin won't be bundled. `deploy.bat` runs all steps in order automatically.
+
+**Never edit `android/app/src/main/assets/public/index.html` directly** — it gets overwritten by `cap sync`.
+
+---
+
+## Native App (Android/Capacitor)
+
+- **App ID:** `com.lakesgames.thrustfall` — permanent, cannot change after Play Store listing created
+- **Config:** `capacitor.config.json` — `webDir: "dist"`
+- **Plugins:** `cordova-plugin-purchase@13.13.1` (Google Play Billing)
+- **BILLING permission:** `<uses-permission android:name="com.android.vending.BILLING" />` in AndroidManifest.xml
+- **WS_URL detection:** On Android, `location.hostname === 'localhost'` → always connect to `wss://thrustfall-qr58.onrender.com` (not `ws://localhost` which would hit the phone itself)
+- **Signing:** `signingConfigs.release` in `android/app/build.gradle` reads from `android/keystore.properties`
+
+### Google Play Billing
+
+In-app products are **non-consumable one-time purchases** for cosmetics. The code is fully wired:
+
+- `IS_NATIVE` detects Capacitor Android vs web browser
+- `initBilling()` registers all products via `CdvPurchase.store` and initialises Google Play
+- `purchaseCosmetic(tab, id)` calls `store.order()` on Android; free-unlocks on web
+- `unlockByProductId(productId)` grants ownership in `shopData` and saves to localStorage
+- `restorePurchases()` calls `store.restorePurchases()` — shown as ↩ RESTORE button in shop (Android only)
+- On success, `transaction.finish()` is called to acknowledge the purchase (required by Play Billing)
+
+**Product IDs** — must be created in Play Console → Monetize → In-app products, matching exactly:
+
+| Category | Product IDs |
+|---|---|
+| Ships | `skin_neon`, `skin_stealth`, `skin_phoenix`, `skin_gold`, `skin_ghost`, `skin_trident`, `skin_manta`, `skin_blade`, `skin_fortress`, `skin_falcon` |
+| Trails | `trail_ice`, `trail_fire`, `trail_plasma`, `trail_rainbow`, `trail_toxic` |
+| Engines | `engine_rumble`, `engine_whine`, `engine_pulse`, `engine_roar`, `engine_hum` |
+| Kill FX | `killfx_vortex`, `killfx_electric`, `killfx_shatter`, `killfx_nova`, `killfx_void` |
+
+All at $1.99. On web, items are free to unlock (no payment processor on web version).
+
+---
+
+## Server Architecture
+
+The server is **fully authoritative for PVP** — runs physics/collision/weapon simulation at 60fps, broadcasts state at 30Hz. Clients send inputs only.
+
+### Key server features
+- Room system: 4-char codes, public browse, max 8 players, auto-countdown for public rooms (60s when 2+ players)
+- Full physics: bullets, laser beams, pickups, shields, EMP, kills, scoring
+- Perk system: validates loadout budget server-side, applies PVP multipliers
+- Cosmetic sync: stores skin/trail/engineSound/killEffect per player, broadcasts in start data
+- Delta compression: only changed fields sent between full syncs (`FULL_SYNC_INTERVAL = 60` frames)
+- Rate limiting: 120 messages/second per WebSocket connection
+- WebSocket keepalive: server pings all clients every 30s (prevents Render dropping idle connections)
+- Rejoin handler: if a player reconnects with the same name + code, replaces their stale WS reference
+- Idle cleanup: rooms with ≤1 player auto-destroyed after 5 minutes
+- `/health` endpoint returns 200 OK for Render health checks
+- `/privacy` and `/terms` serve policy HTML pages (NOT the game — explicit routes prevent fallthrough)
+
+### Capacity estimate (Render Starter — 0.5 vCPU)
+
+| Active games | Status |
+|---|---|
+| 1–5 | No load |
+| 5–15 | Fine |
+| 15–25 | Physics drift starts |
+| 25+ | All rooms slow; upgrade to $25/month Standard |
+
+Each room runs its own `setInterval` at 60Hz on Node.js's single thread. Memory is not the bottleneck (each room ~100–500KB); CPU is.
+
+---
+
+## index.html — Game Layout
+
+Everything is in one file. Rough section map:
 
 | Lines (approx) | Section |
 |---|---|
-| 1–12 | HTML structure: `<canvas>`, menu screens, overlays |
+| 1–12 | HTML structure: canvas, menu screens, overlays |
 | 13–250 | CSS — all styling, responsive layout, splash screen |
-| 253–520 | `<script>` — Constants, XP/Perk/Cosmetic data, settings, pickup types, maps |
-| 519–575 | Bullet whizz sound system (`checkBulletWhizz`, weapon-type detection) |
-| 579–640 | Audio system — `snd()` switch (all SFX including EMP + whizz variants), `sndAt()` spatial audio |
-| 640–950 | WebSocket connection, lobby system, message handling, reconnect logic |
-| 948–1200 | Screen management (`showScreen`), menu/create/join/browse/solo/survival UI |
-| 1200–1290 | Onboarding tutorial, game mode launchers (Survival, Practice, Multiplayer) |
-| 1289–1425 | Survival wave system, bot spawning, wave modifiers, bot types |
-| 1426–1625 | Bot AI system (`computeBotInput` — personalities, terrain avoidance, targeting) |
-| 1626–2200 | `beginGame()` — initializes players, applies perks, sets up game state; physics helpers |
-| 2206–2535 | `hostUpdate()` — authoritative game loop for solo/survival (physics, collisions, EMP, pickups) |
-| 2535–2750 | `clientUpdate()` — interpolation, client prediction, delta compression merge |
-| 2753–2917 | Ship shape drawing (`drawShipShape` — all 11 skins), shared by game + shop |
-| 2917–3480 | `draw()` — Canvas rendering (terrain, ships, particles, HUD, cosmetics, kill effects) |
-| 3480–3600 | Player-centered radar (`drawRadar`, `wrapDelta`, `toRadar`, direction indicators) |
-| 3600–3747 | Touch controls (`drawControls`, touch input handling) |
+| 253–520 | Constants, XP/Perk/Cosmetic data, settings, pickup types, maps |
+| 519–575 | Bullet whizz sound detection |
+| 579–640 | Audio system — `snd()` switch, `sndAt()` spatial audio |
+| 640–950 | WebSocket connection, lobby, message handling, reconnect |
+| 948–1200 | Screen management, menu/create/join/browse/solo/survival UI |
+| 1200–1290 | Onboarding tutorial, game mode launchers |
+| 1289–1425 | Survival wave system, bot spawning, wave modifiers |
+| 1426–1625 | Bot AI (`computeBotInput` — personalities, terrain avoidance, targeting) |
+| 1626–2200 | `beginGame()` — init players, apply perks, game state setup; physics helpers |
+| 2206–2535 | `hostUpdate()` — authoritative loop for solo/survival (physics, collisions, EMP, pickups) |
+| 2535–2750 | `clientUpdate()` — interpolation, client prediction, delta merge |
+| 2753–2917 | `drawShipShape()` — all 11 ship skins, shared by game + shop |
+| 2917–3480 | `draw()` — Canvas rendering (terrain, ships, particles, HUD, kill effects) |
+| 3480–3600 | Radar (player-centered, wrap-aware, `wrapDelta`, `toRadar`) |
+| 3600–3747 | Touch controls (`drawControls`, touch input) |
 | 3747–3800 | Keyboard & gamepad input |
-| 3801–3855 | Daily challenge system (`getDailyChallenge`, `checkDailyChallenge`) |
-| 3819–3896 | Settings system (sensitivity, left-handed, music/SFX volume) |
-| 3856–3895 | Stats display (`showStats`) |
+| 3801–3855 | Daily challenge system |
+| 3819–3896 | Settings (sensitivity, left-handed, music/SFX volume) |
+| 3856–3895 | Stats display |
 | 3896–3980 | Perk shop JS (XP-based loadout) |
-| 3980–4110 | Cosmetic shop JS (Google Play Billing, buy/equip/unlock) |
-| 4113–4230 | Cosmetic rendering (`renderCosmeticShop`, ship/trail/kill previews) |
+| 3980–4110 | Cosmetic shop JS (billing, buy/equip/unlock/restore) |
+| 4113–4230 | `renderCosmeticShop()` — ship/trail/kill previews |
 | 4232–4295 | Splash screen, service worker registration, audio init |
-| 4297–4780 | Adaptive music system (4-layer + dynamic systems, stingers, combat intensity) |
-| 4783–5002 | Menu theme music (`startMenuTheme`), resize, main game loop (fixed timestep) |
+| 4297–4780 | Adaptive music system |
+| 4783–5002 | Menu theme, resize handler, main game loop (fixed timestep) |
 
-### server.js — Dedicated Multiplayer Server
+---
 
-The server is authoritative for PVP — it runs the full physics/collision/weapon simulation at 60fps and broadcasts state at 30Hz. Clients send inputs only.
+## Game Constants (Must Match Between Files)
 
-Key server features:
-- Room system (create/join with 4-char codes, public browse, 8 players max)
-- Full game simulation: physics, bullets, beams, pickups, shields, kills, scoring
-- Perk system: validates and applies player perks server-side (budget enforcement, PVP multipliers)
-- Cosmetic sync: stores skin/trail/engineSound/killEffect per player, broadcasts to all clients
-- Delta compression: broadcasts only changed fields between full syncs (`FULL_SYNC_INTERVAL = 60` frames)
-- Rate limiting: 120 messages/second per connection
-- Idle room cleanup: rooms with ≤1 player auto-destroyed after 5 minutes
-- Health endpoint: `GET /health` returns 200 OK for load balancer heartbeat
-- Auto-countdown for public rooms (60s when 2+ players)
-- Graceful disconnect handling, rematch voting system
+These appear in BOTH `index.html` and `server.js`. If you change one, change the other. Tests sections 67–71 verify alignment.
 
-### tests.js — Test Suite
-
-Pure assertion-based tests. No framework. Pattern:
-
-```javascript
-section('N. Test Group Name');
-{
-    assert(condition, 'description');
-    assertApprox(a, b, epsilon, 'description');
-}
+```
+G = 0.0396              Gravity
+THRUST = 0.138          Thrust force
+REV_THRUST = 0.138      Reverse thrust
+ROT_SPD_MAX = 0.045     Rotation speed
+MAX_SPD = 2.24          Speed cap
+BULLET_SPD = 5.5        Bullet speed
+BULLET_LIFE = 110       Bullet lifetime (frames)
+FIRE_CD = 14            Base fire cooldown (frames)
+SHIP_SZ = 10            Ship collision radius
+LIVES = 10              Starting lives
+RESPAWN_T = 90          Respawn timer (frames)
+INVINCE_T = 120         Invincibility after respawn (frames)
+BASE_W = 50             Landing base width
+BASE_H = 28             Landing base height
+WEAPON_TIMER = 1200     Weapon pickup duration (frames, 20s)
+PICKUP_R = 18           Pickup collection radius
+PICKUP_SPAWN_INTERVAL = 360  Frames between spawns (6s)
+PICKUP_MAX = 5          Max pickups on map
+STATE_INTERVAL = 2      Server broadcast rate (every 2 frames = 30Hz)
 ```
 
-Test sections cover:
-- **1–31**: Core physics, collisions, weapons, shields, pickups, terrain, maps, constants
-- **32–57**: Spatial audio, kill streaks, scoring, spectator, bot AI, kill/death tracking
-- **58–94**: Survival mode, network sync, client prediction, platforms, bullet lifetime
-- **95–114**: Viewport, weapon balance, XP progression, world wrap rendering, fixed timestep
-- **115–141**: Perk definitions, cosmetic shop, loadout system, perk gameplay integration, bug fix verification
-- **142–143**: Server-side perk validation, server perk integration (respawn shield)
-- **144–146**: Unique ship shapes (11 skins), music Layer 4 warzone trigger, height-fit tablet viewport
-- **180**: EMP powerup full system
-- **181–191**: Server mechanics (EMP gap, shield grace, disconnect, auto-countdown, room cap, creator leave, rate limiting, perk validation, input clamping)
-- **192–197**: Achievements, daily challenges, XP scaling, multi-level-up, spendable XP, loadout budget
-- **198–210**: Pickup placement, EMP events, survival guards/modifiers/state preservation, bot types, bot pickup AI, landing, client prediction, cleanup, combat intensity, score floats, interpolation
-- **211–222**: Server deep tests (random codes, laser raycast, base explosion bug, broadcast safety, rematch, idle cleanup, events, broadcast fields, weapon cooldowns, pickup application, perk application, respawn multiplier)
-- **223–227**: Special weapon shield damage, public join cosmetics, server lobby/start/join cosmetic sync
-- **228–232**: Delta compression (structure, merge, periodic full sync, empty delta, client reset)
-- **233**: Rematch countdown timer
-
-Note: sections 147–179 are reserved (numbering gap).
+Viewport: `VIEW_W = 412, VIEW_H = 732` — height-fit scaling everywhere (tablets get side bars, never crops HUD).
 
 ---
 
@@ -147,63 +265,42 @@ Note: sections 147–179 are reserved (numbering gap).
 
 ### Game Modes
 
-| Mode | Host | Physics Authority | Multiplayer |
-|---|---|---|---|
-| **Survival** | Client (isHost=true) | Client (`hostUpdate`) | No — solo vs bot waves |
-| **Practice** | Client (isHost=true) | Client (`hostUpdate`) | No — solo sandbox |
-| **PVP Multiplayer** | Server | Server (`Room.update`) | Yes — 2-8 players |
+| Mode | Physics Authority | Multiplayer |
+|---|---|---|
+| **Survival** | Client (`hostUpdate`) | No — solo vs bot waves |
+| **Practice** | Client (`hostUpdate`) | No — solo sandbox |
+| **PVP Multiplayer** | Server (`Room.update`) | Yes — 2–8 players |
 
 ### Multiplayer Flow
 
-1. Player opens menu → clicks MULTIPLAYER → Create or Join
-2. Client connects WebSocket to server, sends `{t:'create', name, map, pub, perks, skin, trail, engine, kill}` or `{t:'join', code, name, perks, skin, trail, engine, kill}`
-3. Server creates/joins Room, broadcasts lobby state
-4. When all ready (or auto-countdown expires), server calls `Room.startGame()` → 3-2-1 countdown → `Room.beginGame()`
-5. Server runs physics at 60fps, broadcasts state at 30Hz (`{t:'s', f, p, b, bm, be, pk}`)
-6. Clients send inputs: `{t:'i', r, t, rv, f}` (rotation, thrust, reverse, fire)
-7. Client does client-side prediction with server correction blending (`CORRECTION_RATE`)
+1. Client sends `{t:'create'}` or `{t:'join'}` with name, map, perks, skin, trail, engine, kill
+2. Server creates/joins Room, broadcasts lobby state
+3. When all ready (or auto-countdown), server calls `Room.startGame()` → 3-2-1 countdown
+4. Server runs physics at 60fps, broadcasts `{t:'s', f, p, b, bm, be, pk}` at 30Hz
+5. Clients send `{t:'i', r, t, rv, f}` (rotation, thrust, reverse, fire)
+6. Client does prediction + blends server correction at `CORRECTION_RATE`
 
-### Key Global Variables (index.html)
+### WS_URL (Critical — Android Fix)
+
+```javascript
+const WS_URL = (location.protocol === 'file:' || location.hostname === 'localhost')
+    ? 'wss://thrustfall-qr58.onrender.com'
+    : (location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host;
+```
+
+`localhost` detection is essential — Capacitor serves the Android app from `localhost`, so without this check it would connect to `ws://localhost` (the phone itself) instead of Render.
+
+### Key Global Variables
 
 | Variable | Purpose |
 |---|---|
 | `isHost` | `true` for solo/survival, `false` for PVP client |
 | `isMultiplayer` | `true` when in PVP mode |
-| `myIndex` | Local player's index in the players array |
-| `players[]` | Array of all player objects |
-| `activeBonuses` | Current perk bonuses for this game session |
+| `myIndex` | Local player index |
+| `players[]` | All player objects |
+| `activeBonuses` | Current perk bonuses for this session |
 | `shopData` | Persistent shop state (localStorage: `'gravShop'`) |
 | `playerStats` | Persistent XP/level/stats (localStorage: `'gravStats'`) |
-
----
-
-## Game Constants (Critical — Must Match Between Files)
-
-These constants appear in BOTH `index.html` and `server.js`. If you change one, change the other. Tests in section 67-71 verify alignment.
-
-```
-G = 0.0396          Gravity
-THRUST = 0.138       Thrust force (1.5x boost)
-REV_THRUST = 0.138   Reverse thrust (= THRUST)
-ROT_SPD_MAX = 0.045  Rotation speed
-MAX_SPD = 2.24       Speed cap
-BULLET_SPD = 5.5     Bullet speed
-BULLET_LIFE = 110    Bullet lifetime (frames)
-FIRE_CD = 14         Base fire cooldown (frames)
-SHIP_SZ = 10         Ship collision radius
-LIVES = 10           Starting lives
-RESPAWN_T = 90       Respawn timer (frames, 1.5s at 60fps)
-INVINCE_T = 120      Invincibility after respawn (frames, 2s)
-BASE_W = 50          Landing base width
-BASE_H = 28          Landing base height
-WEAPON_TIMER = 1200  Weapon pickup duration (frames, 20s)
-PICKUP_R = 18        Pickup collection radius
-PICKUP_SPAWN_INTERVAL = 360  Frames between pickup spawns (6s)
-PICKUP_MAX = 5       Max pickups on map
-STATE_INTERVAL = 2   Server broadcast rate (every 2 frames = 30Hz)
-```
-
-Viewport is fixed: `VIEW_W = 412, VIEW_H = 732` (height-fit scaling — all devices see the same game area, tablets get side bars instead of top/bottom crop).
 
 ---
 
@@ -211,14 +308,14 @@ Viewport is fixed: `VIEW_W = 412, VIEW_H = 732` (height-fit scaling — all devi
 
 ### XP Progression
 - `XP_PER_KILL = 25`, `XP_PER_WIN = 100`, `XP_PER_WAVE = 50`, `XP_PER_LAND = 5`, `XP_PER_PICKUP = 10`
-- Level formula: `XP_LEVEL_BASE = 100`, `XP_LEVEL_SCALE = 1.4` (each level costs `floor(100 * 1.4^(level-1))`)
-- XP stored in `playerStats` (localStorage key: `'gravStats'`)
+- Level formula: `XP_LEVEL_BASE = 100`, `XP_LEVEL_SCALE = 1.4`
+- localStorage key: `'gravStats'`
 
-### Perks (Loadout System)
-- `LOADOUT_POINTS = 3` — max equip budget
-- 6 perks, each with solo and PVP effect multipliers:
+### Perks
 
-| Perk | ID | Cost (XP) | Pts | Solo Effect | PVP Effect |
+`LOADOUT_POINTS = 3` — max equip budget.
+
+| Perk | ID | XP Cost | Pts | Solo Effect | PVP Effect |
 |---|---|---|---|---|---|
 | Reinforced Shield | `shield` | 200 | 1 | +1 shield | +1 shield |
 | Quick Loader | `firerate` | 300 | 1 | fireMul: 0.85 | fireMul: 0.92 |
@@ -227,85 +324,37 @@ Viewport is fixed: `VIEW_W = 412, VIEW_H = 732` (height-fit scaling — all devi
 | Scavenger | `scavenger` | 400 | 1 | wpnMul: 1.25 | wpnMul: 1.15 |
 | Quick Respawn | `respawn` | 250 | 1 | respawnMul: 0.70 | respawnMul: 0.85 |
 
-- Server validates perks: budget enforcement, duplicate rejection, invalid ID rejection
-- Server applies PVP multipliers to: spawn shield/lives, thrust, fire cooldowns, respawn timer, weapon timer
-- Client applies solo multipliers for Survival/Practice via `activeBonuses = getActivePerks(isMultiplayer)`
-- Stored in `shopData.unlockedPerks[]` and `shopData.equippedPerks[]` (localStorage key: `'gravShop'`)
+Server validates perks: budget, duplicates, invalid IDs all rejected. Server applies PVP multipliers.
 
 ### Cosmetics
-- 11 ship skins (each with a unique `drawShipShape` silhouette + canvas preview in shop): default, neon, stealth, phoenix, gold, ghost, trident, manta, blade, fortress, falcon
-- 6 trail effects: default (free), ice, fire, plasma, rainbow, toxic
-- 6 engine sounds: default (free), rumble, whine, pulse, roar, hum
-- 6 kill effects: default (free), vortex, electric, shatter, nova, void
-- All paid cosmetics priced at $1.99 USD (flat rate)
-- Google Play Billing integration on Android (real IAP via `cordova-plugin-purchase`)
-- Free unlock on web version
-- Restore purchases support on native
-- Visible to other players in PVP (server stores skin/trail/engine/kill per player, broadcasts in start data)
-- Stored in `shopData.ownedSkins[]`, `shopData.activeSkin`, `shopData.ownedTrails[]`, `shopData.activeTrail`, `shopData.ownedEngines[]`, `shopData.activeEngine`, `shopData.ownedKills[]`, `shopData.activeKill`
 
-### Achievements
+| Category | Items | Price |
+|---|---|---|
+| Ship skins | 11 (default free + 10 paid) | $1.99 each |
+| Trail effects | 6 (default free + 5 paid) | $1.99 each |
+| Engine sounds | 6 (default free + 5 paid) | $1.99 each |
+| Kill effects | 6 (default free + 5 paid) | $1.99 each |
 
-14 achievements tracked via `playerStats`:
-
-| Achievement | Requirement |
-|---|---|
-| First Blood | 1 kill |
-| Serial Killer | 50 kills |
-| Centurion | 100 kills |
-| Survivor | Wave 5 in Survival |
-| Iron Will | Wave 10 in Survival |
-| Champion | Win a multiplayer match |
-| Dominator | Win 10 matches |
-| Triple Threat | 3-kill streak |
-| Unstoppable | 5+ kill streak |
-| Pacifist | Wave 3 with 0 kills |
-| Collector | 100 powerups collected |
-| Ace Pilot | 200 landings |
-| Veteran | 50 games played |
-| Dedicated | 5 hours total playtime |
-
-### Daily Challenges
-
-7 rotating challenges, one per day (seeded by `Math.floor(Date.now() / 86400000)`):
-- Get 3 kills with homing weapon (50 XP)
-- Win a match without dying (75 XP)
-- Land on 5 different surfaces (30 XP)
-- Survive to wave 4 (60 XP)
-- Get 10 kills in a single game (40 XP)
-- Collect 5 powerups in one game (35 XP)
-- Get a triple kill streak (50 XP)
-
-### Onboarding & Splash Screen
-
-- First visit shows a splash screen overlay (`menuSplash` div: "TAP TO START")
-- Tapping initializes Web Audio API (browser requires user gesture) and transitions to main menu
-- `localStorage` key `tf_played` tracks if player has seen tutorial; splash is skipped on return visits
+Visible to other players in PVP. localStorage key: `'gravShop'`.
 
 ---
 
 ## Weapons
 
-| Weapon | Fire CD | Bullet Speed | Special |
-|---|---|---|---|
-| Stock (normal) | `FIRE_CD / 1.5` (9) | 1x | Fastest fire rate |
-| Spread | `FIRE_CD` (14) | 1.05x | 5 bullets in arc |
-| Rapid | `FIRE_CD * 0.4` (5) | 1.15x | Twin barrels |
-| Heavy | `FIRE_CD * 1.2` (16) | 0.9x | Big bullet, pierces 1 |
-| Laser | `BEAM_DUR + BEAM_CD` (99) | Instant | Beam, hits every 8 frames |
-| Burst | `FIRE_CD * 1.3` (18) | 1.05x | 7 bullets, slight jitter |
-| Homing | `FIRE_CD * 1.1` (15) | 0.9x | Tracks nearest enemy |
+| Weapon | Fire CD | Special |
+|---|---|---|
+| Stock | 9 frames | Fastest fire rate |
+| Spread | 14 frames | 5 bullets in arc |
+| Rapid | 5 frames | Twin barrels |
+| Heavy | 16 frames | Big bullet, pierces 1 |
+| Laser | 99 frames | Instant beam, hits every 8f |
+| Burst | 18 frames | 7 bullets, slight jitter |
+| Homing | 15 frames | Tracks nearest enemy |
 
-### EMP (Special Pickup)
-
-EMP is a unique pickup — not a standard weapon replacement. Collecting it activates an AoE pulse:
-- `EMP_PULSE_DUR = 300` (5 seconds active field)
-- `EMP_DISABLE_DUR = 240` (4 seconds — disables thrust/weapons/shields on hit enemies)
-- `EMP_RADIUS = 180` (blast radius in world pixels)
-- Client-only (not implemented on server — solo/survival mode only)
-- 4 custom sounds: `empSpawn`, `empActivate`, `empStruck`, `empPulse`
-
-Fire rate perk (`fireMul`) applies to all except laser.
+### EMP (Special Pickup — Solo Only)
+- `EMP_PULSE_DUR = 300`, `EMP_DISABLE_DUR = 240`, `EMP_RADIUS = 180`
+- Disables thrust/weapons/shields on hit enemies for 4 seconds
+- Not implemented on server (solo/survival only)
 
 ---
 
@@ -320,121 +369,34 @@ Fire rate perk (`fireMul`) applies to all except laser.
 | `tunnels` | THE LABYRINTH | 4000 | 2400 | Complex |
 | `arena` | THE ARENA | 3200 | 1800 | Open, no platforms |
 
-Maps are procedurally generated with seeded random (`mulberry32` PRNG) for determinism across client/server.
-
----
-
-## Radar / Minimap
-
-The radar is **player-centered** — the player's ship is always at the center of the circular minimap. All entities are positioned relative to the player using wrap-aware delta calculations (`wrapDelta`) to handle toroidal world boundaries correctly.
-
-Key features:
-- `viewRadius` scales to show ~45% of the largest world dimension
-- `toRadar()` maps world coordinates to radar pixel coordinates relative to the player
-- Canvas clipping creates a clean circular boundary
-- Direction indicators (edge arrows) show off-screen player positions
-- Terrain, ceilings, platforms, pickups, explosions, and other players all rendered
-
----
-
-## Audio System
-
-Adaptive 4-layer music system (Doom/Halo inspired) + 3 dynamic systems:
-
-**Music Layers:**
-1. **Layer 1 (Dread Drone)**: Always playing, low ambient
-2. **Layer 2 (War Drums)**: Activates during combat
-3. **Layer 3 (Palm-Mute Chugs)**: Activates during intense combat
-4. **Layer 4 (Warzone Chaos)**: Activates when 3+ enemies are on screen and intensity > 0.6 — sirens, 32nd-note kicks, dissonant stabs, war horns
-
-**Dynamic Systems:**
-- **Layer transitions**: Smooth crossfade between combat intensity tiers
-- **Low-life heartbeat**: Rhythmic pulse when player health is critically low
-- **Base-on-fire siren**: Warning siren when a base is being destroyed
-
-**Menu Theme:** Separate orchestral theme (`startMenuTheme`) plays on the main menu.
-
-**Kill Stingers:** Short musical stabs play on kills (pitch/timbre varies by streak).
-
-BPM ramps from 110 (calm) to 130 (combat).
-
-**Bullet whizz sounds** — incoming projectiles near the player trigger weapon-specific audio cues:
-- Standard bullets → sine wave descending pitch
-- Heavy bullets → low sawtooth rumble
-- Homing missiles → warbling triangle wave
-- Rapid fire → short square wave chirps
-- Laser beams → high sawtooth hiss (proximity-based via perpendicular distance)
-
-**EMP sounds:** `empSpawn` (rising siren), `empActivate` (descending sweep), `empStruck` (bass hit), `empPulse` (short sine blip).
-
-Throttled to max ~7 per second (`WHIZZ_COOLDOWN = 8` frames) to prevent audio spam.
-
-All audio is generated via Web Audio API — no external audio files.
+Maps are procedurally generated with seeded random (`mulberry32` PRNG) — deterministic across client and server.
 
 ---
 
 ## Bot AI (Survival Mode)
 
-- 7 bot personalities: NOVA, VEGA, APEX, STORM, SONIC, PRISM, FANG
-- Each has aggression, accuracy, reactionRate, preferredRange traits
-- 4 bot types with distinct properties:
-
-| Type | Speed | Size | Extra Lives | Notes |
-|---|---|---|---|---|
-| Normal | 1.0x | 1.0x | 0 | Default |
-| Fast | 1.4x | 0.85x | 0 | Smaller and quicker |
-| Tank | 0.7x | 1.2x | +2 | Slower but durable |
-| Sniper | 0.9x | 1.0x | 0 | Slightly slower |
-
+- 7 personalities: NOVA, VEGA, APEX, STORM, SONIC, PRISM, FANG (aggression/accuracy/reactionRate/range traits)
+- 4 bot types: Normal, Fast (1.4x speed), Tank (+2 lives), Sniper
 - Terrain avoidance with look-ahead raycasting
-- Target selection (nearest enemy, threat assessment)
-- Wave progression: more bots, shields on wave 5+, boss waves every 5th wave
-- Boss waves spawn tanks with star-prefixed names
-- Wave modifiers:
-  - **Low Grav** (wave 3+, every 3rd wave): gravity halved — higher jumps, longer flight
-  - **Heavy Weapons** (wave 7+, every 7th wave): bots spawn with random weapons (spread/homing/laser)
-- Bot difficulty scales with wave (1–10): affects reaction rate (`max(2, 12-difficulty)` frames per decision)
-- Life bonus between waves: `+1 life` (capped at `LIVES + wave`)
+- Wave modifiers: Low Grav (wave 3+, every 3rd), Heavy Weapons (wave 7+, every 7th)
+- Boss waves every 5th wave (tanks with star-prefixed names)
+- Difficulty scales with wave: reaction rate `max(2, 12-difficulty)` frames
 
 ---
 
-## Native App (Capacitor)
+## Audio System
 
-- App ID: `com.lakesgames.thrustfall`
-- Config: `capacitor.config.json`
-- Platforms: Android + iOS
-- The `webDir` is `.` (root) since the entire game is `index.html`
-- No native build files are in this repo (generated separately)
+All audio generated via Web Audio API — no external files.
 
----
+**Adaptive 4-layer music:**
+1. Layer 1 (Dread Drone) — always on
+2. Layer 2 (War Drums) — combat
+3. Layer 3 (Palm-Mute Chugs) — intense combat
+4. Layer 4 (Warzone Chaos) — 3+ enemies + intensity > 0.6
 
-## Common Issues & Debugging
+BPM ramps 110→130. Kill stingers, low-life heartbeat, base-on-fire siren.
 
-### Server won't start (EADDRINUSE)
-A stale node process is holding port 3000:
-```powershell
-Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force
-Start-Sleep -Seconds 1
-node server.js
-```
-
-### Git not found in terminal
-PowerShell terminals spawned by VS Code sometimes lose PATH. Fix:
-```powershell
-$env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
-```
-
-### Tests fail after editing constants
-Constants must match between `index.html`, `server.js`, and `tests.js`. The test suite replicates all constants at the top of the file. Update all three.
-
-### Floating point in tests
-Use `Math.floor()` carefully — e.g., `Math.floor(90 * 0.7)` = 62, not 63 (IEEE 754).
-
-### Render deployment not updating
-Check Render dashboard for build logs. Force redeploy:
-```bash
-git commit --allow-empty -m "Trigger Render redeploy" && git push
-```
+**Bullet whizz sounds** — weapon-specific audio for incoming projectiles near the player.
 
 ---
 
@@ -448,145 +410,124 @@ git commit --allow-empty -m "Trigger Render redeploy" && git push
 | `gravSensitivity` | Input sensitivity (0.5–2.0) |
 | `gravLeftHanded` | Boolean — left-handed control layout |
 | `gravSurvivalBest` | `{caves: N, canyon: N, ...}` — best wave per map |
-| `tf_played` | Boolean — set after first play (skips splash on return) |
+| `tf_played` | Boolean — skips splash on return visits |
 
 ---
 
-## Development Workflow
+## Common Issues & Debugging
 
-1. Edit `index.html` and/or `server.js`
-2. Run `node tests.js` to verify
-3. Test locally: `node server.js` → open `http://localhost:3000`
-4. Commit and push: `git add -A && git commit -m "description" && git push`
-5. Render auto-deploys from `main` branch
+### Tests fail after editing constants
+Constants must match between `index.html`, `server.js`, and `tests.js`. Update all three.
 
-The workspace is at: `C:\Users\ljack\Lakes_Games\Thrustfall`
+### Git not found in terminal
+```powershell
+$env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
+```
+
+### Floating point in tests
+`Math.floor(90 * 0.7)` = **62**, not 63 (IEEE 754). Always verify with `node -e "console.log(Math.floor(X * Y))"`.
+
+### Policy pages showing the game
+`/privacy` and `/terms` have explicit route handlers in `server.js` added above the static file fallthrough. If they ever revert to serving the game, check those routes weren't accidentally removed.
+
+### Multiplayer disconnects immediately on Android
+The `WS_URL` check for `location.hostname === 'localhost'` must be present. Without it, Capacitor apps connect to the phone's own localhost instead of Render.
 
 ---
 
 ## Gotchas & Lessons Learned
 
-Hard-won knowledge from bugs that wasted real time. Read these before touching anything.
-
 ### 1. The Server Overwrites Everything (THE BIG ONE)
 
-**What we tried:** Built the entire perk system client-side — `getActivePerks()` computes bonuses, `beginGame()` applies them to shield/lives/thrust/fire/respawn. Seemed to work in solo/survival. Shipped it.
+In PVP, the server broadcasts player state every frame. The client replaces its own values with server state. If the server doesn't apply a system (perks, cosmetics, etc.), the client's values get stomped back to defaults on the next broadcast.
 
-**What actually happened:** In PVP, every perk was silently broken — shield perk did nothing, hull perk did nothing, ALL of them. The server runs the authoritative game simulation and broadcasts `{sh: p.shield, l: p.lives}` every frame. The client overwrites its own values with server state: `me.shield = sp.sh || 0`. The server initialised everyone with `shield: 1, lives: LIVES` (hardcoded, no perk awareness) so every broadcast stomped the client's perk bonuses back to defaults.
-
-**The fix:** Had to add the full PERKS array and `getServerPerks()` to `server.js`. The server now stores each player's equipped perks from the create/join message, validates the loadout budget server-side (rejects over-budget, duplicates, invalid IDs), and applies PVP multipliers to every relevant system: spawn shield/lives, thrust, fire cooldowns, respawn timer, weapon timer, and respawn shield restoration.
-
-**The lesson:** In an authoritative-server architecture, client-side game state is decorative. If the server doesn't know about a feature, the feature doesn't exist in multiplayer. Always ask: "does the server simulate this?"
+**Lesson:** In an authoritative-server architecture, if the server doesn't simulate it, it doesn't exist in multiplayer. Always ask: "does the server know about this?"
 
 ### 2. Cosmetics Were Invisible to Other Players
 
-**What we tried:** Added `shopData.activeSkin` and `shopData.activeTrail` on the client. The local player's ship rendered with their chosen cosmetics. Looked great in testing.
+`activeSkin`/`activeTrail` existed client-side but were never sent to the server, stored per player, or included in start data. Other players always saw default skins.
 
-**What actually happened:** Other players in PVP only ever saw the default skin/trail because the server had no concept of skins or trails. The create/join messages didn't send them, the server didn't store them, and the start data broadcast didn't include them. Each client only knew its own cosmetics.
-
-**The fix:** Client sends `skin` and `trail` in create/join messages. Server stores them on `lobbyPlayers[i]`. Server includes them in the start data broadcast. Client reads `data.players[i].skin/trail` for remote players in `beginGame()`.
-
-**The lesson:** Same principle as #1 — if you want shared state in multiplayer, it must flow through the server.
+**Lesson:** Shared multiplayer state must flow through the server. Client-only state is invisible to others.
 
 ### 3. `getTerrainYAt()` Returned a Shared Mutable Object
 
-**What we tried:** Pickups spawn by calling `getTerrainYAt(x, terrain)` to get the terrain height, then `getTerrainYAt(x, ceiling)` to get the ceiling height, then placing the pickup between them.
+The function originally returned a reference to a single reusable `{y, slope}` object. Two calls in the same tick (terrain + ceiling) overwrote each other.
 
-**What actually happened:** Pickups spawned inside walls or at weird positions. The original `getTerrainYAt()` returned a reference to the same reusable object `{y, slope}` — the second call (ceiling) overwrote the first call's (terrain) return value because they pointed to the same object in memory.
-
-**The fix:** Changed `getTerrainYAt()` to return a new `{y, slope}` object each time (or, in the binary-search version, compute a fresh result object).
-
-**The lesson:** Never return mutable singleton objects from lookup functions that get called multiple times.
+**Lesson:** Never return mutable singleton objects from lookup functions called multiple times per tick.
 
 ### 4. Survival Mode Silently Undid Perk Bonuses
 
-**What we tried:** `beginGame()` applies perks (e.g. shield perk gives `shield: 2`). Then `startSurvival()` calls `beginGame(data)`. Should work.
+`startSurvival()` had hardcoded `players[0].lives = LIVES; players[0].shield = 1;` lines AFTER `beginGame()`, resetting perk bonuses every time.
 
-**What actually happened:** `startSurvival()` had two lines AFTER `beginGame()`:
-```js
-players[0].lives = LIVES;     // overwrites perk bonus (was LIVES + 1)
-players[0].shield = 1;         // overwrites perk bonus (was 2)
-```
-These were left over from before perks existed. They silently reset the player's perk bonuses on every survival start.
-
-**The fix:** Removed those two lines. `beginGame()` already sets the correct perk-boosted values.
-
-**The lesson:** When adding a new system (perks) that modifies initialisation, grep for EVERY place the initialised values get set. There are always stale hardcoded resets hiding somewhere.
+**Lesson:** When adding a new system that modifies initialisation, grep every place those values are set. Stale hardcoded resets are always hiding somewhere.
 
 ### 5. Wave Rebuild Lost Cosmetics
 
-`spawnSurvivalWave()` saves the human player's state (position, lives, weapon, etc.) then rebuilds the players array with new bots. The save/restore didn't include `skin` or `trail` properties. After each wave, the player reverted to default cosmetics.
+`spawnSurvivalWave()` save/restore of player state didn't include `skin`/`trail` — player reverted to default after each wave.
 
-**The fix:** Added `skin` and `trail` to the save object and the restore path.
-
-**The lesson:** When a save/restore pattern exists, check it covers ALL properties — especially newly added ones.
+**Lesson:** When a save/restore pattern exists, ensure it covers ALL properties, especially newly added ones.
 
 ### 6. Weapon Timer Bar Overflowed With Scavenger Perk
 
-The scavenger perk extends weapon duration by 25% (solo). The weapon timer bar rendered as `fill = pp.weaponTimer / WEAPON_TIMER`. With scavenger, `weaponTimer` starts at 1500 but `WEAPON_TIMER` is 1200, giving `fill = 1.25` — the bar drew 25% past its container.
+Scavenger extends weapon duration → `weaponTimer` starts above `WEAPON_TIMER` → fill ratio > 1 → bar overflowed container.
 
-**The fix:** `fill = Math.min(1, pp.weaponTimer / WEAPON_TIMER)`.
+**Fix:** `fill = Math.min(1, pp.weaponTimer / WEAPON_TIMER)`
 
-**The lesson:** Any time you add a multiplier to a value that feeds a UI element (progress bar, meter, gauge), clamp the display value.
+**Lesson:** Any time a multiplier feeds a UI gauge, clamp the display value.
 
-### 7. `requestAnimationFrame` Black Screen
+### 7. World Wrap Rendering Had Offsets Swapped
 
-The game loop used `requestAnimationFrame` but the initial call wasn't structured correctly — the canvas was created and the loop was set up, but `requestAnimationFrame(loop)` wasn't called at the right point, resulting in a black screen on load.
+Ships near world boundary need double rendering with `±worldW` offset. The signs were swapped — fixed by correcting offset arithmetic.
 
-**The fix:** Ensured `af = requestAnimationFrame(loop)` is called at the end of `beginGame()` after all state is initialised, and `cancelAnimationFrame(af)` is called first to prevent duplicate loops.
+**Lesson:** World-wrap bugs are visually obvious but arithmetically subtle. Test at both boundaries (x≈0 AND x≈worldW).
 
-**The lesson:** With `requestAnimationFrame`, the initial kick-off call location matters. It must happen after all rendering dependencies are ready.
+### 8. Shield Hit Gave Too Much Invincibility
 
-### 8. World Wrap Rendering Had Offsets Swapped
+Shield absorbing a hit gave `invT = 30` (0.5s immunity). With 2-shield perk build, players were near-unkillable. Reduced to `invT = 1`.
 
-Ships near the world boundary (x ≈ 0 or x ≈ worldW) need to be rendered twice — once at their real position and once offset by `±worldW` so they appear on both edges seamlessly. The offset values were swapped (added when should subtract, and vice versa).
+**Lesson:** Balance invincibility frames for the maximum perk stack, not the default case.
 
-**The fix:** Corrected the offset arithmetic in the wrap rendering code.
+### 9. Tablet Viewport Cropped HUD
 
-**The lesson:** World-wrap rendering bugs are visually obvious but arithmetically subtle. Test at both boundaries (x near 0 AND x near worldW).
+`Math.max(screenW/W, screenH/H)` (cover scaling) on wide tablets picked width-based scale, making the viewport taller than the screen — HUD and controls were cut off.
 
-### 9. Shield Hit Gave 30 Frames of Invincibility
+**Fix:** Height-fit scaling: `viewScale = screenH / H`. Everyone sees the same 412×732 area. Tablets get side bars; phones have negligible side overflow.
 
-When a shield absorbed a hit, the player got `invT = 30` (half a second of invincibility). This was way too generous — with a 2-shield perk build, players were nearly unkillable because each shield pop gave them 0.5s of immunity.
+**Lesson:** When HUD/controls are at top/bottom edges, always fit to height. Test on wide-aspect devices.
 
-**The fix:** Reduced shield-hit invincibility to `invT = 1` (a single frame of grace, ~16ms). Just enough to prevent double-hits from the same bullet, not enough to escape.
+### 10. `requestAnimationFrame` Black Screen
 
-**The lesson:** Invincibility frames that seem fine with 1 shield become overpowered when the perk system lets you stack shields. Always balance for the maximum perk case.
+Initial `requestAnimationFrame(loop)` call location matters — must fire after all rendering dependencies are ready, with `cancelAnimationFrame` to prevent duplicate loops.
 
-### 10. Thrust Particles Ignored Trail Cosmetics
+### 11. EADDRINUSE — Stale Node Process
 
-The `hostUpdate` function spawns thrust and reverse-thrust particles with hardcoded orange/blue colors. When trail cosmetics were added (ice=blue, fire=red, plasma=purple, rainbow=hue-cycling), the particle colors were never updated to use them.
-
-**The fix:** Added trail color computation: look up the player's `trail` property in `TRAIL_EFFECTS`, and use its `colors[]` array (or HSL hue cycling for rainbow) instead of the hardcoded defaults. Applied to both forward thrust and reverse thrust particles.
-
-**The lesson:** Visual effects (particles, trails) are easy to forget when adding cosmetic systems. Search for every hardcoded color that should be dynamic.
-
-### 11. `Math.floor(90 * 0.7)` = 62, Not 63
-
-Wrote a test asserting `Math.floor(RESPAWN_T * 0.7) === 63`. Seemed obvious: 90 × 0.7 = 63. Test failed. IEEE 754 floating point: `90 * 0.7 = 62.99999999999999`, and `Math.floor` of that is 62.
-
-**The fix:** Changed the assertion to 62.
-
-**The lesson:** Never assume `Math.floor(a * b)` gives you `floor(a×b)` from pure math. Always verify with `node -e "console.log(Math.floor(X * Y))"` for test assertions.
-
-### 12. EADDRINUSE — The Recurring Server Crash
-
-Every single time we tried to restart the server, it crashed with `EADDRINUSE: address already in use 0.0.0.0:3000`. This happened because background node processes from previous runs held the port. Spent many terminal attempts doing targeted port kills before learning the reliable fix:
-
+Don't try to kill by port PID. Kill all node processes, then wait:
 ```powershell
 Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Seconds 1
 node server.js
 ```
 
-**The lesson:** Don't try to be surgical (killing by port PID). Just kill all node processes — in a dev environment there's usually only one thing running. The `Start-Sleep` is necessary because Windows doesn't release the port instantly.
+### 12. versionCode Auto-Increment Was Silently Failing
 
-### 13. Tablet Viewport Cropped HUD & Controls
+The original `deploy.bat` used `findstr` + batch `for /f` to read versionCode. If parsing failed silently, the replace did nothing and the AAB built with the same number → "version code already used" in Play Console.
 
-**What we tried:** Used `Math.max(screenW/W, screenH/H)` (cover mode) for viewport scaling — fills the screen with no black bars.
+**Fix:** Moved increment logic to `increment-version.ps1` — uses proper PowerShell regex capture group, errors loudly, and increments both `versionCode` AND `versionName` patch atomically.
 
-**What actually happened:** On tablets (Samsung Tab A9, wider aspect ratio than phones), `Math.max` picked width-based scaling, which made the viewport taller than the screen. The HUD (lives, kills) at the top was cropped off, and the joystick/fire button at the bottom were partially off-screen. Phones (S23 Ultra, taller aspect ratio) were fine because `Math.max` picked height-based scaling there.
+### 13. cap sync Was Copying Stale Web Assets
 
-**The fix:** Changed to height-fit scaling: `viewScale = screenH / H`. This ensures the full viewport height is always visible on every device. On narrow phones, the sides overflow slightly (harmless — no critical UI at the edges). On wide tablets, small black bars appear on the sides. Everyone sees the same 412×732 game area. No unfair advantage.
+The `webDir` in `capacitor.config.json` is `"dist"`, not `.`. Running `cap sync` without first running `node build-mobile.js` left stale assets in the Android bundle (old WS_URL, old branding, missing version injection).
 
-**The lesson:** `Math.max` scaling (cover) guarantees no bars but may crop important UI. When HUD and controls live at the top/bottom edges of the viewport, always fit to height. Test on devices with different aspect ratios, not just phones.
+**Fix:** `deploy.bat` always runs `build-mobile.js` → `cap sync` → `gradlew` in that order.
+
+### 14. Policy Pages Served the Game
+
+`/privacy` and `/terms` URLs have no file extension. No explicit route existed, so they fell through to `serveIndex()` and served the game HTML. Google Play's policy checker retrieved game HTML instead of policy text.
+
+**Fix:** Explicit route handlers added to `server.js` before the static file fallthrough block.
+
+### 15. Multiplayer Instantly Disconnected on Android
+
+Capacitor serves the app from `localhost`. Without the `hostname === 'localhost'` check, `WS_URL` resolved to `ws://localhost` — connecting to the phone itself, not Render — and immediately failed.
+
+**Fix:** `WS_URL` now detects `localhost` or `file:` protocol and hardcodes the Render URL.
