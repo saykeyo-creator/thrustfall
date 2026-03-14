@@ -459,7 +459,8 @@ class Room {
                 weapon: 'normal', shield: 1 + perkBonuses.shield, shieldHP: 2, weaponTimer: 0, flashTimer: 0,
                 streak: 0, lastKillFrame: -999,
                 thrusting: false, revThrusting: false, firing: false, fireCd: 0,
-                perkBonuses: perkBonuses
+                perkBonuses: perkBonuses,
+                killEffect: this.lobbyPlayers[i].killEffect || 'default'
             });
             this.playerInputs.push({ rot: 0, thrust: false, revThrust: false, fire: false });
         }
@@ -568,8 +569,8 @@ class Room {
                     if (!op.alive || op.invT > 0 || op.landed) continue;
                     if (dist(p.x, p.y, op.x, op.y, this.worldW) < SHIP_SZ * 2) {
                         this.emitEvent({ t: 'e', n: 'shipCollide', x1: p.x, y1: p.y, x2: op.x, y2: op.y });
-                        this.killPlayer(p);
-                        this.killPlayer(op);
+                        this.killPlayer(p, false, undefined, oi);
+                        this.killPlayer(op, false, undefined, pi);
                         break;
                     }
                 }
@@ -623,7 +624,7 @@ class Room {
             for (const p of this.players) {
                 const hitR = SHIP_SZ + (b.sz || 2.5);
                 if (p.id !== b.owner && p.alive && p.invT <= 0 && dist(b.x, b.y, p.x, p.y, this.worldW) < hitR) {
-                    this.killPlayer(p, false, b.shieldDmg);
+                    this.killPlayer(p, false, b.shieldDmg, b.owner);
                     if (!p.alive) this.awardKill(this.players[b.owner]);
                     if (b.pierce && b.pierce > 0) { b.pierce--; } else { this.bullets.splice(i, 1); hit = true; }
                     break;
@@ -669,7 +670,7 @@ class Room {
                     for (let d = SHIP_SZ * 2; d < endDist; d += step) {
                         const tx = bm.x + Math.cos(bm.angle) * d, ty = bm.y + Math.sin(bm.angle) * d;
                         if (dist(tx, ty, pl.x, pl.y, this.worldW) < SHIP_SZ + 4) {
-                            this.killPlayer(pl, false, 2);
+                            this.killPlayer(pl, false, 2, bm.owner);
                             if (!pl.alive) this.awardKill(this.players[bm.owner]);
                             bm.hitCd = BEAM_HIT_INTERVAL;
                             break;
@@ -829,7 +830,7 @@ class Room {
         this.emitEvent({ t: 'e', n: 'shoot', x: bx, y: by });
     }
 
-    killPlayer(p, force, shieldDmg) {
+    killPlayer(p, force, shieldDmg, killerIdx) {
         if (!p.alive || p.invT > 0) return;
         if (p.shield > 0 && !force) {
             p.shieldHP = (p.shieldHP || 2) - (shieldDmg || 1);
@@ -849,7 +850,9 @@ class Room {
         p.alive = false; p.lives--; p.respawnT = Math.floor(RESPAWN_T * rMul); p.vx = 0; p.vy = 0; p.landed = false;
         if (this.playerDeaths[p.id] !== undefined) this.playerDeaths[p.id]++;
         p.weapon = 'normal'; p.shield = 0; p.shieldHP = 0; p.weaponTimer = 0;
-        this.emitEvent({ t: 'e', n: 'kill', i: p.id, x: p.x, y: p.y });
+        const ki = (killerIdx !== undefined && killerIdx >= 0) ? killerIdx : -1;
+        const ke = (ki >= 0 && this.players[ki]) ? (this.players[ki].killEffect || 'default') : 'default';
+        this.emitEvent({ t: 'e', n: 'kill', i: p.id, x: p.x, y: p.y, ki: ki, ke: ke });
         this.checkGameEnd();
     }
 
