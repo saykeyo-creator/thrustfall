@@ -71,7 +71,7 @@ node server.js
 node tests.js
 ```
 
-Pure Node.js — no framework. Currently **4772 assertions**, all passing.
+Pure Node.js — no framework. Currently **5639 assertions**, all passing.
 
 ---
 
@@ -80,8 +80,8 @@ Pure Node.js — no framework. Currently **4772 assertions**, all passing.
 Version is stored in one authoritative place: `android/app/build.gradle`.
 
 ```groovy
-versionCode 3         // integer — must increment for every Play Store upload
-versionName "1.2.0"   // x.y.z — patch auto-increments with every deploy.bat run
+versionCode 16        // integer — must increment for every Play Store upload
+versionName "1.2.13"  // x.y.z — patch auto-increments with every deploy.bat run
 ```
 
 `deploy.bat` calls `increment-version.ps1` which increments BOTH values atomically.
@@ -183,6 +183,7 @@ The server is **fully authoritative for PVP** — runs physics/collision/weapon 
 - Idle cleanup: rooms with ≤1 player auto-destroyed after 5 minutes
 - `/health` endpoint returns 200 OK for Render health checks
 - `/privacy` and `/terms` serve policy HTML pages (NOT the game — explicit routes prevent fallthrough)
+- **Terrain cache:** at `beginGame()`, `buildTerrainCache()` pre-computes a `Float32Array` of terrain/ceiling Y per integer X pixel. All per-tick bullet and laser lookups use O(1) array index instead of O(log n) binary search.
 
 ### Capacity estimate (Render Starter — 0.5 vCPU)
 
@@ -206,9 +207,9 @@ Everything is in one file. Rough section map:
 | 1–12 | HTML structure: canvas, menu screens, overlays |
 | 13–250 | CSS — all styling, responsive layout, splash screen |
 | 253–520 | Constants, XP/Perk/Cosmetic data, settings, pickup types, maps |
-| 519–575 | Bullet whizz sound detection |
-| 579–640 | Audio system — `snd()` switch, `sndAt()` spatial audio |
-| 640–950 | WebSocket connection, lobby, message handling, reconnect |
+| 520–580 | `MAP_THEME` — per-map visual colour palettes (client-only) |
+| 580–640 | Bullet whizz sound detection |
+| 640–950 | Audio system, WebSocket connection, lobby, message handling, reconnect |
 | 948–1200 | Screen management, menu/create/join/browse/solo/survival UI |
 | 1200–1290 | Onboarding tutorial, game mode launchers |
 | 1289–1425 | Survival wave system, bot spawning, wave modifiers |
@@ -229,7 +230,7 @@ Everything is in one file. Rough section map:
 | 4113–4230 | `renderCosmeticShop()` — ship/trail/kill previews |
 | 4232–4295 | Splash screen, service worker registration, audio init |
 | 4297–4780 | Adaptive music system |
-| 4783–5002 | Menu theme, resize handler, main game loop (fixed timestep) |
+| 4783–5100 | Menu theme, resize handler, main game loop (fixed timestep) |
 
 ---
 
@@ -364,14 +365,14 @@ Visible to other players in PVP. localStorage key: `'gravShop'`.
 
 | Key | Name | Width | Height | Notes |
 |---|---|---|---|---|
-| `caves` | THE CAVES | 3600 | 2000 | Default |
-| `canyon` | DEEP CANYON | 2800 | 2800 | Tall |
-| `asteroid` | ASTEROID FIELD | 4000 | 2400 | Reduced gravity (0.032) |
-| `fortress` | TWIN FORTRESS | 4400 | 2000 | Wide |
-| `tunnels` | THE LABYRINTH | 4000 | 2400 | Complex |
-| `arena` | THE ARENA | 3200 | 1800 | Open, no platforms |
+| `caves` | THE CAVES | 3600 | 2000 | Dark cave browns, bioluminescent pads |
+| `canyon` | DEEP CANYON | 2800 | 2800 | Blue-slate rock, beacon-light pads |
+| `asteroid` | ASTEROID FIELD | 4000 | 2400 | Purple-grey rock, low gravity (0.032), dense stars |
+| `fortress` | TWIN FORTRESS | 4400 | 2000 | Steel-blue concrete, military striped pads |
+| `tunnels` | THE LABYRINTH | 4000 | 2400 | Dark purple slate, magenta energy pads, almost no stars |
+| `arena` | THE ARENA | 3200 | 1800 | Rich purple stone, clean white pads, open (no platforms) |
 
-Maps are procedurally generated with seeded random (`mulberry32` PRNG) — deterministic across client and server.
+Maps are procedurally generated with seeded random (`mulberry32` PRNG) — deterministic across client and server. Visual themes are client-only (`MAP_THEME` lookup in `index.html`) and do not affect server physics.
 
 ---
 
@@ -533,3 +534,23 @@ The `webDir` in `capacitor.config.json` is `"dist"`, not `.`. Running `cap sync`
 Capacitor serves the app from `localhost`. Without the `hostname === 'localhost'` check, `WS_URL` resolved to `ws://localhost` — connecting to the phone itself, not Render — and immediately failed.
 
 **Fix:** `WS_URL` now detects `localhost` or `file:` protocol and hardcodes the Render URL.
+
+### 16. IAP `store.order()` Silently Fails in CdvPurchase v13
+
+`store.order(product)` is not the correct API in `cordova-plugin-purchase@13`. It returns without error but no purchase dialog appears.
+
+**Fix:** Use `product.getOffer().order()` — get the offer object from the product, then call order on that.
+
+### 17. `computeSpawns` Scoring Placed All Bases in a Line at the Top
+
+The original score was `Math.abs(candY - floorY)` — maximised when the base is as far from the floor as possible, i.e. near the ceiling. With 8 players each independently maximising that score, every base ended up near the ceiling in a horizontal line.
+
+**Fix:** Each zone is assigned a target vertical fraction cycling through `[0.15, 0.80, 0.50, 0.10, 0.75, 0.40, 0.85, 0.20]`. Score is `−|candY − targetY|` — closest wins. Bases now spread top/middle/bottom across the map.
+
+**Rule:** Never score spawn placement by a metric that all players share equally — they'll all converge on the same optimum.
+
+### 18. Terrain Cache `buildTerrainCache` Must Rebuild on New Game
+
+`terrainCache` and `ceilingCache` are set in `beginGame()`. If you ever add a code path that changes `this.terrain` or `this.ceiling` after `beginGame()` (e.g. dynamic terrain), the cache will be stale and bullets/lasers will phase through walls.
+
+**Rule:** Any time terrain data changes, rebuild the cache immediately.
