@@ -338,7 +338,7 @@ let screenW, screenH, viewScale = 1, viewOffX = 0, viewOffY = 0; // scaling stat
 let running = false, frame = 0, af;
 
 // Networking — WebSocket to dedicated server
-const WS_URL = location.protocol === 'file:' ? 'ws://localhost:3000' : (location.protocol==='https:'?'wss:':'ws:') + '//' + location.host;
+const WS_URL = (location.protocol === 'file:' || location.hostname === 'localhost') ? 'wss://thrustfall-qr58.onrender.com' : (location.protocol==='https:'?'wss:':'ws:') + '//' + location.host;
 let ws = null, isHost = false, isRoomCreator = false, myIndex = -1, roomCode = '';
 
 // Game state
@@ -5016,7 +5016,8 @@ function attemptReconnect() {
             waveAnnouncement = {text:'RECONNECTED!', timer:90, sub:''};
             // Re-join room
             if (roomCode) {
-                ws.send(JSON.stringify({ t:'rejoin', code: roomCode }));
+                const myName = settings.playerName || 'PLAYER';
+                ws.send(JSON.stringify({ t:'rejoin', code: roomCode, name: myName }));
             }
         });
     }, delay);
@@ -5030,7 +5031,7 @@ function sendPing() {
     }
 }
 // Send ping every 3 seconds during multiplayer  
-setInterval(() => { if (running && isMultiplayer) sendPing(); }, 3000);
+setInterval(() => { if (isMultiplayer) sendPing(); }, 3000);
 
 // =====================================================
 // RESIZE & LOOP

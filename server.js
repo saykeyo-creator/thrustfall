@@ -1047,6 +1047,13 @@ setInterval(() => {
     }
 }, 60 * 1000);
 
+// WebSocket keepalive — ping all clients every 30s to prevent Render dropping idle connections
+setInterval(() => {
+    wss.clients.forEach(ws => {
+        if (ws.readyState === ws.OPEN) ws.ping();
+    });
+}, 30 * 1000);
+
 wss.on('connection', (ws) => {
     let msgCount = 0, msgResetTime = Date.now();
 
@@ -1165,6 +1172,20 @@ wss.on('connection', (ws) => {
             }
             case 'ping': {
                 ws.send(JSON.stringify({ t: 'pong' }));
+                break;
+            }
+            case 'rejoin': {
+                const code = (data.code || '').toUpperCase();
+                const room = rooms.get(code);
+                if (!room) { ws.send(JSON.stringify({ t: 'error', msg: 'Room not found' })); return; }
+                const existingIdx = room.lobbyPlayers.findIndex(p => p.name === data.name);
+                if (existingIdx >= 0) {
+                    room.lobbyPlayers[existingIdx].ws = ws;
+                    wsRoomMap.set(ws, code);
+                    room.broadcastLobby();
+                } else {
+                    ws.send(JSON.stringify({ t: 'error', msg: 'Could not rejoin' }));
+                }
                 break;
             }
         }
