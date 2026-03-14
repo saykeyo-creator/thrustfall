@@ -41,6 +41,8 @@ Run `deploy.bat` from the project root. It will:
 
 Upload `thrustfall-release.aab` to Play Console → Internal testing → select release.
 
+> **IMPORTANT — always use deploy.bat to produce AABs for upload. Never build manually (e.g. running gradlew directly) and then upload the result — doing so bypasses `increment-version.ps1` and produces an AAB with the same versionCode as the last deploy, causing "Version code already used" errors on Play Console.**
+
 **Requirements for deploy.bat:**
 - Java: `C:\Program Files\Android\Android Studio\jbr`
 - Android SDK: `%LOCALAPPDATA%\Android\Sdk` (API 36)

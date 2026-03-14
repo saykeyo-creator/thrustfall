@@ -507,7 +507,10 @@ function initBilling() {
     });
 
     store.initialize([CdvP.Platform.GOOGLE_PLAY])
-        .then(() => { billingReady = true; })
+        .then(() => {
+            billingReady = true;
+            return store.update();
+        })
         .catch(err => console.warn('Billing init failed:', err));
 }
 
@@ -518,12 +521,20 @@ function purchaseCosmetic(tab, id) {
         return;
     }
     if (!billingReady) { alert('Store not ready. Please try again in a moment.'); return; }
-    const store = window.CdvPurchase.store;
-    const product = store.get(getProductId(tab, id));
-    if (!product) { alert('Product not available.'); return; }
-    store.order(product).catch(err => {
+    const CdvP = window.CdvPurchase;
+    const store = CdvP.store;
+    const pid = getProductId(tab, id);
+    const product = store.get(pid, CdvP.Platform.GOOGLE_PLAY);
+    if (!product || product.type === undefined) {
+        const allProducts = store.products.map(p => p.id + '(' + p.state + ')').join(', ');
+        alert('Product not available: ' + pid + '\nLoaded products: ' + (allProducts || 'none'));
+        return;
+    }
+    const offer = product.getOffer();
+    if (!offer) { alert('No offer available for this product. Please try again.'); return; }
+    offer.order().catch(err => {
         console.warn('Purchase failed:', err);
-        alert('Purchase could not be completed.');
+        alert('Purchase could not be completed: ' + (err && err.message || err));
     });
 }
 
