@@ -243,8 +243,9 @@ Land on bases to refuel · Collect weapons · Survive!
 <button class="btn sm" id="shopTab_killfx" onclick="selectShopCategory('killfx')" style="flex:1;font-size:clamp(.7rem,2.5vw,.9rem);padding:.45em .2em;min-width:0">💥 KILLS</button>
 </div>
 <div id="cosmeticList" style="width:min(380px,95vw);margin:0 auto;flex:1 1 0;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch"></div>
-<div style="flex-shrink:0;text-align:center;margin-top:.3em">
+<div style="flex-shrink:0;text-align:center;margin-top:.3em;display:flex;gap:.5em;justify-content:center">
 <button class="btn sm" onclick="showMenu()">BACK</button>
+<button class="btn sm" id="restoreBtn" onclick="restorePurchases()" style="display:none;font-size:clamp(.65rem,2.2vw,.8rem);padding:.35em .7em;opacity:0.7">↩ RESTORE</button>
 </div>
 </div>
 
@@ -4065,6 +4066,8 @@ let cosmeticTab = 'skins';
 function showCosmeticShop() {
     showScreen('cosmeticShopScreen');
     selectShopCategory('skins');
+    const rb = document.getElementById('restoreBtn');
+    if (rb) rb.style.display = IS_NATIVE ? 'inline-block' : 'none';
 }
 
 function selectShopCategory(tab) {
