@@ -3,3 +3,5 @@ dist/
 *.keystore
 *.jks
 keystore.properties
+deploy.bat
+thrustfall-release.aab
