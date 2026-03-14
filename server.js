@@ -254,12 +254,16 @@ function computeSpawns(numPlayers, wW, wH, terr, ceil, plats) {
     const BASE_CLEAR = BASE_H + 80;
     const MIN_DIST = wW / (numPlayers + 1) * 0.5;
     const spawns = [], bases = [];
+    // Vertical target fractions (0=near ceiling, 1=near floor) cycle per zone
+    // so bases spread across the full map height, not all in a line at the top
+    const V_TARGETS = [0.15, 0.80, 0.50, 0.10, 0.75, 0.40, 0.85, 0.20];
     for (let i = 0; i < numPlayers; i++) {
+        const vFrac = V_TARGETS[i % V_TARGETS.length];
         const zoneW = wW / numPlayers;
         const zoneStart = i * zoneW + zoneW * 0.15;
         const zoneEnd   = i * zoneW + zoneW * 0.85;
         const cx = (zoneStart + zoneEnd) / 2;
-        let bestX = cx, bestY = null, bestScore = -1;
+        let bestX = cx, bestY = null, bestScore = -Infinity;
         const candidates = 6;
         for (let ci = 0; ci < candidates; ci++) {
             const tx = zoneStart + (zoneEnd - zoneStart) * (ci / (candidates - 1));
@@ -270,12 +274,12 @@ function computeSpawns(numPlayers, wW, wH, terr, ceil, plats) {
             const ceilY  = ceiling ? ceiling.y : 0;
             const openH  = floorY - ceilY;
             if (openH < BASE_CLEAR + MARGIN * 2) continue;
-            const thirds = [
-                ceilY + MARGIN + BASE_H,
-                ceilY + openH * 0.4,
-                floorY - BASE_CLEAR - MARGIN,
-            ];
-            for (const candY of thirds) {
+            const validTop = ceilY + MARGIN;
+            const validBot = floorY - MARGIN - BASE_H;
+            if (validBot <= validTop) continue;
+            // 5 candidates evenly spread from ceiling-margin to floor-margin
+            for (let vi = 0; vi < 5; vi++) {
+                const candY = validTop + (validBot - validTop) * (vi / 4);
                 if (candY < ceilY + MARGIN || candY + BASE_H > floorY - MARGIN) continue;
                 let blocked = false;
                 if (plats) {
@@ -287,7 +291,9 @@ function computeSpawns(numPlayers, wW, wH, terr, ceil, plats) {
                     }
                 }
                 if (blocked) continue;
-                const score = Math.abs(candY - floorY) + Math.min(tx, wW - tx) * 0.1;
+                // Score by closeness to the assigned vertical target for this zone
+                const targetY = ceilY + openH * vFrac;
+                const score = -Math.abs(candY - targetY);
                 if (score > bestScore) { bestScore = score; bestX = tx; bestY = candY; }
             }
         }
