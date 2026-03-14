@@ -8,10 +8,10 @@ A 2D physics-based spaceship cave combat game built entirely in a single HTML fi
 
 | Item | Value |
 |---|---|
-| **GitHub** | `https://github.com/Lakeaj/thrustfall.git` |
+| **GitHub** | `https://github.com/saykeyo-creator/thrustfall.git` |
 | **Branch** | `main` |
 | **Hosting** | [Render](https://render.com) — Web Service (auto-deploys on push to `main`) |
-| **Live URL** | Check Render dashboard — the service name is `thrustfall` |
+| **Live URL** | `https://thrustfall-qr58.onrender.com` |
 | **Local dev** | `http://localhost:3000` |
 | **Local port** | `3000` (configurable via `PORT` env var) |
 
