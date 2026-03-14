@@ -4,4 +4,5 @@ dist/
 *.jks
 keystore.properties
 deploy.bat
+increment-version.ps1
 thrustfall-release.aab
