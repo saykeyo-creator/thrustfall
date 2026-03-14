@@ -53,6 +53,6 @@ TAGS: action, arcade, multiplayer, pvp, space, combat, physics, indie
 PRIVACY POLICY URL: https://thrustfall-qr58.onrender.com/privacy.html
 TERMS URL: https://thrustfall-qr58.onrender.com/terms.html
 
-DEVELOPER: Lakes Games
+DEVELOPER: KeyoGames
 EMAIL: saykeyo@gmail.com
 WEBSITE: https://thrustfall-qr58.onrender.com

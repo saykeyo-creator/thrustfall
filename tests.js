@@ -6816,7 +6816,75 @@ section('238. Kill Effect — Client killPlayer Mirrors Server Logic');
         'Client kill event includes ki and ke fields');
 }
 
-console.log(`\n${'='.repeat(50)}`);
+// ═══════════════════════════════════════════════════════════════
+section('239. WebSocket URL — Android/Capacitor localhost fix');
+// ═══════════════════════════════════════════════════════════════
+{
+    const clientCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    const androidCode = fs.readFileSync(require('path').join(__dirname, 'android/app/src/main/assets/public/index.html'), 'utf8');
+
+    // Both files must detect localhost and redirect to Render
+    assert(clientCode.includes("location.hostname === 'localhost'") && clientCode.includes('thrustfall-qr58.onrender.com'),
+        'index.html WS_URL redirects localhost to Render server');
+    assert(androidCode.includes("location.hostname === 'localhost'") && androidCode.includes('thrustfall-qr58.onrender.com'),
+        'Android index.html WS_URL redirects localhost to Render server');
+
+    // Must use wss:// (secure) for the hardcoded URL
+    assert(clientCode.includes("'wss://thrustfall-qr58.onrender.com'"),
+        'WS_URL uses wss:// (secure WebSocket) for Render');
+}
+
+// ═══════════════════════════════════════════════════════════════
+section('240. Server — rejoin handler exists and matches by name');
+// ═══════════════════════════════════════════════════════════════
+{
+    const serverCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+
+    assert(serverCode.includes("case 'rejoin':"),
+        'Server has rejoin message handler');
+    assert(serverCode.includes("lobbyPlayers.findIndex(p => p.name === data.name)"),
+        'Rejoin matches player by name');
+    assert(serverCode.includes("room.lobbyPlayers[existingIdx].ws = ws"),
+        'Rejoin replaces stale WebSocket reference with new one');
+    assert(serverCode.includes("wsRoomMap.set(ws, code)") && serverCode.includes("case 'rejoin':"),
+        'Rejoin re-registers ws in wsRoomMap');
+    assert(serverCode.includes("room.broadcastLobby()") && serverCode.includes("case 'rejoin':"),
+        'Rejoin broadcasts updated lobby after reconnect');
+}
+
+// ═══════════════════════════════════════════════════════════════
+section('241. Server — WebSocket keepalive ping prevents idle disconnect');
+// ═══════════════════════════════════════════════════════════════
+{
+    const serverCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+
+    assert(serverCode.includes('wss.clients.forEach'),
+        'Server iterates all clients for keepalive');
+    assert(serverCode.includes('ws.ping()'),
+        'Server sends WebSocket ping frames to clients');
+    // Must run on an interval under 55s (Render drops idle connections at ~60s)
+    const match = serverCode.match(/setInterval\([^)]+wss\.clients[\s\S]{0,200}?(\d+)\s*\*\s*1000/);
+    if (match) {
+        const seconds = parseInt(match[1]);
+        assert(seconds <= 50, `Keepalive interval is ${seconds}s (must be ≤50s to beat Render's 60s idle timeout)`);
+    } else {
+        assert(serverCode.includes('30 * 1000') || serverCode.includes('30000'),
+            'Keepalive runs every 30s');
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+section('242. Client — lobby keepalive ping (not only during game)');
+// ═══════════════════════════════════════════════════════════════
+{
+    const clientCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+
+    // Must send ping whenever multiplayer is active, not just when game is running
+    assert(!clientCode.includes('if (running && isMultiplayer) sendPing()'),
+        'Lobby ping not gated on running — fires during lobby too');
+    assert(clientCode.includes('if (isMultiplayer) sendPing()'),
+        'Ping fires whenever isMultiplayer is true (covers lobby + game)');
+}
 console.log(`RESULTS: ${passed}/${total} passed, ${failed} failed`);
 console.log(`${'='.repeat(50)}`);
 if (failed > 0) {
