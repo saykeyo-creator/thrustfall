@@ -107,6 +107,17 @@ function getTerrainYAt(x, arr) {
     }
     return null;
 }
+
+// Build a flat Float32Array lookup: one Y value per integer X pixel.
+// Replaces per-frame binary searches in the hot update() path.
+function buildTerrainCache(arr, worldW) {
+    const cache = new Float32Array(worldW + 1);
+    for (let x = 0; x <= worldW; x++) {
+        const r = getTerrainYAt(x, arr);
+        cache[x] = r ? r.y : -1;
+    }
+    return cache;
+}
 function canLand(p, surface) {
     const speed = Math.sqrt(p.vx ** 2 + p.vy ** 2);
     const upright = Math.abs(p.angle + Math.PI / 2);
@@ -487,6 +498,9 @@ class Room {
         this.ceiling = mapData.ceiling;
         this.platforms = mapData.platforms;
         this.stars = mapData.stars;
+        // Pre-computed Y lookup per integer X pixel — replaces binary search in hot path
+        this.terrainCache = buildTerrainCache(mapData.terrain, mapData.worldW);
+        this.ceilingCache = buildTerrainCache(mapData.ceiling, mapData.worldW);
         this.frame = 0;
         this.ending = false;
 
@@ -684,11 +698,10 @@ class Room {
             }
             if (hit) continue;
 
-            // Terrain/platform collision
-            const bt = getTerrainYAt(b.x, this.terrain);
-            if (bt && b.y > bt.y) { this.bullets.splice(i, 1); continue; }
-            const ct = getTerrainYAt(b.x, this.ceiling);
-            if (ct && b.y < ct.y) { this.bullets.splice(i, 1); continue; }
+            // Terrain/platform collision — cache lookup O(1) vs binary search
+            const bxi = ((Math.round(b.x) % this.worldW) + this.worldW) % this.worldW;
+            const btY = this.terrainCache[bxi]; if (btY >= 0 && b.y > btY) { this.bullets.splice(i, 1); continue; }
+            const ctY = this.ceilingCache[bxi]; if (ctY >= 0 && b.y < ctY) { this.bullets.splice(i, 1); continue; }
             for (const pl of this.platforms) {
                 if (ptInRect(b.x, b.y, pl.x, pl.y, pl.width, pl.height)) { this.bullets.splice(i, 1); break; }
             }
@@ -708,8 +721,9 @@ class Room {
                 const tx = bm.x + Math.cos(bm.angle) * d, ty = bm.y + Math.sin(bm.angle) * d;
                 const wx = ((tx % this.worldW) + this.worldW) % this.worldW;
                 if (ty < 0 || ty > this.worldH) { endDist = d; break; }
-                const bt = getTerrainYAt(wx, this.terrain); if (bt && ty > bt.y) { endDist = d; break; }
-                const ct2 = getTerrainYAt(wx, this.ceiling); if (ct2 && ty < ct2.y) { endDist = d; break; }
+                const wxi = Math.round(wx) | 0;
+                const lbtY = this.terrainCache[wxi]; if (lbtY >= 0 && ty > lbtY) { endDist = d; break; }
+                const lctY = this.ceilingCache[wxi]; if (lctY >= 0 && ty < lctY) { endDist = d; break; }
                 let platHit = false;
                 for (const pl of this.platforms) { if (ptInRect(wx, ty, pl.x, pl.y, pl.width, pl.height)) { platHit = true; break; } }
                 if (platHit) { endDist = d; break; }
@@ -960,9 +974,10 @@ class Room {
     spawnPickup() {
         for (let attempt = 0; attempt < 20; attempt++) {
             const x = 50 + Math.random() * (this.worldW - 100);
-            const ti = getTerrainYAt(x, this.terrain);
-            const ci = getTerrainYAt(x, this.ceiling);
-            if (!ti || !ci) continue;
+            const xi = Math.round(x) | 0;
+            const tiY = this.terrainCache[xi], ciY = this.ceilingCache[xi];
+            if (tiY < 0 || ciY < 0) continue;
+            const ti = { y: tiY }, ci = { y: ciY };
             let placed = false;
             if (Math.random() < 0.5) {
                 for (const pl of this.platforms) {
