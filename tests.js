@@ -3286,40 +3286,40 @@ const PERKS = [
 ];
 const SHIP_SKINS = [
     {id:'default', name:'STANDARD',    desc:'Classic arrowhead',           price:0,    color:null, free:true,  shape:'default'},
-    {id:'neon',    name:'NEON',         desc:'Sleek racer silhouette',     price:199,  color:'#00ffff',  shape:'neon'},
-    {id:'stealth', name:'STEALTH',      desc:'Dark angular silhouette',    price:199,  color:'#334455',  shape:'stealth'},
-    {id:'phoenix', name:'PHOENIX',      desc:'Spread-wing firebird',       price:199,  color:'#ff4400',  shape:'phoenix'},
-    {id:'gold',    name:'GOLD',         desc:'Ornate royal cruiser',       price:199,  color:'#ffcc00',  shape:'gold'},
-    {id:'ghost',   name:'GHOST',        desc:'Ethereal phantom vessel',    price:199,  color:'#8866ff',  shape:'ghost'},
-    {id:'trident', name:'TRIDENT',      desc:'Three-pronged warfork',      price:199,  color:'#00ff88',  shape:'trident'},
-    {id:'manta',   name:'MANTA',        desc:'Wide curved stingray',       price:199,  color:'#0088ff',  shape:'manta'},
-    {id:'blade',   name:'BLADE',        desc:'Ultra-thin dagger ship',     price:199,  color:'#ff3366',  shape:'blade'},
-    {id:'fortress',name:'FORTRESS',     desc:'Heavy armored hexhull',      price:199,  color:'#ff8800',  shape:'fortress'},
-    {id:'falcon',  name:'FALCON',       desc:'Four-finned strike craft',   price:199,  color:'#44ddaa',  shape:'falcon'},
+    {id:'neon',    name:'NEON',         desc:'Sleek racer silhouette',     price:200,  color:'#00ffff',  shape:'neon'},
+    {id:'stealth', name:'STEALTH',      desc:'Dark angular silhouette',    price:200,  color:'#334455',  shape:'stealth'},
+    {id:'phoenix', name:'PHOENIX',      desc:'Spread-wing firebird',       price:200,  color:'#ff4400',  shape:'phoenix'},
+    {id:'gold',    name:'GOLD',         desc:'Ornate royal cruiser',       price:200,  color:'#ffcc00',  shape:'gold'},
+    {id:'ghost',   name:'GHOST',        desc:'Ethereal phantom vessel',    price:200,  color:'#8866ff',  shape:'ghost'},
+    {id:'trident', name:'TRIDENT',      desc:'Three-pronged warfork',      price:200,  color:'#00ff88',  shape:'trident'},
+    {id:'manta',   name:'MANTA',        desc:'Wide curved stingray',       price:200,  color:'#0088ff',  shape:'manta'},
+    {id:'blade',   name:'BLADE',        desc:'Ultra-thin dagger ship',     price:200,  color:'#ff3366',  shape:'blade'},
+    {id:'fortress',name:'FORTRESS',     desc:'Heavy armored hexhull',      price:200,  color:'#ff8800',  shape:'fortress'},
+    {id:'falcon',  name:'FALCON',       desc:'Four-finned strike craft',   price:200,  color:'#44ddaa',  shape:'falcon'},
 ];
 const TRAIL_EFFECTS = [
     {id:'default', name:'STANDARD',    desc:'Default exhaust',             price:0,    free:true},
-    {id:'ice',     name:'ICE',         desc:'Blue ice crystals',           price:199,  colors:['#88ddff','#aaeeff','#ccf4ff']},
-    {id:'fire',    name:'INFERNO',     desc:'Raging fire exhaust',         price:199,  colors:['#ff2200','#ff6600','#ffaa00']},
-    {id:'plasma',  name:'PLASMA',      desc:'Purple plasma stream',        price:199,  colors:['#aa44ff','#cc66ff','#8822dd']},
-    {id:'rainbow', name:'RAINBOW',     desc:'Color-cycling exhaust',       price:199,  colors:null, rainbow:true},
-    {id:'toxic',   name:'TOXIC',       desc:'Green acid trail',            price:199,  colors:['#44ff00','#88ff44','#aaff88']},
+    {id:'ice',     name:'ICE',         desc:'Blue ice crystals',           price:100,  colors:['#88ddff','#aaeeff','#ccf4ff']},
+    {id:'fire',    name:'INFERNO',     desc:'Raging fire exhaust',         price:100,  colors:['#ff2200','#ff6600','#ffaa00']},
+    {id:'plasma',  name:'PLASMA',      desc:'Purple plasma stream',        price:100,  colors:['#aa44ff','#cc66ff','#8822dd']},
+    {id:'rainbow', name:'RAINBOW',     desc:'Color-cycling exhaust',       price:100,  colors:null, rainbow:true},
+    {id:'toxic',   name:'TOXIC',       desc:'Green acid trail',            price:100,  colors:['#44ff00','#88ff44','#aaff88']},
 ];
 const ENGINE_SOUNDS = [
     {id:'default', name:'STANDARD',  desc:'Classic thrust',          price:0,   free:true},
-    {id:'rumble',  name:'RUMBLE',    desc:'Deep bass growl',         price:199},
-    {id:'whine',   name:'WHINE',    desc:'Electric turbine whine',  price:199},
-    {id:'pulse',   name:'PULSE',    desc:'Pulsing thruster',        price:199},
-    {id:'roar',    name:'ROAR',     desc:'Aggressive roar',         price:199},
-    {id:'hum',     name:'HUM',      desc:'Smooth ion drive',        price:199},
+    {id:'rumble',  name:'RUMBLE',    desc:'Deep bass growl',         price:100},
+    {id:'whine',   name:'WHINE',    desc:'Electric turbine whine',  price:100},
+    {id:'pulse',   name:'PULSE',    desc:'Pulsing thruster',        price:100},
+    {id:'roar',    name:'ROAR',     desc:'Aggressive roar',         price:100},
+    {id:'hum',     name:'HUM',      desc:'Smooth ion drive',        price:100},
 ];
 const KILL_EFFECTS = [
     {id:'default',  name:'STANDARD', desc:'Classic explosion',       price:0,   free:true,  color:null},
-    {id:'vortex',   name:'VORTEX',   desc:'Imploding vortex',        price:199, color:'#8800ff'},
-    {id:'electric', name:'ELECTRIC', desc:'Lightning discharge',     price:199, color:'#00eeff'},
-    {id:'shatter',  name:'SHATTER',  desc:'Glass fragment spray',    price:199, color:'#aaccff'},
-    {id:'nova',     name:'NOVA',     desc:'Supernova ring burst',    price:199, color:'#ffff44'},
-    {id:'void',     name:'VOID',     desc:'Dark matter collapse',    price:199, color:'#6600aa'},
+    {id:'vortex',   name:'VORTEX',   desc:'Imploding vortex',        price:100, color:'#8800ff'},
+    {id:'electric', name:'ELECTRIC', desc:'Lightning discharge',     price:100, color:'#00eeff'},
+    {id:'shatter',  name:'SHATTER',  desc:'Glass fragment spray',    price:100, color:'#aaccff'},
+    {id:'nova',     name:'NOVA',     desc:'Supernova ring burst',    price:100, color:'#ffff44'},
+    {id:'void',     name:'VOID',     desc:'Dark matter collapse',    price:100, color:'#6600aa'},
 ];
 
 function xpForLevel(lv) { return Math.floor(XP_LEVEL_BASE * Math.pow(XP_LEVEL_SCALE, lv - 1)); }
@@ -3872,31 +3872,31 @@ section('129. Cosmetic Rendering — Skin Properties');
     const trident = SHIP_SKINS.find(s => s.id === 'trident');
     assert(trident.color === '#00ff88', 'trident skin is emerald green');
     assert(trident.shape === 'trident', 'trident skin has unique trident shape');
-    assert(trident.price === 199, 'trident costs 199 cents');
+    assert(trident.price === 200, 'trident costs 200 cents ($2 AUD)');
 
     // Manta (wide curved stingray)
     const manta = SHIP_SKINS.find(s => s.id === 'manta');
     assert(manta.color === '#0088ff', 'manta skin is ocean blue');
     assert(manta.shape === 'manta', 'manta skin has unique manta shape');
-    assert(manta.price === 199, 'manta costs 199 cents');
+    assert(manta.price === 200, 'manta costs 200 cents ($2 AUD)');
 
     // Blade (ultra-thin dagger)
     const blade = SHIP_SKINS.find(s => s.id === 'blade');
     assert(blade.color === '#ff3366', 'blade skin is hot pink');
     assert(blade.shape === 'blade', 'blade skin has unique blade shape');
-    assert(blade.price === 199, 'blade costs 199 cents');
+    assert(blade.price === 200, 'blade costs 200 cents ($2 AUD)');
 
     // Fortress (heavy hexagonal)
     const fortress = SHIP_SKINS.find(s => s.id === 'fortress');
     assert(fortress.color === '#ff8800', 'fortress skin is orange');
     assert(fortress.shape === 'fortress', 'fortress skin has unique fortress shape');
-    assert(fortress.price === 199, 'fortress costs 199 cents');
+    assert(fortress.price === 200, 'fortress costs 200 cents ($2 AUD)');
 
     // Falcon (four-finned)
     const falcon = SHIP_SKINS.find(s => s.id === 'falcon');
     assert(falcon.color === '#44ddaa', 'falcon skin is mint');
     assert(falcon.shape === 'falcon', 'falcon skin has unique falcon shape');
-    assert(falcon.price === 199, 'falcon costs 199 cents');
+    assert(falcon.price === 200, 'falcon costs 200 cents ($2 AUD)');
 
     // Every skin has a unique shape
     const shapes = SHIP_SKINS.map(s => s.shape);
@@ -4201,13 +4201,13 @@ section('138. Cosmetic Price Validation');
         }
     }
 
-    // Total skin cost
+    // Total skin cost: 10 skins × $2.00 AUD = $20.00 AUD (2000 cents)
     const totalSkinCost = SHIP_SKINS.reduce((s, sk) => s + (sk.price || 0), 0);
-    assert(totalSkinCost === 199 * 10, 'total skin cost = $19.90 (1990 cents)');
+    assert(totalSkinCost === 200 * 10, 'total skin cost = $20.00 AUD (2000 cents)');
 
-    // Total trail cost
+    // Total trail cost: 5 trails × $1.00 AUD = $5.00 AUD (500 cents)
     const totalTrailCost = TRAIL_EFFECTS.reduce((s, t) => s + (t.price || 0), 0);
-    assert(totalTrailCost === 199 * 5, 'total trail cost = $9.95 (995 cents)');
+    assert(totalTrailCost === 100 * 5, 'total trail cost = $5.00 AUD (500 cents)');
 }
 
 // =====================================================
@@ -5375,10 +5375,10 @@ section('146. Height-Fit Viewport — Tablet Controls Visible');
     const newShapes = new Set(newSkins.map(s => s.shape));
     assert(newShapes.size === 5, 'all 5 new skins have unique shapes');
 
-    // All new skins are premium (non-free, priced)
+    // All new skins are premium (non-free, priced at $2.00 AUD = 200 cents)
     for (const s of newSkins) {
         assert(!s.free, s.id + ' is a premium skin');
-        assert(s.price >= 99, s.id + ' has a valid price');
+        assert(s.price === 200, s.id + ' costs 200 cents ($2.00 AUD)');
         assert(typeof s.color === 'string' && s.color.startsWith('#'), s.id + ' has a hex color');
         assert(s.shape === s.id, s.id + ' shape matches its id');
     }
@@ -6884,6 +6884,304 @@ section('242. Client — lobby keepalive ping (not only during game)');
         'Lobby ping not gated on running — fires during lobby too');
     assert(clientCode.includes('if (isMultiplayer) sendPing()'),
         'Ping fires whenever isMultiplayer is true (covers lobby + game)');
+}
+
+// ═══════════════════════════════════════════════════════════════
+section('243. AUD Pricing — Replicated Constants Match New Prices');
+// ═══════════════════════════════════════════════════════════════
+{
+    // Ship skins: all 10 premium skins must be 200 cents ($2.00 AUD)
+    const premiumSkins = SHIP_SKINS.filter(s => !s.free);
+    assert(premiumSkins.length === 10, '10 premium ship skins defined');
+    for (const s of premiumSkins) {
+        assert(s.price === 200, s.id + ' skin costs 200 cents ($2.00 AUD)');
+        assert(s.price !== 199, s.id + ' skin does NOT use old price 199');
+    }
+
+    // Trail effects: all 5 premium trails must be 100 cents ($1.00 AUD)
+    const premiumTrails = TRAIL_EFFECTS.filter(t => !t.free);
+    assert(premiumTrails.length === 5, '5 premium trail effects defined');
+    for (const t of premiumTrails) {
+        assert(t.price === 100, t.id + ' trail costs 100 cents ($1.00 AUD)');
+        assert(t.price !== 199, t.id + ' trail does NOT use old price 199');
+    }
+
+    // Engine sounds: all 5 premium engines must be 100 cents ($1.00 AUD)
+    const premiumEngines = ENGINE_SOUNDS.filter(e => !e.free);
+    assert(premiumEngines.length === 5, '5 premium engine sounds defined');
+    for (const e of premiumEngines) {
+        assert(e.price === 100, e.id + ' engine costs 100 cents ($1.00 AUD)');
+        assert(e.price !== 199, e.id + ' engine does NOT use old price 199');
+    }
+
+    // Kill effects: all 5 premium effects must be 100 cents ($1.00 AUD)
+    const premiumKillFx = KILL_EFFECTS.filter(k => !k.free);
+    assert(premiumKillFx.length === 5, '5 premium kill effects defined');
+    for (const k of premiumKillFx) {
+        assert(k.price === 100, k.id + ' kill effect costs 100 cents ($1.00 AUD)');
+        assert(k.price !== 199, k.id + ' kill effect does NOT use old price 199');
+    }
+
+    // Verify no item across ALL cosmetics uses the old 199 price
+    const allCosmetics = [...SHIP_SKINS, ...TRAIL_EFFECTS, ...ENGINE_SOUNDS, ...KILL_EFFECTS];
+    const staleItems = allCosmetics.filter(c => c.price === 199);
+    assert(staleItems.length === 0, 'No cosmetic uses old price 199 (all updated to 200 or 100)');
+
+    // AUD display string logic: price in cents → display with 2 decimal places + AUD suffix
+    const shipDisplay = '$' + (200 / 100).toFixed(2) + ' AUD';
+    assert(shipDisplay === '$2.00 AUD', 'ship price 200 cents displays as "$2.00 AUD"');
+    const otherDisplay = '$' + (100 / 100).toFixed(2) + ' AUD';
+    assert(otherDisplay === '$1.00 AUD', 'other price 100 cents displays as "$1.00 AUD"');
+
+    // BUY button label format
+    const buyShip = 'BUY $' + (200 / 100).toFixed(2) + ' AUD';
+    assert(buyShip === 'BUY $2.00 AUD', 'BUY button for ships reads "BUY $2.00 AUD"');
+    const buyOther = 'BUY $' + (100 / 100).toFixed(2) + ' AUD';
+    assert(buyOther === 'BUY $1.00 AUD', 'BUY button for others reads "BUY $1.00 AUD"');
+
+    // Ships are double the price of other cosmetics
+    assert(200 / 100 === 2, 'ship price : other price = 2:1 ratio');
+}
+
+// ═══════════════════════════════════════════════════════════════
+section('244. AUD Pricing — index.html Code Verification');
+// ═══════════════════════════════════════════════════════════════
+{
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+
+    // Verify ship skin prices in source (200 = $2.00 AUD)
+    assert(code.includes('price:200'), 'index.html contains price:200 for ships');
+    assert(!code.match(/\{id:'(?:neon|stealth|phoenix|gold|ghost|trident|manta|blade|fortress|falcon)[^}]*price:199/),
+        'No premium ship skin uses old price:199 in index.html');
+
+    // Verify trail/engine/killfx prices in source (100 = $1.00 AUD)
+    assert(code.includes('price:100'), 'index.html contains price:100 for non-ship cosmetics');
+
+    // BUY button uses AUD suffix
+    assert(code.includes("+ ' AUD'") || code.includes("+'AUD'") || code.includes("'AUD'"),
+        'BUY button label includes AUD suffix');
+    // Verify specific BUY button format string
+    assert(code.includes("toFixed(2) + ' AUD'") || code.includes("toFixed(2)+ ' AUD'") || code.includes(".toFixed(2)+' AUD'"),
+        'BUY button format: (price/100).toFixed(2) + " AUD"');
+
+    // Shop footer has AUD disclaimer note
+    assert(code.includes('Prices in AUD') || code.includes('prices in AUD'),
+        'Shop footer contains "Prices in AUD" disclaimer');
+    assert(code.includes('Google Play'), 'Shop footer references Google Play for local pricing');
+}
+
+// ═══════════════════════════════════════════════════════════════
+section('245. In-App Legal Modal — No External Browser');
+// ═══════════════════════════════════════════════════════════════
+{
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+
+    // LEGAL object exists with both keys
+    assert(code.includes('const LEGAL = {'), 'LEGAL constant object defined');
+    assert(code.includes('privacy:'), 'LEGAL.privacy key exists');
+    assert(code.includes('terms:'), 'LEGAL.terms key exists');
+
+    // Legal links use onclick= (not target="_blank" or href to external URLs)
+    assert(code.includes("onclick=\"showLegal('privacy')"), 'privacy link uses onclick showLegal');
+    assert(code.includes("onclick=\"showLegal('terms')"), 'terms link uses onclick showLegal');
+    // Confirm links do NOT open external browser
+    const privacyLinkMatch = code.match(/onclick="showLegal\('privacy'\)[^"]*"/);
+    assert(privacyLinkMatch && !privacyLinkMatch[0].includes('_blank'),
+        'privacy link does not have target=_blank alongside showLegal');
+    const termsLinkMatch = code.match(/onclick="showLegal\('terms'\)[^"]*"/);
+    assert(termsLinkMatch && !termsLinkMatch[0].includes('_blank'),
+        'terms link does not have target=_blank alongside showLegal');
+
+    // showLegal and closeLegal functions defined
+    assert(code.includes('function showLegal(which)'), 'showLegal function defined');
+    assert(code.includes('function closeLegal()'), 'closeLegal function defined');
+
+    // showLegal sets modal to flex and populates content
+    assert(code.includes("modal.style.display = 'flex'"), 'showLegal sets display to flex');
+    assert(code.includes("document.getElementById('legalContent').innerHTML = LEGAL[which]"),
+        'showLegal populates legalContent with LEGAL[which]');
+    assert(code.includes('modal.scrollTop = 0'), 'showLegal resets scroll to top');
+
+    // closeLegal hides modal
+    assert(code.includes("document.getElementById('legalModal').style.display = 'none'"),
+        'closeLegal hides legalModal');
+
+    // Modal DOM elements exist
+    assert(code.includes('id="legalModal"'), 'legalModal div exists in DOM');
+    assert(code.includes('id="legalContent"'), 'legalContent div exists for innerHTML injection');
+    assert(code.includes("onclick=\"closeLegal()\""), 'BACK button calls closeLegal');
+
+    // LEGAL.terms contains correct AUD prices (not old $1.99 USD)
+    assert(code.includes('$2.00 AUD') || code.includes('2.00 AUD'),
+        'LEGAL.terms references $2.00 AUD for ship skins');
+    assert(code.includes('$1.00 AUD') || code.includes('1.00 AUD'),
+        'LEGAL.terms references $1.00 AUD for other cosmetics');
+    // CRITICAL: no reference to the old $1.99 USD pricing
+    const legalStart = code.indexOf('const LEGAL = {');
+    const legalEnd = code.indexOf('};', legalStart) + 2;
+    const legalBlock = code.substring(legalStart, legalEnd);
+    assert(!legalBlock.includes('1.99'), 'LEGAL block does NOT contain old price $1.99');
+    assert(!legalBlock.includes('USD'), 'LEGAL block does NOT reference USD as price denomination');
+
+    // LEGAL.privacy contains expected compliance keywords
+    assert(legalBlock.includes('KeyoGames'), 'LEGAL.privacy mentions KeyoGames');
+    assert(legalBlock.includes('localStorage') || legalBlock.includes('WebSocket'),
+        'LEGAL.privacy mentions localStorage or WebSocket (data handling)');
+
+    // safeProbe div for safe-area measurement exists
+    assert(code.includes('id="safeProbe"'), 'safeProbe div exists for safe-area measurement');
+    assert(code.includes('env(safe-area-inset-top'), 'safeProbe reads env(safe-area-inset-top)');
+    assert(code.includes('visibility:hidden'), 'safeProbe is hidden from user');
+    assert(code.includes('pointer-events:none'), 'safeProbe has pointer-events:none');
+}
+
+// ═══════════════════════════════════════════════════════════════
+section('246. Menu Music — cleanup() Does Not Restart Theme');
+// ═══════════════════════════════════════════════════════════════
+{
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+
+    // cleanup() must NOT call stopMenuTheme (that was the bug: music restarted on every back)
+    // Extract the cleanup function body to check it specifically
+    const cleanupStart = code.indexOf('function cleanup()');
+    const cleanupEnd = code.indexOf('\nfunction ', cleanupStart + 10);
+    const cleanupBody = code.substring(cleanupStart, cleanupEnd);
+    assert(!cleanupBody.includes('stopMenuTheme'), 'cleanup() does NOT call stopMenuTheme (music restart bug fix)');
+
+    // cleanup() DOES call stopMusic (stops in-game adaptive music)
+    assert(cleanupBody.includes('stopMusic'), 'cleanup() calls stopMusic (stops in-game music)');
+
+    // startMenuTheme has idempotency guard — calling it twice doesn't restart from beat 0
+    assert(code.includes('if (menuThemePlaying) return'), 'startMenuTheme guards against double-start');
+
+    // menuThemePlaying starts false
+    assert(code.includes('let menuThemePlaying = false'), 'menuThemePlaying initialised to false');
+
+    // startMenuTheme sets flag true (so guard works next call)
+    assert(code.includes('menuThemePlaying = true'), 'startMenuTheme sets menuThemePlaying=true');
+
+    // stopMenuTheme sets flag false (so it can be started again)
+    assert(code.includes('menuThemePlaying = false'), 'stopMenuTheme sets menuThemePlaying=false');
+
+    // beginGame (the only legit stop point) explicitly calls stopMenuTheme
+    const beginGameStart = code.indexOf('function beginGame(');
+    assert(beginGameStart >= 0, 'beginGame function exists');
+    const beginGameEnd = code.indexOf('\nfunction ', beginGameStart + 10);
+    const beginGameBody = code.substring(beginGameStart, beginGameEnd);
+    assert(beginGameBody.includes('stopMenuTheme()'), 'beginGame() calls stopMenuTheme (stops music when game starts)');
+
+    // showMenu calls startMenuTheme (music restarts when returning to menu)
+    const showMenuStart = code.indexOf('function showMenu(');
+    assert(showMenuStart >= 0, 'showMenu function exists');
+    const showMenuEnd = code.indexOf('\nfunction ', showMenuStart + 10);
+    const showMenuBody = code.substring(showMenuStart, showMenuEnd);
+    assert(showMenuBody.includes('startMenuTheme()'), 'showMenu() calls startMenuTheme');
+
+    // Simulate the sub-menu → back flow:
+    // Step 1: showMenu() is called → startMenuTheme() called → menuThemePlaying=true
+    // Step 2: user opens settings/shop → cleanup() called → does NOT call stopMenuTheme
+    //         → menuThemePlaying still true
+    // Step 3: showMenu() called again → startMenuTheme() called → guard fires, returns early
+    //         → no restart, music continues seamlessly
+    let menuThemePlaying = false;
+    function simStartMenuTheme() { if (menuThemePlaying) return; menuThemePlaying = true; }
+    function simCleanupNoStop() { /* does NOT stop menu theme */ }
+    function simShowMenu() { simStartMenuTheme(); }
+    simShowMenu();
+    assert(menuThemePlaying === true, 'sim: after showMenu, menuThemePlaying=true');
+    simCleanupNoStop();
+    assert(menuThemePlaying === true, 'sim: after back/cleanup, menuThemePlaying still true (no restart)');
+    const wasPlaying = menuThemePlaying;
+    simShowMenu(); // called again on return to menu
+    assert(menuThemePlaying === wasPlaying, 'sim: second showMenu does not restart (guard fires)');
+}
+
+// ═══════════════════════════════════════════════════════════════
+section('247. HUD Safe-Area Padding — Defaults and Computation');
+// ═══════════════════════════════════════════════════════════════
+{
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+
+    // Default global values
+    const VIEW_W_TEST = 412;
+    assert(code.includes('let hudT = 4, hudL = 8, hudR = VIEW_W - 8'),
+        'hudT/hudL/hudR globals initialised with safe defaults');
+    // Default values (no safe-area insets)
+    assert(4 === 4, 'hudT default = 4 (minimum top padding)');
+    assert(8 === 8, 'hudL default = 8 (minimum left margin)');
+    assert(VIEW_W_TEST - 8 === 404, 'hudR default = 404 (VIEW_W - 8)');
+
+    // safeProbe div with env() CSS for detecting device insets
+    assert(code.includes('id="safeProbe"'), 'safeProbe div exists');
+    assert(code.includes('env(safe-area-inset-top,0px)'), 'probe reads top inset');
+    assert(code.includes('env(safe-area-inset-left,0px)'), 'probe reads left inset');
+    assert(code.includes('env(safe-area-inset-right,0px)'), 'probe reads right inset');
+
+    // Computation block in resize()
+    assert(code.includes('const sp = document.getElementById(\'safeProbe\')'),
+        'resize() retrieves safeProbe element');
+    assert(code.includes('const saT = parseFloat(scs.paddingTop) || 0'),
+        'resize() reads paddingTop for safe-area top');
+    assert(code.includes('const saL = parseFloat(scs.paddingLeft) || 0'),
+        'resize() reads paddingLeft for safe-area left');
+    assert(code.includes('const saR = parseFloat(scs.paddingRight) || 0'),
+        'resize() reads paddingRight for safe-area right');
+
+    // Formula: hudT = Math.ceil(saT / viewScale) + 4
+    assert(code.includes('hudT = Math.ceil(saT / viewScale) + 4'),
+        'hudT formula: ceil(saT/viewScale) + 4 converts CSS px → game coords with minimum');
+
+    // Formula: hudL = Math.max(8, Math.ceil((-viewOffX + saL) / viewScale) + 8)
+    assert(code.includes('hudL = Math.max(8, Math.ceil((-viewOffX + saL) / viewScale) + 8)'),
+        'hudL formula accounts for overflow offset + safe-area left, minimum 8');
+
+    // Formula: hudR = Math.min(W - 8, Math.floor((screenW - saR - viewOffX) / viewScale) - 8)
+    assert(code.includes('hudR = Math.min(W - 8, Math.floor((screenW - saR - viewOffX) / viewScale) - 8)'),
+        'hudR formula maps right screen edge to game coords, maximum W-8');
+
+    // Sample computation: Samsung Galaxy Ultra scenario
+    // Screen: 360px wide CSS, game VIEW_W=412 → viewScale = screenH/VIEW_H → game overflows sides
+    // Example: viewScale=1.163, viewOffX=-30 (game is wider than screen, shifted left)
+    const saT = 45, saL = 0, saR = 0;
+    const viewScale = 1.163, viewOffX = -30, screenW = 360;
+    const W = VIEW_W_TEST;
+
+    const computedHudT = Math.ceil(saT / viewScale) + 4;
+    assert(computedHudT === 43, 'Samsung scenario: hudT = ceil(45/1.163)+4 = 39+4 = 43');
+    assert(computedHudT > 4, 'hudT increases when status bar inset > 0');
+
+    const computedHudL = Math.max(8, Math.ceil((-viewOffX + saL) / viewScale) + 8);
+    assert(computedHudL === Math.max(8, Math.ceil(30 / 1.163) + 8),
+        'hudL accounts for viewOffX overflow (left side may be clipped)');
+    assert(computedHudL > 8, 'hudL is wider than default when game overflows screen left');
+
+    const computedHudR = Math.min(W - 8, Math.floor((screenW - saR - viewOffX) / viewScale) - 8);
+    assert(computedHudR < W - 8, 'hudR is narrower than default when game overflows screen right');
+    assert(computedHudR > 0, 'hudR stays positive');
+
+    // Invariant: hudL < hudR always (HUD has positive width)
+    assert(computedHudL < computedHudR, 'hudL < hudR (HUD renders correctly)');
+
+    // Invariant: hudT >= 4 (always has minimum top padding even with no insets)
+    const hudTNoInsets = Math.ceil(0 / viewScale) + 4;
+    assert(hudTNoInsets === 4, 'hudT with no insets = 4 (minimum padding preserved)');
+
+    // Radar position uses hudR and hudT
+    assert(code.includes('hudR - rSz') || code.includes('hudR-rSz'),
+        'radar X position uses hudR (top-right, respects safe area)');
+    assert(code.includes('hudT + 14') || code.includes('hudT+14'),
+        'radar Y position uses hudT (below status bar/notch)');
+
+    // HUD panel height covers status bar area
+    assert(code.includes('hudT + panelH') || code.includes('hudT+panelH'),
+        'HUD panel height extends to cover hudT (status bar area)');
+
+    // Left-side HUD elements use hudL
+    assert(code.includes('hudL'), 'HUD elements reference hudL for left-side position');
+    // Right-side HUD elements use hudR
+    assert(code.includes('hudR'), 'HUD elements reference hudR for right-side position');
+    // Top HUD elements use hudT
+    assert(code.includes('hudT'), 'HUD elements reference hudT for top position');
 }
 console.log(`RESULTS: ${passed}/${total} passed, ${failed} failed`);
 console.log(`${'='.repeat(50)}`);

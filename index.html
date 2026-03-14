@@ -73,7 +73,7 @@ input[type=text]::placeholder{color:#555;text-transform:none}
 <span style="color:#555">__VERSION__ &bull; KeyoGames &bull; 2026</span><br>
 <span style="color:#444">A gravity-defying cave combat game</span><br>
 <span style="color:#444">Made with love by Keyo &amp; Tom</span><br>
-<a href="https://thrustfall-qr58.onrender.com/privacy" style="color:#666;font-size:clamp(.45rem,1.3vw,.6rem);text-decoration:underline" target="_blank">Privacy Policy</a> &bull; <a href="https://thrustfall-qr58.onrender.com/terms" style="color:#666;font-size:clamp(.45rem,1.3vw,.6rem);text-decoration:underline" target="_blank">Terms of Service</a>
+<a href="#" onclick="showLegal('privacy');return false;" style="color:#666;font-size:clamp(.45rem,1.3vw,.6rem);text-decoration:underline">Privacy Policy</a> &bull; <a href="#" onclick="showLegal('terms');return false;" style="color:#666;font-size:clamp(.45rem,1.3vw,.6rem);text-decoration:underline">Terms of Service</a>
 </div>
 </div>
 
@@ -247,6 +247,7 @@ Land on bases to refuel · Collect weapons · Survive!
 <button class="btn sm" onclick="showMenu()">BACK</button>
 <button class="btn sm" id="restoreBtn" onclick="restorePurchases()" style="display:none;font-size:clamp(.65rem,2.2vw,.8rem);padding:.35em .7em;opacity:0.7">↩ RESTORE</button>
 </div>
+<div style="flex-shrink:0;text-align:center;padding:.2em 0 .1em 0;font-size:clamp(.55rem,1.8vw,.7rem);color:#555">Prices in AUD. Local currency set by Google Play.</div>
 </div>
 
 <canvas id="c"></canvas>
@@ -336,6 +337,8 @@ const DAILY_CHALLENGES = [
 const VIEW_W = 412, VIEW_H = 732; // reference phone viewport (logical pixels)
 let W = VIEW_W, H = VIEW_H;
 let screenW, screenH, viewScale = 1, viewOffX = 0, viewOffY = 0; // scaling state
+// HUD safe-area bounds in game coords (updated by resize, accounts for notch + screen overflow)
+let hudT = 4, hudL = 8, hudR = VIEW_W - 8;
 let running = false, frame = 0, af;
 
 // Networking — WebSocket to dedicated server
@@ -404,40 +407,40 @@ const PERKS = [
 // ---------- COSMETIC SHOP ----------
 const SHIP_SKINS = [
     {id:'default', name:'STANDARD',    desc:'Classic arrowhead',           price:0,    color:null, free:true,  shape:'default'},
-    {id:'neon',    name:'NEON',         desc:'Sleek racer silhouette',     price:199,  color:'#00ffff',  shape:'neon'},
-    {id:'stealth', name:'STEALTH',      desc:'Dark angular silhouette',    price:199,  color:'#334455',  shape:'stealth'},
-    {id:'phoenix', name:'PHOENIX',      desc:'Spread-wing firebird',       price:199,  color:'#ff4400',  shape:'phoenix'},
-    {id:'gold',    name:'GOLD',         desc:'Ornate royal cruiser',       price:199,  color:'#ffcc00',  shape:'gold'},
-    {id:'ghost',   name:'GHOST',        desc:'Ethereal phantom vessel',    price:199,  color:'#8866ff',  shape:'ghost'},
-    {id:'trident', name:'TRIDENT',      desc:'Three-pronged warfork',      price:199,  color:'#00ff88',  shape:'trident'},
-    {id:'manta',   name:'MANTA',        desc:'Wide curved stingray',       price:199,  color:'#0088ff',  shape:'manta'},
-    {id:'blade',   name:'BLADE',        desc:'Ultra-thin dagger ship',     price:199,  color:'#ff3366',  shape:'blade'},
-    {id:'fortress',name:'FORTRESS',     desc:'Heavy armored hexhull',      price:199,  color:'#ff8800',  shape:'fortress'},
-    {id:'falcon',  name:'FALCON',       desc:'Four-finned strike craft',   price:199,  color:'#44ddaa',  shape:'falcon'},
+    {id:'neon',    name:'NEON',         desc:'Sleek racer silhouette',     price:200,  color:'#00ffff',  shape:'neon'},
+    {id:'stealth', name:'STEALTH',      desc:'Dark angular silhouette',    price:200,  color:'#334455',  shape:'stealth'},
+    {id:'phoenix', name:'PHOENIX',      desc:'Spread-wing firebird',       price:200,  color:'#ff4400',  shape:'phoenix'},
+    {id:'gold',    name:'GOLD',         desc:'Ornate royal cruiser',       price:200,  color:'#ffcc00',  shape:'gold'},
+    {id:'ghost',   name:'GHOST',        desc:'Ethereal phantom vessel',    price:200,  color:'#8866ff',  shape:'ghost'},
+    {id:'trident', name:'TRIDENT',      desc:'Three-pronged warfork',      price:200,  color:'#00ff88',  shape:'trident'},
+    {id:'manta',   name:'MANTA',        desc:'Wide curved stingray',       price:200,  color:'#0088ff',  shape:'manta'},
+    {id:'blade',   name:'BLADE',        desc:'Ultra-thin dagger ship',     price:200,  color:'#ff3366',  shape:'blade'},
+    {id:'fortress',name:'FORTRESS',     desc:'Heavy armored hexhull',      price:200,  color:'#ff8800',  shape:'fortress'},
+    {id:'falcon',  name:'FALCON',       desc:'Four-finned strike craft',   price:200,  color:'#44ddaa',  shape:'falcon'},
 ];
 const TRAIL_EFFECTS = [
     {id:'default', name:'STANDARD',    desc:'Default exhaust',             price:0,    free:true},
-    {id:'ice',     name:'ICE',         desc:'Blue ice crystals',           price:199,  colors:['#88ddff','#aaeeff','#ccf4ff']},
-    {id:'fire',    name:'INFERNO',     desc:'Raging fire exhaust',         price:199,  colors:['#ff2200','#ff6600','#ffaa00']},
-    {id:'plasma',  name:'PLASMA',      desc:'Purple plasma stream',        price:199,  colors:['#aa44ff','#cc66ff','#8822dd']},
-    {id:'rainbow', name:'RAINBOW',     desc:'Color-cycling exhaust',       price:199,  colors:null, rainbow:true},
-    {id:'toxic',   name:'TOXIC',       desc:'Green acid trail',            price:199,  colors:['#44ff00','#88ff44','#aaff88']},
+    {id:'ice',     name:'ICE',         desc:'Blue ice crystals',           price:100,  colors:['#88ddff','#aaeeff','#ccf4ff']},
+    {id:'fire',    name:'INFERNO',     desc:'Raging fire exhaust',         price:100,  colors:['#ff2200','#ff6600','#ffaa00']},
+    {id:'plasma',  name:'PLASMA',      desc:'Purple plasma stream',        price:100,  colors:['#aa44ff','#cc66ff','#8822dd']},
+    {id:'rainbow', name:'RAINBOW',     desc:'Color-cycling exhaust',       price:100,  colors:null, rainbow:true},
+    {id:'toxic',   name:'TOXIC',       desc:'Green acid trail',            price:100,  colors:['#44ff00','#88ff44','#aaff88']},
 ];
 const ENGINE_SOUNDS = [
     {id:'default', name:'STANDARD',  desc:'Classic thrust',          price:0,   free:true},
-    {id:'rumble',  name:'RUMBLE',    desc:'Deep bass growl',         price:199},
-    {id:'whine',   name:'WHINE',    desc:'Electric turbine whine',  price:199},
-    {id:'pulse',   name:'PULSE',    desc:'Pulsing thruster',        price:199},
-    {id:'roar',    name:'ROAR',     desc:'Aggressive roar',         price:199},
-    {id:'hum',     name:'HUM',      desc:'Smooth ion drive',        price:199},
+    {id:'rumble',  name:'RUMBLE',    desc:'Deep bass growl',         price:100},
+    {id:'whine',   name:'WHINE',    desc:'Electric turbine whine',  price:100},
+    {id:'pulse',   name:'PULSE',    desc:'Pulsing thruster',        price:100},
+    {id:'roar',    name:'ROAR',     desc:'Aggressive roar',         price:100},
+    {id:'hum',     name:'HUM',      desc:'Smooth ion drive',        price:100},
 ];
 const KILL_EFFECTS = [
     {id:'default',  name:'STANDARD', desc:'Classic explosion',       price:0,   free:true,  color:null},
-    {id:'vortex',   name:'VORTEX',   desc:'Imploding vortex',        price:199, color:'#8800ff'},
-    {id:'electric', name:'ELECTRIC', desc:'Lightning discharge',     price:199, color:'#00eeff'},
-    {id:'shatter',  name:'SHATTER',  desc:'Glass fragment spray',    price:199, color:'#aaccff'},
-    {id:'nova',     name:'NOVA',     desc:'Supernova ring burst',    price:199, color:'#ffff44'},
-    {id:'void',     name:'VOID',     desc:'Dark matter collapse',    price:199, color:'#6600aa'},
+    {id:'vortex',   name:'VORTEX',   desc:'Imploding vortex',        price:100, color:'#8800ff'},
+    {id:'electric', name:'ELECTRIC', desc:'Lightning discharge',     price:100, color:'#00eeff'},
+    {id:'shatter',  name:'SHATTER',  desc:'Glass fragment spray',    price:100, color:'#aaccff'},
+    {id:'nova',     name:'NOVA',     desc:'Supernova ring burst',    price:100, color:'#ffff44'},
+    {id:'void',     name:'VOID',     desc:'Dark matter collapse',    price:100, color:'#6600aa'},
 ];
 
 // Player shop data (persisted)
@@ -1321,7 +1324,6 @@ function cleanup() {
     running = false;
     cancelAnimationFrame(af);
     stopMusic();
-    stopMenuTheme();
     if (ws && !isHost) { ws.close(); ws = null; } // close WS for multiplayer; keep for solo/survival
     lobbyPlayers = [];
     isHost = false;
@@ -3454,56 +3456,56 @@ function drawHUD() {
     ctx.font = `bold ${fs}px 'Courier New', monospace`;
     ctx.textAlign = 'left';
 
-    // HUD background panel
+    // HUD background panel — extends to cover safe-area (status bar / notch)
     const panelH = fs * 2 + 16;
     ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    ctx.fillRect(0, 0, W, panelH);
+    ctx.fillRect(0, 0, W, hudT + panelH);
     ctx.fillStyle = 'rgba(255,255,255,0.06)';
-    ctx.fillRect(0, panelH - 1, W, 1);
+    ctx.fillRect(0, hudT + panelH - 1, W, 1);
 
     ctx.fillStyle = me.color;
     let ls = me.name+': ';
     const maxHearts = Math.max(me.lives, LIVES);
     for (let i=0;i<me.lives;i++) ls+='♥';
     for (let i=me.lives;i<maxHearts;i++) ls+='♡';
-    ctx.fillText(ls, 8, fs+4);
-    ctx.fillText('KILLS:'+me.score, 8, fs*2+8);
+    ctx.fillText(ls, hudL, hudT + fs+4);
+    ctx.fillText('KILLS:'+me.score, hudL, hudT + fs*2+8);
 
     // Powerup status
-    let hudY = fs*3+12;
+    let hudY = hudT + fs*3+12;
     if (me.weapon && me.weapon !== 'normal') {
         const wpt = PICKUP_TYPES.find(t=>t.id===me.weapon);
-        if (wpt) { ctx.fillStyle=wpt.color; ctx.textAlign='left'; ctx.fillText(wpt.icon+' '+wpt.name, 8, hudY); hudY += fs+4; }
+        if (wpt) { ctx.fillStyle=wpt.color; ctx.textAlign='left'; ctx.fillText(wpt.icon+' '+wpt.name, hudL, hudY); hudY += fs+4; }
     }
     if (me.shield > 0) {
-        ctx.fillStyle='#00ffaa'; ctx.textAlign='left'; ctx.fillText('◎ SHIELD x'+me.shield, 8, hudY); hudY += fs+4;
+        ctx.fillStyle='#00ffaa'; ctx.textAlign='left'; ctx.fillText('◎ SHIELD x'+me.shield, hudL, hudY); hudY += fs+4;
     }
     if (me.empActive > 0) {
-        ctx.fillStyle='#ffff00'; ctx.textAlign='left'; ctx.fillText('⚡ EMP ACTIVE', 8, hudY); hudY += fs+4;
+        ctx.fillStyle='#ffff00'; ctx.textAlign='left'; ctx.fillText('⚡ EMP ACTIVE', hudL, hudY); hudY += fs+4;
     }
     if (me.empStruck > 0) {
         const secLeft = Math.ceil(me.empStruck / 60);
         ctx.fillStyle = Math.sin(frame*0.3)>0 ? '#ffff00' : '#ff4400'; ctx.textAlign='left';
-        ctx.fillText('⚡ DISABLED '+secLeft+'s', 8, hudY); hudY += fs+4;
+        ctx.fillText('⚡ DISABLED '+secLeft+'s', hudL, hudY); hudY += fs+4;
     }
 
     // Alive count
     const aliveCount = players.filter(p=>p.lives>0&&!p.disconnected).length;
     ctx.fillStyle='#888';ctx.textAlign='right';
-    ctx.fillText(aliveCount+' alive', W-8, fs+4);
+    ctx.fillText(aliveCount+' alive', hudR, hudT + fs+4);
 
     // Ping display (multiplayer only)
     if (isMultiplayer && pingMs > 0) {
         const pingColor = pingMs < 60 ? '#33ff66' : pingMs < 120 ? '#ffcc00' : '#ff3333';
         ctx.fillStyle = pingColor; ctx.textAlign = 'right';
-        ctx.fillText(pingMs+'ms', W-8, fs*2+8);
+        ctx.fillText(pingMs+'ms', hudR, hudT + fs*2+8);
     }
 
     // Survival wave number
     if (survivalMode && survivalWave > 0) {
         ctx.fillStyle='#ff6600';ctx.textAlign='center';
         ctx.font=`bold ${fs}px Courier New`;
-        ctx.fillText('WAVE '+survivalWave, W/2, fs+4);
+        ctx.fillText('WAVE '+survivalWave, W/2, hudT + fs+4);
     }
 
     if (!me.alive && me.lives>0) {
@@ -3567,7 +3569,7 @@ function drawRadar() {
 
     const rSz = Math.max(50, Math.min(W*.15, 80));
     const rR = rSz/2; // radar circle radius in pixels
-    const rX = W-rSz-8, rY = 30;
+    const rX = hudR - rSz, rY = hudT + 14;
     const rCx = rX+rR, rCy = rY+rR;
 
     // Visible world radius around player (show ~45% of map around ship)
@@ -4275,7 +4277,7 @@ function renderCosmeticShop() {
             btn.textContent = 'EQUIP';
             btn.onclick = (e) => { e.stopPropagation(); equipCosmetic(cosmeticTab, itm.id); };
         } else {
-            btn.textContent = 'BUY $' + (itm.price / 100).toFixed(2);
+            btn.textContent = 'BUY $' + (itm.price / 100).toFixed(2) + ' AUD';
             btn.style.borderColor = '#ffcc00'; btn.style.color = '#ffcc00';
             btn.onclick = (e) => { e.stopPropagation(); buyCosmetic(cosmeticTab, itm.id, itm.price); };
         }
@@ -5056,6 +5058,18 @@ function resize() {
     ctx.setTransform(dpr * viewScale, 0, 0, dpr * viewScale, dpr * viewOffX, dpr * viewOffY);
     // Invalidate cached gradients (they depend on H)
     if (typeof draw !== 'undefined') { draw._tg = null; draw._cg = null; }
+    // Compute HUD safe margins in game coords from CSS safe-area insets
+    // Accounts for: notch/status-bar (saT), and the game overflowing screen sides on tall phones
+    const sp = document.getElementById('safeProbe');
+    if (sp) {
+        const scs = getComputedStyle(sp);
+        const saT = parseFloat(scs.paddingTop) || 0;
+        const saL = parseFloat(scs.paddingLeft) || 0;
+        const saR = parseFloat(scs.paddingRight) || 0;
+        hudT = Math.ceil(saT / viewScale) + 4;
+        hudL = Math.max(8, Math.ceil((-viewOffX + saL) / viewScale) + 8);
+        hudR = Math.min(W - 8, Math.floor((screenW - saR - viewOffX) / viewScale) - 8);
+    }
 }
 window.addEventListener('resize', resize);
 resize();
@@ -5080,6 +5094,28 @@ function loop(timestamp) {
     if (frame % 3600 === 0 && frame > 0) { playerStats.playTimeMin++; saveStats(); }
     af = requestAnimationFrame(loop);
 }
+
+const LEGAL = {
+  privacy: `<h1 style="color:#00eeff;font-size:1.4em;border-bottom:1px solid #333;padding-bottom:.5em;margin-top:0">Privacy Policy</h1><p style="color:#888;font-size:.85em">Last updated: March 7, 2026</p><p><strong>Thrustfall</strong> is a game developed by KeyoGames. This policy explains what data the game collects and how it is used.</p><h2 style="color:#00ccdd;font-size:1.1em;margin-top:1.5em">Data We Collect</h2><p>Thrustfall does <strong>not</strong> collect, store, or transmit any personal data to external servers. Specifically:</p><ul><li><strong>No accounts or sign-ups</strong> — the game does not require registration.</li><li><strong>No analytics or tracking</strong> — no third-party analytics, advertising SDKs, or tracking pixels are used.</li><li><strong>No cookies</strong> — the game does not set browser cookies.</li></ul><h2 style="color:#00ccdd;font-size:1.1em;margin-top:1.5em">Local Storage</h2><p>The game stores gameplay preferences and progress (player name, settings, XP, cosmetic purchases) locally on your device using <code>localStorage</code>. This data never leaves your device and is not accessible to KeyoGames or any third party.</p><h2 style="color:#00ccdd;font-size:1.1em;margin-top:1.5em">Multiplayer</h2><p>When you play multiplayer, the game connects to a WebSocket server. The only data transmitted is:</p><ul><li>Your chosen player name (not verified against any identity)</li><li>Game inputs (thrust, rotation, fire commands)</li><li>Cosmetic selections (ship skin, trail, engine sound, kill effect)</li><li>Equipped perks</li></ul><p>This data is used solely to run the game session and is not stored after the session ends. No IP addresses are logged or retained.</p><h2 style="color:#00ccdd;font-size:1.1em;margin-top:1.5em">Children's Privacy</h2><p>Thrustfall does not knowingly collect any personal information from children. The game does not require or request personal information from any user.</p><h2 style="color:#00ccdd;font-size:1.1em;margin-top:1.5em">Third-Party Services</h2><p>The game is hosted on Render. Render's infrastructure may process connection metadata (IP addresses) as part of standard web hosting, subject to Render's own privacy policy.</p><h2 style="color:#00ccdd;font-size:1.1em;margin-top:1.5em">Changes to This Policy</h2><p>If this policy changes, the updated version will be posted at this URL with a new &quot;Last updated&quot; date.</p><h2 style="color:#00ccdd;font-size:1.1em;margin-top:1.5em">Contact</h2><p>Questions about this privacy policy can be directed to KeyoGames via the GitHub repository: github.com/saykeyo-creator/thrustfall</p>`,
+  terms: `<h1 style="color:#00eeff;font-size:1.4em;border-bottom:1px solid #333;padding-bottom:.5em;margin-top:0">Terms of Service</h1><p style="color:#888;font-size:.85em">Last updated: March 7, 2026</p><p>By playing <strong>Thrustfall</strong> you agree to the following terms.</p><h2 style="color:#00ccdd;font-size:1.1em;margin-top:1.5em">Use of the Game</h2><p>Thrustfall is provided free of charge for personal, non-commercial use. You may not:</p><ul><li>Use the game to harass, abuse, or harm other players.</li><li>Attempt to exploit, reverse-engineer, or interfere with the game server.</li><li>Use automated tools or bots to play the game in multiplayer.</li></ul><h2 style="color:#00ccdd;font-size:1.1em;margin-top:1.5em">Player Names</h2><p>You choose a display name for multiplayer. Names that are offensive, impersonate others, or violate any laws are not permitted. KeyoGames reserves the right to disconnect players using inappropriate names.</p><h2 style="color:#00ccdd;font-size:1.1em;margin-top:1.5em">In-Game Purchases</h2><p>Thrustfall offers optional cosmetic items for purchase. Ship skins are <strong>$2.00 AUD</strong> each; all other cosmetics (trails, engine sounds, kill effects) are <strong>$1.00 AUD</strong> each. Prices are shown in AUD and may vary by region based on Google Play's local pricing. These items are purely visual and provide no competitive advantage.</p><ul><li>All purchases are processed through Google Play Billing on Android devices.</li><li>Purchases are non-consumable — once bought, they are yours permanently and can be restored on any device signed into the same Google Play account.</li><li>All sales are final. Refund requests must be submitted through Google Play per their refund policy.</li><li>On the web version, cosmetics are available at no charge.</li><li>Prices may change at any time. Existing purchases are not affected by price changes.</li></ul><h2 style="color:#00ccdd;font-size:1.1em;margin-top:1.5em">Availability</h2><p>The game and multiplayer servers are provided &quot;as is&quot; without warranty. KeyoGames does not guarantee uptime or availability of the multiplayer service and may shut down servers at any time.</p><h2 style="color:#00ccdd;font-size:1.1em;margin-top:1.5em">Intellectual Property</h2><p>All game content — code, audio, visuals, and design — is the property of KeyoGames. All rights reserved.</p><h2 style="color:#00ccdd;font-size:1.1em;margin-top:1.5em">Limitation of Liability</h2><p>KeyoGames is not liable for any damages arising from the use of Thrustfall, including but not limited to data loss, device issues, or interruptions in service.</p><h2 style="color:#00ccdd;font-size:1.1em;margin-top:1.5em">Changes</h2><p>These terms may be updated at any time. Continued use of the game after changes constitutes acceptance of the new terms.</p><h2 style="color:#00ccdd;font-size:1.1em;margin-top:1.5em">Contact</h2><p>Questions about these terms can be directed to KeyoGames via github.com/saykeyo-creator/thrustfall</p>`
+};
+
+function showLegal(which) {
+  const modal = document.getElementById('legalModal');
+  document.getElementById('legalContent').innerHTML = LEGAL[which];
+  modal.style.display = 'flex';
+  modal.scrollTop = 0;
+}
+function closeLegal() {
+  document.getElementById('legalModal').style.display = 'none';
+}
 </script>
+<div id="safeProbe" style="position:fixed;top:0;left:0;padding-top:env(safe-area-inset-top,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px);pointer-events:none;visibility:hidden;width:0;height:0"></div>
+<div class="overlay" id="legalModal" style="z-index:500;justify-content:flex-start">
+  <div style="width:min(640px,100%);margin:0 auto">
+    <button class="btn sm" onclick="closeLegal()" style="margin-bottom:1em">← BACK</button>
+    <div id="legalContent" style="color:#ccc;font-size:clamp(.78rem,2.5vw,.95rem);line-height:1.75"></div>
+  </div>
+</div>
 </body>
 </html>
