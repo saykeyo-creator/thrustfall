@@ -274,9 +274,9 @@ Land on bases to refuel · Collect weapons · Survive!
 const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
 
 // ---------- CONSTANTS ----------
-const G = 0.0396, THRUST = 0.138, ROT_SPD_MAX = 0.045, MAX_SPD = 3.2;
-const MAX_SPD_WITH_GRAV = MAX_SPD * 2.0;    // 6.4 — diving with gravity
-const MAX_SPD_AGAINST_GRAV = MAX_SPD * 1.5; // 4.8 — climbing against gravity
+const G = 0.0396, THRUST = 0.138, ROT_SPD_MAX = 0.045, MAX_SPD = 2.5;
+const MAX_SPD_WITH_GRAV = MAX_SPD * 2.0;    // 5.0 — diving with gravity
+const MAX_SPD_AGAINST_GRAV = MAX_SPD * 1.5; // 3.75 — climbing against gravity
 const REV_THRUST = THRUST; // reverse thrust (same as forward)
 const BULLET_SPD = 5.5, BULLET_LIFE = 110, FIRE_CD = 14, SHIP_SZ = 10;
 const LIVES = 10, RESPAWN_T = 90, INVINCE_T = 120;
