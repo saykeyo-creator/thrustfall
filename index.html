@@ -2551,8 +2551,8 @@ function canLand(p,surface) {
     const speed = Math.sqrt(p.vx**2+p.vy**2);
     const upright = Math.abs(p.angle+Math.PI/2);
     const flat = Math.abs(surface.slope) < 0.2; // near-flat surface gets more forgiveness
-    const spdLimit = flat ? LAND_MAX_SPD * 1.35 : LAND_MAX_SPD;
-    const angLimit = flat ? LAND_MAX_ANGLE * 1.25 : LAND_MAX_ANGLE;
+    const spdLimit = flat ? LAND_MAX_SPD * 1.8 : LAND_MAX_SPD;
+    const angLimit = flat ? LAND_MAX_ANGLE * 1.4 : LAND_MAX_ANGLE;
     return speed < spdLimit && upright < angLimit && Math.abs(surface.slope) < 0.7 && p.vy >= 0 && p.vy < spdLimit * 1.5;
 }
 
@@ -2983,7 +2983,7 @@ function checkTutStep() {
     if (!me || !me.alive) return;
 
     // Track per-step state
-    if (tutStep === 1) { tutRotAccum += Math.abs(me.rot || 0) * ROT_SPD_MAX; }
+    if (tutStep === 1) { tutRotAccum += Math.abs(playerInputs[0]?.rot || 0) * ROT_SPD_MAX; }
     if (tutStep === 6) {
         if (!tutShieldGot && me.shield > 0) tutShieldGot = true;
         if (!tutEmpGot && me.weapon === 'emp') tutEmpGot = true;
@@ -3114,15 +3114,19 @@ function drawTutorialHUD() {
     ctx.textAlign = 'left';
     ctx.fillText(step.title, 20, panelY + fs * 2.1 + 6);
 
-    // Instruction — truncate to fit screen width
+    // Instruction — shrink font until it fits
     ctx.fillStyle = '#e8e8e8';
-    ctx.font = `${fs}px Courier New`;
     const maxW = W - 40;
+    let msgFs = fs;
+    ctx.font = `${msgFs}px Courier New`;
+    while (ctx.measureText(step.msg).width > maxW && msgFs > 7) { msgFs--; ctx.font = `${msgFs}px Courier New`; }
     ctx.fillText(step.msg, 20, panelY + fs * 3.1 + 8);
 
-    // Sub-text
+    // Sub-text — shrink font until it fits
     ctx.fillStyle = '#888';
-    ctx.font = `${Math.round(fs * 0.85)}px Courier New`;
+    let subFs = Math.round(fs * 0.85);
+    ctx.font = `${subFs}px Courier New`;
+    while (ctx.measureText(step.sub).width > maxW && subFs > 6) { subFs--; ctx.font = `${subFs}px Courier New`; }
     ctx.fillText(step.sub, 20, panelY + fs * 3.95 + 10);
 
     // Off-screen arrow
@@ -3925,7 +3929,7 @@ function draw() {
     ctx.fillStyle = theme.bg; ctx.fillRect(-worldW-200,-200,worldW*3+400,worldH+400);
 
     // Update star twinkle once per frame (skip every other frame in multiplayer)
-    if (!isMultiplayer || (frame & 1) === 0) { for (const s of stars) s.tw += .001; }
+    if (!isMultiplayer || (frame & 1) === 0) { for (const s of stars) s.tw += .05; }
 
     // === Smart wrap: only draw visible wrap offsets (saves 33-67% of rendering) ===
     const wrapOffsets = [0];
