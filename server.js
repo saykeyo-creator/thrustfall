@@ -34,6 +34,8 @@ const PICKUP_TOTAL_WEIGHT = PICKUP_TYPES.reduce((s,p) => s + p.weight, 0);
 const BEAM_DUR = 45, BEAM_CD = 54, BEAM_RANGE = 350, BEAM_HIT_INTERVAL = 8;
 const WEAPON_TIMER = 1200;
 const HOMING_TURN = 0.10;
+const PLAT_SEG_W = 35;
+const PLAT_SEG_HP = 10;
 const STREAK_WINDOW = 240;
 const STREAK_NAMES = ['','','DOUBLE KILL','TRIPLE KILL','MULTI KILL','MEGA KILL','ULTRA KILL','MONSTER KILL'];
 const LOADOUT_POINTS = 3;
@@ -92,6 +94,18 @@ function dist(x1, y1, x2, y2, wW) {
 function ptInRect(px, py, rx, ry, rw, rh) { return px >= rx && px <= rx + rw && py >= ry && py <= ry + rh; }
 function rd(n) { return Math.round(n * 10) / 10; }
 function rdA(n) { return Math.round(n * 1000) / 1000; } // higher precision for angles
+function buildPlatSegs(platforms) {
+    const segs = [];
+    for (let pi = 0; pi < platforms.length; pi++) {
+        const pl = platforms[pi];
+        const n = Math.max(1, Math.round(pl.width / PLAT_SEG_W));
+        const sw = pl.width / n;
+        for (let s = 0; s < n; s++) {
+            segs.push({x: pl.x + s * sw, y: pl.y, width: sw, height: pl.height, hp: PLAT_SEG_HP, alive: true, parentIdx: pi});
+        }
+    }
+    return segs;
+}
 function getTerrainYAt(x, arr) {
     let lo = 0, hi = arr.length - 2;
     while (lo <= hi) {
@@ -351,7 +365,7 @@ class Room {
         this.terrain = [];
         this.ceiling = [];
         this.platforms = [];
-        this.stars = [];
+        this.platSegs = [];        this.stars = [];
         this.players = [];
         this.bullets = [];
         this.beams = [];
@@ -498,6 +512,7 @@ class Room {
         this.terrain = mapData.terrain;
         this.ceiling = mapData.ceiling;
         this.platforms = mapData.platforms;
+        this.platSegs = buildPlatSegs(mapData.platforms);
         this.stars = mapData.stars;
         // Pre-computed Y lookup per integer X pixel — replaces binary search in hot path
         this.terrainCache = buildTerrainCache(mapData.terrain, mapData.worldW);
@@ -703,8 +718,13 @@ class Room {
             const bxi = ((Math.round(b.x) % this.worldW) + this.worldW) % this.worldW;
             const btY = this.terrainCache[bxi]; if (btY >= 0 && b.y > btY) { this.bullets[i]=this.bullets[this.bullets.length-1];this.bullets.pop(); continue; }
             const ctY = this.ceilingCache[bxi]; if (ctY >= 0 && b.y < ctY) { this.bullets[i]=this.bullets[this.bullets.length-1];this.bullets.pop(); continue; }
-            for (const pl of this.platforms) {
-                if (ptInRect(b.x, b.y, pl.x, pl.y, pl.width, pl.height)) { this.bullets[i]=this.bullets[this.bullets.length-1];this.bullets.pop(); break; }
+            for (const seg of this.platSegs) {
+                if (!seg.alive) continue;
+                if (ptInRect(b.x, b.y, seg.x, seg.y, seg.width, seg.height)) {
+                    seg.hp--;
+                    if (seg.hp <= 0) { seg.alive = false; this.emitEvent({t:'e',n:'platBreak',x:seg.x+seg.width/2,y:seg.y+seg.height/2,sw:seg.width,sh:seg.height}); }
+                    this.bullets[i]=this.bullets[this.bullets.length-1];this.bullets.pop(); break;
+                }
             }
         }
 
@@ -726,7 +746,7 @@ class Room {
                 const lbtY = this.terrainCache[wxi]; if (lbtY >= 0 && ty > lbtY) { endDist = d; break; }
                 const lctY = this.ceilingCache[wxi]; if (lctY >= 0 && ty < lctY) { endDist = d; break; }
                 let platHit = false;
-                for (const pl of this.platforms) { if (ptInRect(wx, ty, pl.x, pl.y, pl.width, pl.height)) { platHit = true; break; } }
+                for (const seg of this.platSegs) { if (seg.alive && ptInRect(wx, ty, seg.x, seg.y, seg.width, seg.height)) { platHit = true; seg.hp--; if (seg.hp <= 0) { seg.alive = false; this.emitEvent({t:'e',n:'platBreak',x:seg.x+seg.width/2,y:seg.y+seg.height/2,sw:seg.width,sh:seg.height}); } break; } }
                 if (platHit) { endDist = d; break; }
             }
             bm.endDist = endDist;
@@ -842,12 +862,13 @@ class Room {
         }
         const ct = getTerrainYAt(p.x, this.ceiling);
         if (ct && p.y - SHIP_SZ + 2 < ct.y) return { type: 'crash' };
-        for (const pl of this.platforms) {
-            if (p.x > pl.x - 3 && p.x < pl.x + pl.width + 3 && p.y + SHIP_SZ - 2 > pl.y && p.y + SHIP_SZ - 2 < pl.y + pl.height + 14 && p.vy >= 0) {
-                if (canLand(p, { y: pl.y, slope: 0 })) return { type: 'land', surfY: pl.y };
+        for (const seg of this.platSegs) {
+            if (!seg.alive) continue;
+            if (p.x > seg.x - 3 && p.x < seg.x + seg.width + 3 && p.y + SHIP_SZ - 2 > seg.y && p.y + SHIP_SZ - 2 < seg.y + seg.height + 14 && p.vy >= 0) {
+                if (canLand(p, { y: seg.y, slope: 0 })) return { type: 'land', surfY: seg.y };
                 return { type: 'crash' };
             }
-            if (ptInRect(p.x, p.y, pl.x - 3, pl.y - 2, pl.width + 6, pl.height + 4)) return { type: 'crash' };
+            if (ptInRect(p.x, p.y, seg.x - 3, seg.y - 2, seg.width + 6, seg.height + 4)) return { type: 'crash' };
         }
         if (p.y < 5 || p.y > this.worldH - 5) return { type: 'crash' };
         return null;
@@ -981,9 +1002,10 @@ class Room {
             const ti = { y: tiY }, ci = { y: ciY };
             let placed = false;
             if (Math.random() < 0.5) {
-                for (const pl of this.platforms) {
-                    if (x > pl.x && x < pl.x + pl.width) {
-                        const py = pl.y - PICKUP_R - 5;
+                for (const seg of this.platSegs) {
+                    if (!seg.alive) continue;
+                    if (x > seg.x && x < seg.x + seg.width) {
+                        const py = seg.y - PICKUP_R - 5;
                         if (py > ci.y + 20 && py < ti.y - 20) {
                             this.pickups.push({ x, y: py, type: randomPickupType(), bobPhase: Math.random() * Math.PI * 2 });
                             placed = true; break;

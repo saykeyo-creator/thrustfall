@@ -318,6 +318,10 @@ const TRACTOR_TETHER = 80; // tow distance between ships
 const TRACTOR_THRUST_PENALTY = 0.95; // 5% thrust reduction while towing
 const TRACTOR_RELEASE_INV = 60; // 1s invincibility after release
 
+// ---------- DESTRUCTIBLE PLATFORMS ----------
+const PLAT_SEG_W = 35; // target segment width in pixels
+const PLAT_SEG_HP = 10; // hits to destroy a segment
+
 // ---------- PROGRESSION ----------
 const XP_PER_KILL = 25;
 const XP_PER_WIN = 100;
@@ -370,7 +374,7 @@ let ws = null, isHost = false, isRoomCreator = false, myIndex = -1, roomCode = '
 
 // Game state
 let worldW, worldH, mapGrav = G;
-let terrain = [], ceiling = [], platforms = [], stars = [];
+let terrain = [], ceiling = [], platforms = [], platSegs = [], stars = [];
 let players = [], bullets = [], explosions = [], baseExps = [], particles = [];
 let pickups = [], beams = [];
 let playerInputs = [];
@@ -711,7 +715,7 @@ let lastPing = 0, pingMs = 0, reconnectAttempts = 0, reconnectTimer = null;
 let pendingReconnect = null; // {code, name, wasInGame}
 
 // ---------- PRE-RENDER CACHE ----------
-let terrainCanvas = null, terrainDirty = true;
+let terrainCanvas = null, terrainDirty = true, platDmgDirty = false;
 
 // ---------- FIXED TIMESTEP ----------
 const FIXED_DT = 1000/60;
@@ -1158,6 +1162,21 @@ function snd(t, vol) {
                 o.type='sawtooth'; o.frequency.setValueAtTime(300,n); o.frequency.exponentialRampToValueAtTime(80,n+.15);
                 g.gain.setValueAtTime(.08*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.18);
                 o.start(n); o.stop(n+.19); break;
+            }
+            case 'platBreak': {
+                // Rocky crumble: noise-like burst + low thud
+                o.connect(g); g.connect(ac.destination);
+                o.type='square'; o.frequency.setValueAtTime(120,n); o.frequency.exponentialRampToValueAtTime(40,n+.2);
+                g.gain.setValueAtTime(.15*vol,n); g.gain.linearRampToValueAtTime(.08*vol,n+.05);
+                g.gain.exponentialRampToValueAtTime(.001,n+.25);
+                o.start(n); o.stop(n+.26);
+                // Second voice: crackle
+                const o2=ac.createOscillator(),g2=ac.createGain();
+                o2.connect(g2); g2.connect(ac.destination);
+                o2.type='sawtooth'; o2.frequency.setValueAtTime(800,n); o2.frequency.exponentialRampToValueAtTime(200,n+.15);
+                g2.gain.setValueAtTime(.06*vol,n+.02); g2.gain.exponentialRampToValueAtTime(.001,n+.18);
+                o2.start(n+.02); o2.stop(n+.19);
+                break;
             }
         }
     } catch (e) {}
@@ -2351,6 +2370,7 @@ function beginGame(data) {
     platforms = data.platforms;
     stars = data.stars || [];
     mapGrav = MAPS[lobbyMap]?.gravity || G;
+    buildPlatSegs();
 
     // Apply perk bonuses for this game session
     activeBonuses = getActivePerks(isMultiplayer);
@@ -2417,6 +2437,18 @@ function ptInRect(px,py,rx,ry,rw,rh){return px>=rx&&px<=rx+rw&&py>=ry&&py<=ry+rh
 function hexRGBA(hex,a){const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return`rgba(${r},${g},${b},${a})`}
 function rd(n){return Math.round(n*10)/10} // round for network
 
+function buildPlatSegs() {
+    platSegs = [];
+    for (let pi = 0; pi < platforms.length; pi++) {
+        const pl = platforms[pi];
+        const n = Math.max(1, Math.round(pl.width / PLAT_SEG_W));
+        const sw = pl.width / n;
+        for (let s = 0; s < n; s++) {
+            platSegs.push({x: pl.x + s * sw, y: pl.y, width: sw, height: pl.height, hp: PLAT_SEG_HP, alive: true, parentIdx: pi});
+        }
+    }
+}
+
 // =====================================================
 // PRE-RENDER TERRAIN (static geometry rendered once to offscreen canvas)
 // =====================================================
@@ -2474,8 +2506,9 @@ function prerenderTerrain() {
     for (let i = 0; i < ceiling.length; i++) { if(i===0) tc.moveTo(ceiling[i].x, ceiling[i].y); else tc.lineTo(ceiling[i].x, ceiling[i].y); }
     tc.stroke();
 
-    // Platforms — per-map styled
-    for (const pl of platforms) {
+    // Platforms — per-map styled (segments)
+    for (const pl of platSegs) {
+        if (!pl.alive) continue;
         const px = pl.x, py = pl.y, pw = pl.width, ph = pl.height;
 
         // Body: vertical gradient from lighter top to darker bottom
@@ -2561,6 +2594,16 @@ function prerenderTerrain() {
                 tc.fillStyle = ag;
                 tc.fillRect(px, py, pw, ph);
                 break;
+            }
+        }
+        // Damage cracks overlay
+        if (pl.hp < PLAT_SEG_HP) {
+            const dmg = 1 - pl.hp / PLAT_SEG_HP;
+            tc.strokeStyle = 'rgba(255,80,0,' + (0.3 + dmg * 0.5) + ')'; tc.lineWidth = 1;
+            const cracks = Math.ceil(dmg * 4);
+            for (let ci2 = 0; ci2 < cracks; ci2++) {
+                const cx = px + pw * (0.2 + ci2 * 0.6 / Math.max(1, cracks - 1));
+                tc.beginPath(); tc.moveTo(cx, py); tc.lineTo(cx + (ci2 % 2 ? 3 : -3), py + ph); tc.stroke();
             }
         }
     }
@@ -2704,12 +2747,13 @@ function shipCollision(p) {
     }
     const ct = getTerrainYAt(p.x, ceiling);
     if (ct && p.y-SHIP_SZ+2 < ct.y) return {type:'crash'};
-    for (const pl of platforms) {
-        if (p.x>pl.x-3 && p.x<pl.x+pl.width+3 && p.y+SHIP_SZ-2>pl.y && p.y+SHIP_SZ-2<pl.y+pl.height+14 && p.vy>=0) {
-            if (canLand(p,{y:pl.y,slope:0})) return {type:'land',surfY:pl.y};
+    for (const seg of platSegs) {
+        if (!seg.alive) continue;
+        if (p.x>seg.x-3 && p.x<seg.x+seg.width+3 && p.y+SHIP_SZ-2>seg.y && p.y+SHIP_SZ-2<seg.y+seg.height+14 && p.vy>=0) {
+            if (canLand(p,{y:seg.y,slope:0})) return {type:'land',surfY:seg.y};
             return {type:'crash'};
         }
-        if (ptInRect(p.x,p.y,pl.x-3,pl.y-2,pl.width+6,pl.height+4)) return {type:'crash'};
+        if (ptInRect(p.x,p.y,seg.x-3,seg.y-2,seg.width+6,seg.height+4)) return {type:'crash'};
     }
     if (p.y<5||p.y>worldH-5) return {type:'crash'};
     return null;
@@ -2859,6 +2903,22 @@ function handleEvent(evt) {
             if (evt.vi === myIndex) {
                 scoreFloats.push({x:ex,y:ey-30,text:'TETHER RELEASED',color:'#66ff44',timer:90});
             }
+            break;
+        case 'platBreak':
+            sndAt('platBreak', ex, ey);
+            screenShake = Math.max(screenShake, 4);
+            // Sync segment state for non-host clients
+            if (!isHost) {
+                for (const seg of platSegs) {
+                    if (seg.alive && Math.abs(seg.x + seg.width/2 - ex) < seg.width && Math.abs(seg.y + seg.height/2 - ey) < seg.height) {
+                        seg.alive = false; break;
+                    }
+                }
+                prerenderTerrain();
+            }
+            // Debris particles
+            for (let i=0;i<12;i++){const a=Math.random()*Math.PI*2,s=Math.random()*3+1;
+            particles.push({x:ex+(Math.random()-.5)*(evt.sw||20),y:ey+(Math.random()-.5)*(evt.sh||8),vx:Math.cos(a)*s,vy:Math.sin(a)*s+1,life:40+Math.random()*30,maxLife:40+Math.random()*30,color:['#aa8866','#886644','#cc9977','#665544'][Math.floor(Math.random()*4)],size:Math.random()*3+1});}
             break;
     }
 }
@@ -3058,9 +3118,10 @@ function spawnPickup() {
         // Try on a platform first (50% chance)
         let placed = false;
         if (Math.random() < 0.5) {
-            for (const pl of platforms) {
-                if (x > pl.x && x < pl.x+pl.width) {
-                    const py = pl.y - PICKUP_R - 5;
+            for (const seg of platSegs) {
+                if (!seg.alive) continue;
+                if (x > seg.x && x < seg.x+seg.width) {
+                    const py = seg.y - PICKUP_R - 5;
                     if (py > ceilY + 20 && py < groundY - 20) {
                         const pType = randomPickupType();
                         pickups.push({x, y:py, type:pType, bobPhase:Math.random()*Math.PI*2, age:0});
@@ -3694,7 +3755,7 @@ function hostUpdate() {
         if (bt&&b.y>bt.y){boom(b.x,b.y,b.color,.4);bullets[i]=bullets[bullets.length-1];bullets.pop();continue;}
         const ct=getTerrainYAt(b.x,ceiling);
         if (ct&&b.y<ct.y){boom(b.x,b.y,b.color,.4);bullets[i]=bullets[bullets.length-1];bullets.pop();continue;}
-        for (const pl of platforms){if(ptInRect(b.x,b.y,pl.x,pl.y,pl.width,pl.height)){boom(b.x,b.y,b.color,.4);bullets[i]=bullets[bullets.length-1];bullets.pop();break;}}
+        for (const seg of platSegs){if(!seg.alive)continue;if(ptInRect(b.x,b.y,seg.x,seg.y,seg.width,seg.height)){boom(b.x,b.y,b.color,.4);seg.hp--;if(seg.hp<=0){seg.alive=false;emitEvent({t:'e',n:'platBreak',x:seg.x+seg.width/2,y:seg.y+seg.height/2,sw:seg.width,sh:seg.height});prerenderTerrain();}else{platDmgDirty=true;}bullets[i]=bullets[bullets.length-1];bullets.pop();break;}}
     }
 
     // Laser beams — follow firing player's position/angle, check hits along the line
@@ -3714,7 +3775,7 @@ function hostUpdate() {
             if(ty<0||ty>worldH){endDist=d;break;}
             const bt=getTerrainYAt(wx,terrain);if(bt&&ty>bt.y){endDist=d;break;}
             const ct=getTerrainYAt(wx,ceiling);if(ct&&ty<ct.y){endDist=d;break;}
-            let platHit=false;for(const pl of platforms){if(ptInRect(wx,ty,pl.x,pl.y,pl.width,pl.height)){platHit=true;break;}}
+            let platHit=false;for(const seg of platSegs){if(seg.alive&&ptInRect(wx,ty,seg.x,seg.y,seg.width,seg.height)){platHit=true;seg.hp--;if(seg.hp<=0){seg.alive=false;emitEvent({t:'e',n:'platBreak',x:seg.x+seg.width/2,y:seg.y+seg.height/2,sw:seg.width,sh:seg.height});prerenderTerrain();}else{platDmgDirty=true;}break;}}
             if(platHit){endDist=d;break;}
         }
         bm.endDist=endDist;
@@ -3872,10 +3933,11 @@ function clientUpdate() {
         }
         const cInfo = getTerrainYAt(me.x, ceiling);
         if (cInfo && me.y - SHIP_SZ <= cInfo.y) { if (Math.abs(me.vy) > 0.5) snd('wallHit'); me.y = cInfo.y + SHIP_SZ; me.vy = Math.abs(me.vy) * 0.3; }
-        for (const pl of platforms) {
-            if (me.x >= pl.x && me.x <= pl.x + pl.width && me.y + SHIP_SZ >= pl.y && me.y + SHIP_SZ <= pl.y + 10 && me.vy >= 0) {
-                if (canLand(me, {y: pl.y, slope: 0})) { me.y = pl.y - SHIP_SZ; me.vx = 0; me.vy = 0; me.landed = true; }
-                else { if (Math.abs(me.vy) > 0.5) snd('wallHit'); me.y = pl.y - SHIP_SZ; me.vy = -Math.abs(me.vy) * 0.3; }
+        for (const seg of platSegs) {
+            if (!seg.alive) continue;
+            if (me.x >= seg.x && me.x <= seg.x + seg.width && me.y + SHIP_SZ >= seg.y && me.y + SHIP_SZ <= seg.y + 10 && me.vy >= 0) {
+                if (canLand(me, {y: seg.y, slope: 0})) { me.y = seg.y - SHIP_SZ; me.vx = 0; me.vy = 0; me.landed = true; }
+                else { if (Math.abs(me.vy) > 0.5) snd('wallHit'); me.y = seg.y - SHIP_SZ; me.vy = -Math.abs(me.vy) * 0.3; }
             }
         }
         if (me.y < SHIP_SZ) { if (Math.abs(me.vy) > 0.5) snd('wallHit'); me.y = SHIP_SZ; me.vy = Math.abs(me.vy) * 0.3; }
@@ -4222,6 +4284,8 @@ function drawShipShape(c, skinId, sz) {
 // DRAWING
 // =====================================================
 function draw() {
+    // Batched platform damage crack update (every 30 frames)
+    if (platDmgDirty && frame % 30 === 0) { platDmgDirty = false; prerenderTerrain(); }
     // Clear full screen (including any area outside fixed viewport on wider screens)
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -4951,7 +5015,7 @@ function drawRadar() {
 
     // Platforms
     ctx.fillStyle='rgba(90,58,30,0.4)';
-    for (const pl of platforms){const p=toRadar(pl.x+pl.width/2,pl.y);if(p)ctx.fillRect(p.rx-Math.max(1,pl.width*sc/2),p.ry,Math.max(1,pl.width*sc),1);}
+    for (const seg of platSegs){if(!seg.alive)continue;const p=toRadar(seg.x+seg.width/2,seg.y);if(p)ctx.fillRect(p.rx-Math.max(1,seg.width*sc/2),p.ry,Math.max(1,seg.width*sc),1);}
 
     // Bases
     for (const pp of players){const p=toRadar(pp.base.x+pp.base.w/2,pp.base.y+pp.base.h/2);if(p){ctx.fillStyle=hexRGBA(pp.color,.4);ctx.fillRect(p.rx-Math.max(1,pp.base.w*sc/2),p.ry-Math.max(1,pp.base.h*sc/2),Math.max(2,pp.base.w*sc),Math.max(1,pp.base.h*sc));}}

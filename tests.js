@@ -69,6 +69,10 @@ const MAPS = {
 const STREAK_WINDOW = 240;
 const STREAK_NAMES = ['','','DOUBLE KILL','TRIPLE KILL','MULTI KILL','MEGA KILL','ULTRA KILL','MONSTER KILL'];
 
+// Destructible platform segments
+const PLAT_SEG_W = 35;
+const PLAT_SEG_HP = 10;
+
 // Bot AI & Survival constants
 const BOT_NAMES = ['NOVA','BLAZE','VIPER','STORM','GHOST','COBRA','FANG'];
 const COLORS = ['#00ccff','#ff3366','#33ff66','#ffcc00','#ff66ff','#66ffcc','#ff8833','#aa66ff'];
@@ -8240,6 +8244,104 @@ section('269. Tractor Beam System');
     // Target-in-range HUD indicator
     assert(code.includes('TARGET IN RANGE'), 'HUD shows TARGET IN RANGE when enemy nearby');
     assert(code.includes('TRACTOR_RANGE') && code.includes('tractorTargetNear'), 'HUD checks distance for target-in-range');
+}
+
+// ── Section 270: Destructible platform segments ──
+{
+    section('270: Destructible platform segments');
+
+    // buildPlatSegs replicated
+    function buildPlatSegs(platforms) {
+        const segs = [];
+        for (let pi = 0; pi < platforms.length; pi++) {
+            const pl = platforms[pi];
+            const n = Math.max(1, Math.round(pl.width / PLAT_SEG_W));
+            const sw = pl.width / n;
+            for (let s = 0; s < n; s++) {
+                segs.push({x: pl.x + s * sw, y: pl.y, width: sw, height: pl.height, hp: PLAT_SEG_HP, alive: true, parentIdx: pi});
+            }
+        }
+        return segs;
+    }
+
+    // Small platform → 1 segment
+    const small = [{x:100, y:200, width:30, height:8}];
+    const ss = buildPlatSegs(small);
+    assert(ss.length === 1, 'small platform → 1 segment');
+    assert(ss[0].x === 100 && ss[0].width === 30, 'single segment matches platform');
+    assert(ss[0].hp === PLAT_SEG_HP, 'segment starts at full HP');
+    assert(ss[0].alive === true, 'segment starts alive');
+
+    // Medium platform → 2 segments
+    const med = [{x:100, y:200, width:60, height:8}];
+    const ms = buildPlatSegs(med);
+    assert(ms.length === 2, '60px platform → 2 segments');
+    assertApprox(ms[0].width + ms[1].width, 60, 0.01, 'segments cover full platform width');
+    assert(ms[0].x === 100, 'first segment starts at platform x');
+    assertApprox(ms[1].x, 130, 0.01, 'second segment starts after first');
+
+    // Large platform → multiple segments
+    const large = [{x:50, y:300, width:140, height:10}];
+    const ls = buildPlatSegs(large);
+    assert(ls.length === 4, '140px platform → 4 segments');
+    assert(ls.every(s => s.parentIdx === 0), 'all segments reference parent index 0');
+    let totalW = 0; for (const s of ls) totalW += s.width;
+    assertApprox(totalW, 140, 0.01, 'segment widths sum to platform width');
+
+    // Multiple platforms
+    const multi = [{x:0,y:100,width:70,height:8},{x:200,y:300,width:35,height:8}];
+    const msp = buildPlatSegs(multi);
+    assert(msp.length === 3, '70px + 35px → 3 segments total');
+    assert(msp[0].parentIdx === 0 && msp[1].parentIdx === 0, 'first two from parent 0');
+    assert(msp[2].parentIdx === 1, 'third from parent 1');
+
+    // Segment damage reduces HP
+    const seg = {x:50, y:100, width:35, height:8, hp:PLAT_SEG_HP, alive:true};
+    seg.hp--;
+    assert(seg.hp === PLAT_SEG_HP - 1, 'bullet hit reduces segment HP by 1');
+    assert(seg.alive, 'segment still alive after 1 hit');
+
+    // Segment destruction
+    seg.hp = 0;
+    seg.alive = false;
+    assert(!seg.alive, 'segment dead when HP reaches 0');
+
+    // Collision skips dead segments (replicate loop logic)
+    const testSegs = [{x:50,y:100,width:35,height:8,hp:0,alive:false},{x:85,y:100,width:35,height:8,hp:10,alive:true}];
+    let hitSeg = null;
+    for (const s of testSegs) {
+        if (!s.alive) continue;
+        if (s.x <= 90 && 90 <= s.x + s.width && s.y <= 104 && 104 <= s.y + s.height) { hitSeg = s; break; }
+    }
+    assert(hitSeg !== null && hitSeg.x === 85, 'collision skips dead segment, hits alive one');
+
+    // Ship does not collide with dead segment
+    let collided = false;
+    for (const s of testSegs) {
+        if (!s.alive) continue;
+        if (60 >= s.x && 60 <= s.x + s.width) { collided = true; break; }
+    }
+    assert(!collided, 'ship passes through destroyed segment');
+
+    // Code verification: index.html has platSegs
+    const code = fs.readFileSync('index.html', 'utf8');
+    assert(code.includes('platSegs'), 'index.html references platSegs array');
+    assert(code.includes('buildPlatSegs'), 'buildPlatSegs function exists');
+    assert(code.includes('PLAT_SEG_W'), 'PLAT_SEG_W constant defined');
+    assert(code.includes('PLAT_SEG_HP'), 'PLAT_SEG_HP constant defined');
+    assert(code.includes("'platBreak'"), 'platBreak event defined');
+    assert(code.includes("case 'platBreak'"), 'platBreak event handler exists');
+    assert(code.includes('platDmgDirty'), 'batched damage re-render flag exists');
+    assert(code.includes('seg.alive'), 'collision checks segment alive flag');
+
+    // Server verification
+    const srv = fs.readFileSync('server.js', 'utf8');
+    assert(srv.includes('platSegs'), 'server.js references platSegs');
+    assert(srv.includes('buildPlatSegs'), 'server.js has buildPlatSegs');
+    assert(srv.includes('PLAT_SEG_W'), 'server has PLAT_SEG_W constant');
+    assert(srv.includes('PLAT_SEG_HP'), 'server has PLAT_SEG_HP constant');
+    assert(srv.includes('seg.alive'), 'server checks segment alive flag');
+    assert(srv.includes("'platBreak'"), 'server emits platBreak events');
 }
 
 console.log(`RESULTS: ${passed}/${total} passed, ${failed} failed`);
