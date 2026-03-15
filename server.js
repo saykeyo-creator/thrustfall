@@ -7,6 +7,7 @@ const WebSocket = require('ws');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
 
 const PORT = process.env.PORT || 3000;
 
@@ -520,7 +521,7 @@ class Room {
                 spawnX: bs.x + (bs.w || BASE_W) / 2,
                 spawnY: bs.y - SHIP_SZ,
                 base: { x: bs.x, y: bs.y, w: bs.w || BASE_W, h: bs.h || BASE_H },
-                landed: true, landedTimer: 120,
+                landed: true,
                 disconnected: false,
                 weapon: 'normal', shield: 1 + perkBonuses.shield, shieldHP: 2, weaponTimer: 0, flashTimer: 0,
                 streak: 0, lastKillFrame: -999,
@@ -662,7 +663,7 @@ class Room {
         for (let i = this.bullets.length - 1; i >= 0; i--) {
             const b = this.bullets[i];
             b.x += b.vx; b.y += b.vy; b.vy += gBul; b.life--;
-            if (b.life <= 0 || b.y < 0 || b.y > this.worldH) { this.bullets.splice(i, 1); continue; }
+            if (b.life <= 0 || b.y < 0 || b.y > this.worldH) { this.bullets[i]=this.bullets[this.bullets.length-1];this.bullets.pop(); continue; }
             if (b.x < 0) b.x += this.worldW;
             if (b.x > this.worldW) b.x -= this.worldW;
 
@@ -692,7 +693,7 @@ class Room {
                 if (p.id !== b.owner && p.alive && p.invT <= 0 && dist(b.x, b.y, p.x, p.y, this.worldW) < hitR) {
                     this.killPlayer(p, false, b.shieldDmg, b.owner);
                     if (!p.alive) this.awardKill(this.players[b.owner]);
-                    if (b.pierce && b.pierce > 0) { b.pierce--; } else { this.bullets.splice(i, 1); hit = true; }
+                    if (b.pierce && b.pierce > 0) { b.pierce--; } else { this.bullets[i]=this.bullets[this.bullets.length-1];this.bullets.pop(); hit = true; }
                     break;
                 }
             }
@@ -700,19 +701,19 @@ class Room {
 
             // Terrain/platform collision — cache lookup O(1) vs binary search
             const bxi = ((Math.round(b.x) % this.worldW) + this.worldW) % this.worldW;
-            const btY = this.terrainCache[bxi]; if (btY >= 0 && b.y > btY) { this.bullets.splice(i, 1); continue; }
-            const ctY = this.ceilingCache[bxi]; if (ctY >= 0 && b.y < ctY) { this.bullets.splice(i, 1); continue; }
+            const btY = this.terrainCache[bxi]; if (btY >= 0 && b.y > btY) { this.bullets[i]=this.bullets[this.bullets.length-1];this.bullets.pop(); continue; }
+            const ctY = this.ceilingCache[bxi]; if (ctY >= 0 && b.y < ctY) { this.bullets[i]=this.bullets[this.bullets.length-1];this.bullets.pop(); continue; }
             for (const pl of this.platforms) {
-                if (ptInRect(b.x, b.y, pl.x, pl.y, pl.width, pl.height)) { this.bullets.splice(i, 1); break; }
+                if (ptInRect(b.x, b.y, pl.x, pl.y, pl.width, pl.height)) { this.bullets[i]=this.bullets[this.bullets.length-1];this.bullets.pop(); break; }
             }
         }
 
         // === LASER BEAMS ===
         for (let i = this.beams.length - 1; i >= 0; i--) {
             const bm = this.beams[i]; bm.life--;
-            if (bm.life <= 0) { this.beams.splice(i, 1); continue; }
+            if (bm.life <= 0) { this.beams[i]=this.beams[this.beams.length-1];this.beams.pop(); continue; }
             const p = this.players[bm.owner];
-            if (!p || !p.alive) { this.beams.splice(i, 1); continue; }
+            if (!p || !p.alive) { this.beams[i]=this.beams[this.beams.length-1];this.beams.pop(); continue; }
             bm.x = p.x; bm.y = p.y; bm.angle = p.angle;
 
             let endDist = BEAM_RANGE;
@@ -756,7 +757,7 @@ class Room {
                     this.killPlayer(p, true);
                 }
             }
-            if (be.t >= be.dur) this.baseExps.splice(i, 1);
+            if (be.t >= be.dur) {this.baseExps[i]=this.baseExps[this.baseExps.length-1];this.baseExps.pop();}
         }
 
         // === PICKUPS ===
@@ -770,7 +771,7 @@ class Room {
                 if (!p.alive) continue;
                 if (dist(p.x, p.y, pk.x, pk.y, this.worldW) < PICKUP_R + SHIP_SZ) {
                     this.applyPickup(p, pk.type);
-                    this.pickups.splice(i, 1);
+                    this.pickups[i]=this.pickups[this.pickups.length-1];this.pickups.pop();
                     break;
                 }
             }
@@ -853,7 +854,7 @@ class Room {
     }
 
     landShip(p, surfY) {
-        p.y = surfY - SHIP_SZ; p.vx *= 0.7; p.vy = 0; p.landed = true; p.landedTimer = 60;
+        p.y = surfY - SHIP_SZ; p.vx *= 0.7; p.vy = 0; p.landed = true;
         this.emitEvent({ t: 'e', n: 'land', i: p.id, x: p.x, y: p.y });
     }
 
@@ -939,7 +940,7 @@ class Room {
 
     respawnPlayer(p) {
         p.x = p.spawnX; p.y = p.spawnY; p.vx = 0; p.vy = 0; p.angle = -Math.PI / 2;
-        p.alive = true; p.invT = INVINCE_T; p.landed = true; p.landedTimer = 60;
+        p.alive = true; p.invT = INVINCE_T; p.landed = true;
         const shBonus = (p.perkBonuses && p.perkBonuses.shield) || 0;
         p.shield = 1 + shBonus;
         p.shieldHP = 2;
@@ -1053,6 +1054,39 @@ const MIME_TYPES = {
     '.ico': 'image/x-icon',
     '.webmanifest': 'application/manifest+json',
 };
+const COMPRESSIBLE = new Set(['.html','.css','.js','.json','.svg','.webmanifest']);
+const fileCache = new Map();
+function getCachedFile(filePath, cb) {
+    if (fileCache.has(filePath)) return cb(null, fileCache.get(filePath));
+    fs.readFile(filePath, (err, data) => {
+        if (err) return cb(err);
+        const ext = path.extname(filePath).toLowerCase();
+        const entry = { raw: data };
+        if (COMPRESSIBLE.has(ext)) {
+            zlib.gzip(data, (err2, gz) => {
+                entry.gzip = err2 ? null : gz;
+                fileCache.set(filePath, entry);
+                cb(null, entry);
+            });
+        } else {
+            fileCache.set(filePath, entry);
+            cb(null, entry);
+        }
+    });
+}
+function serveFile(req, res, filePath, contentType, cacheControl) {
+    getCachedFile(filePath, (err, entry) => {
+        if (err) { res.writeHead(404); res.end('Not found'); return; }
+        const ae = req.headers['accept-encoding'] || '';
+        if (entry.gzip && ae.includes('gzip')) {
+            res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': cacheControl, 'Content-Encoding': 'gzip' });
+            res.end(entry.gzip);
+        } else {
+            res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': cacheControl });
+            res.end(entry.raw);
+        }
+    });
+}
 const server = http.createServer((req, res) => {
     const url = req.url.split('?')[0]; // strip query string
     if (url === '/health') {
@@ -1062,19 +1096,11 @@ const server = http.createServer((req, res) => {
     }
     // Explicit routes for policy pages (no extension in URL)
     if (url === '/privacy') {
-        fs.readFile(path.join(__dirname, 'privacy.html'), (err, data) => {
-            if (err) { res.writeHead(404); res.end('Not found'); return; }
-            res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache' });
-            res.end(data);
-        });
+        serveFile(req, res, path.join(__dirname, 'privacy.html'), 'text/html', 'no-cache');
         return;
     }
     if (url === '/terms') {
-        fs.readFile(path.join(__dirname, 'terms.html'), (err, data) => {
-            if (err) { res.writeHead(404); res.end('Not found'); return; }
-            res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache' });
-            res.end(data);
-        });
+        serveFile(req, res, path.join(__dirname, 'terms.html'), 'text/html', 'no-cache');
         return;
     }
     // Try to serve static file if it exists (icons, manifest, privacy, etc.)
@@ -1082,44 +1108,26 @@ const server = http.createServer((req, res) => {
         const staticPath = path.join(__dirname, url);
         const ext = path.extname(staticPath).toLowerCase();
         if (MIME_TYPES[ext]) {
-            fs.readFile(staticPath, (err, data) => {
-                if (err) {
-                    // Fall through to index.html
-                    serveIndex(res);
-                } else {
-                    res.writeHead(200, {
-                        'Content-Type': MIME_TYPES[ext],
-                        'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=86400'
-                    });
-                    res.end(data);
-                }
+            const cc = ext === '.html' ? 'no-cache' : 'public, max-age=86400';
+            getCachedFile(staticPath, (err) => {
+                if (err) { serveIndex(req, res); }
+                else { serveFile(req, res, staticPath, MIME_TYPES[ext], cc); }
             });
             return;
         }
     }
-    serveIndex(res);
+    serveIndex(req, res);
 });
 
-function serveIndex(res) {
-    fs.readFile(path.join(__dirname, 'index.html'), (err, data) => {
-        if (err) {
-            console.error('Failed to read index.html:', err.message);
-            res.writeHead(500);
-            res.end('Server error');
-        } else {
-            res.writeHead(200, {
-                'Content-Type': 'text/html',
-                'Cache-Control': 'no-cache'
-            });
-            res.end(data);
-        }
-    });
+function serveIndex(req, res) {
+    serveFile(req, res, path.join(__dirname, 'index.html'), 'text/html', 'no-cache');
 }
 
 // =====================================================
 // WEBSOCKET SERVER
 // =====================================================
-const wss = new WebSocket.Server({ server, maxPayload: 2048 });
+const MAX_CONNECTIONS = 200;
+const wss = new WebSocket.Server({ server, maxPayload: 2048, perMessageDeflate: { zlibDeflateOptions: { level: 1 }, threshold: 256 } });
 
 // Idle room cleanup — destroy rooms with no players after 5 minutes
 setInterval(() => {
@@ -1139,6 +1147,7 @@ setInterval(() => {
 }, 30 * 1000);
 
 wss.on('connection', (ws) => {
+    if (wss.clients.size > MAX_CONNECTIONS) { ws.close(1013, 'Server full'); return; }
     let msgCount = 0, msgResetTime = Date.now();
 
     ws.on('message', (raw) => {

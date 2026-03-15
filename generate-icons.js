@@ -5,7 +5,6 @@ const path = require('path');
 
 const BG_COLOR = '#0a0a1a';
 const SHIP_COLOR = '#00eeff';
-const GLOW_COLOR = 'rgba(0, 238, 255, 0.3)';
 const THRUST_COLOR_1 = '#ff6600';
 const THRUST_COLOR_2 = '#ffcc00';
 

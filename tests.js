@@ -5443,9 +5443,9 @@ section('146. Height-Fit Viewport — Tablet Controls Visible');
 { section('173. Kill Sound Pitch Variation');
     const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
     assert(code.includes("case 'explode':"), 'explode sound handler present');
-    assert(code.includes('0.85+Math.random()*0.3') || code.includes('0.85 + Math.random() * 0.3'),
-           'pitch variation 0.85-1.15 range');
-    assert(code.includes('130*pv') || code.includes('130 * pv') || code.includes('150*pv') || code.includes('150 * pv'),
+    assert(code.includes('0.88+Math.random()*0.24') || code.includes('0.88 + Math.random() * 0.24'),
+           'pitch variation 0.88-1.12 range');
+    assert(code.includes('95*pv') || code.includes('95 * pv'),
            'explode frequency modulated by pitch variation');
 }
 
@@ -7963,6 +7963,137 @@ section('263. Store — IAP Product ID Stability');
         assert(cCode.includes(`'${rawId}'`) || cCode.includes(`"${rawId}"`),
             `Item id '${rawId}' must appear as a string literal in index.html`);
     }
+}
+
+// ═══════════════════════════════════════════════════════════════
+section('264. Weapon Shoot Sound Event Routing');
+// ═══════════════════════════════════════════════════════════════
+{
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+
+    // Each weapon emits a unique event name via the 'sn' variable in fireBullets
+    assert(code.includes("sn='shootSpread'"), "spread weapon sets sn='shootSpread'");
+    assert(code.includes("sn='shootRapid'"), "rapid weapon sets sn='shootRapid'");
+    assert(code.includes("sn='shootHeavy'"), "heavy weapon sets sn='shootHeavy'");
+    assert(code.includes("sn='shootBurst'"), "burst weapon sets sn='shootBurst'");
+    assert(code.includes("sn='shootHoming'"), "homing weapon sets sn='shootHoming'");
+
+    // The default 'shoot' event name is still the starting value
+    assert(code.includes("let sn = 'shoot'"), "default sn starts as 'shoot'");
+
+    // handleEvent routes all 5 new weapon events to sndAt
+    assert(code.includes("case 'shootSpread': sndAt('shootSpread'"), "handleEvent routes shootSpread to sndAt");
+    assert(code.includes("case 'shootRapid': sndAt('shootRapid'"), "handleEvent routes shootRapid to sndAt");
+    assert(code.includes("case 'shootHeavy': sndAt('shootHeavy'"), "handleEvent routes shootHeavy to sndAt");
+    assert(code.includes("case 'shootBurst': sndAt('shootBurst'"), "handleEvent routes shootBurst to sndAt");
+    assert(code.includes("case 'shootHoming': sndAt('shootHoming'"), "handleEvent routes shootHoming to sndAt");
+
+    // Each weapon has a unique snd() case
+    assert(code.includes("case 'shootSpread':"), "snd() has shootSpread case");
+    assert(code.includes("case 'shootRapid':"), "snd() has shootRapid case");
+    assert(code.includes("case 'shootHeavy':"), "snd() has shootHeavy case");
+    assert(code.includes("case 'shootBurst':"), "snd() has shootBurst case");
+    assert(code.includes("case 'shootHoming':"), "snd() has shootHoming case");
+
+    // Laser still uses its own early-return path with 'laser' event name
+    assert(code.includes("emitEvent({t:'e',n:'laser'"), "laser still emits 'laser' event (not sn)");
+
+    // EMP still uses its own early-return path with 'empActivate'
+    assert(code.includes("emitEvent({t:'e',n:'empActivate'"), "emp still emits 'empActivate' event (not sn)");
+}
+
+// ═══════════════════════════════════════════════════════════════
+section('265. Bullet Whizz Type Selection — All Weapon Types');
+// ═══════════════════════════════════════════════════════════════
+{
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+
+    // Spread and burst bullets have identifying flags in fireBullets
+    assert(code.includes('sz:2.5,spread:true') || code.includes('sz:2.5, spread:true'),
+        'spread bullets have spread:true flag');
+    assert(code.includes('sz:2.5,burst:true') || code.includes('sz:2.5, burst:true'),
+        'burst bullets have burst:true flag');
+
+    // checkBulletWhizz detects all 6 weapon-derived bullet types
+    assert(code.includes("whizzType = 'whizzHeavy'"), 'whizzHeavy selected for heavy/large bullets');
+    assert(code.includes("whizzType = 'whizzHoming'"), 'whizzHoming selected for homing bullets');
+    assert(code.includes("whizzType = 'whizzRapid'"), 'whizzRapid selected for small bullets (sz<=2)');
+    assert(code.includes("whizzType = 'whizzSpread'"), 'whizzSpread selected for spread bullets');
+    assert(code.includes("whizzType = 'whizzBurst'"), 'whizzBurst selected for burst bullets');
+
+    // New synth cases exist in snd()
+    assert(code.includes("case 'whizzSpread':"), "snd() has whizzSpread case");
+    assert(code.includes("case 'whizzBurst':"), "snd() has whizzBurst case");
+
+    // Verify priority order by finding the if/else chain in checkBulletWhizz
+    const whizzFn = code.slice(code.indexOf('function checkBulletWhizz'), code.indexOf('function checkBulletWhizz') + 1200);
+    const heavyPos   = whizzFn.indexOf('whizzHeavy');
+    const homingPos  = whizzFn.indexOf('whizzHoming');
+    const rapidPos   = whizzFn.indexOf('whizzRapid');
+    const spreadPos  = whizzFn.indexOf('whizzSpread');
+    const burstPos   = whizzFn.indexOf('whizzBurst');
+    assert(heavyPos < homingPos,  'heavy checked before homing (priority order)');
+    assert(homingPos < rapidPos,  'homing checked before rapid (priority order)');
+    assert(rapidPos < spreadPos,  'rapid checked before spread (priority order)');
+    assert(spreadPos < burstPos,  'spread checked before burst (priority order)');
+
+    // Simulate the selection logic
+    function pickWhizz(b) {
+        if (b.heavy || b.sz >= 6) return 'whizzHeavy';
+        if (b.homing) return 'whizzHoming';
+        if (b.sz <= 2) return 'whizzRapid';
+        if (b.spread) return 'whizzSpread';
+        if (b.burst) return 'whizzBurst';
+        return 'whizz';
+    }
+    assert(pickWhizz({sz:7, heavy:true})   === 'whizzHeavy',  'heavy bullet → whizzHeavy');
+    assert(pickWhizz({sz:6})               === 'whizzHeavy',  'sz=6 bullet → whizzHeavy');
+    assert(pickWhizz({sz:3.5, homing:true}) === 'whizzHoming', 'homing bullet → whizzHoming');
+    assert(pickWhizz({sz:2})               === 'whizzRapid',  'sz=2 rapid bullet → whizzRapid');
+    assert(pickWhizz({sz:2.5, spread:true}) === 'whizzSpread', 'spread bullet → whizzSpread');
+    assert(pickWhizz({sz:2.5, burst:true})  === 'whizzBurst',  'burst bullet → whizzBurst');
+    assert(pickWhizz({sz:2.5})             === 'whizz',       'normal bullet → whizz (default)');
+}
+
+// =====================================================
+section('266. Daily Challenge Progress Tracking');
+// =====================================================
+{
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    // homingKills tracked in awardKill when bullet is homing
+    assert(code.includes('function awardKill(killer, homing)'), 'awardKill accepts homing param');
+    assert(code.includes('if (homing) dailyProgress.homingKills++'), 'homingKills incremented on homing kill');
+    assert(code.includes('awardKill(players[b.owner], b.homing)'), 'bullet kill passes b.homing to awardKill');
+    // uniqueLandings tracked in landShip via binned X positions
+    assert(code.includes('dailyProgress.uniqueLandings++'), 'uniqueLandings incremented in landShip');
+    assert(code.includes('dailyLandBins'), 'landing bin set exists for unique tracking');
+    // survWave tracked in both survivalWaveCleared and survivalGameOver
+    assert(/survivalWaveCleared[\s\S]{0,500}dailyProgress\.survWave\s*=\s*survivalWave/.test(code), 'survWave set in survivalWaveCleared');
+    assert(/survivalGameOver[\s\S]{0,500}dailyProgress\.survWave\s*=\s*wave/.test(code), 'survWave set in survivalGameOver');
+    // flawlessWin set on PvP win with 0 deaths
+    assert(code.includes('dailyProgress.flawlessWin = true'), 'flawlessWin set on flawless victory');
+    assert(/playerDeaths\[myIndex\].*===\s*0\)\s*dailyProgress\.flawlessWin/.test(code), 'flawlessWin checks playerDeaths');
+    // checkDailyChallenge called at end of game
+    const checkCalls = code.match(/checkDailyChallenge\(\)/g);
+    assert(checkCalls && checkCalls.length >= 3, 'checkDailyChallenge called at game end (PvP + survival + definition)');
+    // dailyProgress reset in beginGame
+    assert(/beginGame[\s\S]{0,3000}dailyProgress\s*=\s*\{/.test(code), 'dailyProgress reset in beginGame');
+    assert(/beginGame[\s\S]{0,3000}dailyLandBins\s*=\s*new Set/.test(code), 'dailyLandBins reset in beginGame');
+}
+
+// =====================================================
+section('267. Win Tracking & XP Award');
+// =====================================================
+{
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    // playerStats.wins incremented on PvP victory
+    assert(code.includes('playerStats.wins++'), 'playerStats.wins incremented on win');
+    // XP_PER_WIN awarded on victory
+    assert(code.includes('addXP(XP_PER_WIN)'), 'addXP(XP_PER_WIN) called on win');
+    // Both are inside the victory stinger block
+    const victoryBlock = code.match(/musicStinger\('victory'\);[\s\S]{0,200}/);
+    assert(victoryBlock && victoryBlock[0].includes('playerStats.wins++'), 'wins++ in victory block');
+    assert(victoryBlock && victoryBlock[0].includes('addXP(XP_PER_WIN)'), 'XP_PER_WIN in victory block');
 }
 
 console.log(`RESULTS: ${passed}/${total} passed, ${failed} failed`);

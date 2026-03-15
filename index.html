@@ -274,8 +274,8 @@ Land on bases to refuel · Collect weapons · Survive!
 const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
 
 // ---------- CONSTANTS ----------
-const G = 0.0396, THRUST = 0.138, ROT_SPD_MAX = 0.045, MAX_SPD = 2.5;
-const MAX_SPD_WITH_GRAV = MAX_SPD * 1.2;    // 3.0 — diving with gravity
+const G = 0.0396, THRUST = 0.131, ROT_SPD_MAX = 0.045, MAX_SPD = 2.5;
+const MAX_SPD_WITH_GRAV = MAX_SPD * 1.07;    // 2.675 — diving with gravity (subtle nudge)
 const MAX_SPD_AGAINST_GRAV = MAX_SPD * 1.5; // 3.75 — climbing against gravity
 const REV_THRUST = THRUST; // reverse thrust (same as forward)
 const BULLET_SPD = 5.5, BULLET_LIFE = 110, FIRE_CD = 14, SHIP_SZ = 10;
@@ -352,6 +352,7 @@ const DAILY_CHALLENGES = [
 // Fixed game viewport — all devices see exactly the same game area
 const VIEW_W = 412, VIEW_H = 732; // reference phone viewport (logical pixels)
 let W = VIEW_W, H = VIEW_H;
+let vigCache = null, vigW = 0, vigH = 0;
 let screenW, screenH, viewScale = 1, viewOffX = 0, viewOffY = 0; // scaling state
 // HUD safe-area bounds in game coords (updated by resize, accounts for notch + screen overflow)
 let hudT = 4, hudL = 8, hudR = VIEW_W - 8;
@@ -433,8 +434,8 @@ try { const _s = JSON.parse(localStorage.getItem('gravSettings')); if (_s) Objec
 let playerStats = {totalKills:0,totalDeaths:0,wins:0,gamesPlayed:0,bestWave:0,bestStreak:0,totalPickups:0,totalLandings:0,playTimeMin:0,xp:0,level:1,pacifistWave:0,achievements:[],dailySeed:0,dailyDone:false};
 try { const _p = JSON.parse(localStorage.getItem('gravStats')); if (_p) Object.assign(playerStats, _p); } catch(e){}
 let dailyProgress = {homingKills:0,flawlessWin:false,uniqueLandings:0,survWave:0,gameKills:0,gamePickups:0,gameStreak:0};
+let dailyLandBins = new Set();
 let scoreFloats = []; // {x,y,text,color,timer} — floating score numbers
-let sessionStart = Date.now();
 
 // ---------- PERKS SYSTEM ----------
 const LOADOUT_POINTS = 3; // max equippable perk points
@@ -644,7 +645,6 @@ let combatIntensity = 0; // 0 = calm, 1 = full combat
 let combatDecayTimer = 0;
 let nearbyPlayerCount = 0; // how many alive enemies are visible on screen
 const COMBAT_DECAY_RATE = 0.004; // ~4 sec from full to zero at 60fps
-const COMBAT_SHOOT_BUMP = 0.08;
 const COMBAT_KILL_BUMP = 0.35;
 const COMBAT_SHIELD_BUMP = 0.15;
 const COMBAT_HIT_BUMP = 0.12;
@@ -673,6 +673,8 @@ function checkBulletWhizz() {
         if (closest.heavy || closest.sz >= 6) whizzType = 'whizzHeavy';
         else if (closest.homing) whizzType = 'whizzHoming';
         else if (closest.sz <= 2) whizzType = 'whizzRapid';
+        else if (closest.spread) whizzType = 'whizzSpread';
+        else if (closest.burst) whizzType = 'whizzBurst';
         snd(whizzType, vol);
         lastWhizzFrame = frame;
     }
@@ -734,6 +736,76 @@ function snd(t, vol) {
                 o2.type='sawtooth'; o2.detune.value=8; o2.frequency.setValueAtTime(370,n); o2.frequency.exponentialRampToValueAtTime(58,n+.18);
                 g.gain.setValueAtTime(.08*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.18);
                 o.start(n); o.stop(n+.18); o2.start(n); o2.stop(n+.18);
+                break;
+            }
+            case 'shootSpread': {
+                // Scatter pulse: 3 detuned sawtooths staggered 10ms — sounds like 5 voices departing at once
+                const f=ac.createBiquadFilter(), o2=ac.createOscillator(), o3=ac.createOscillator();
+                f.type='lowpass'; f.Q.value=2;
+                f.frequency.setValueAtTime(2800,n); f.frequency.exponentialRampToValueAtTime(260,n+.14);
+                o.connect(f); o2.connect(f); o3.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='sawtooth'; o.frequency.setValueAtTime(420,n); o.frequency.exponentialRampToValueAtTime(62,n+.14);
+                o2.type='sawtooth'; o2.detune.value=-16; o2.frequency.setValueAtTime(400,n+.01); o2.frequency.exponentialRampToValueAtTime(58,n+.14);
+                o3.type='sawtooth'; o3.detune.value=16; o3.frequency.setValueAtTime(440,n+.02); o3.frequency.exponentialRampToValueAtTime(66,n+.14);
+                g.gain.setValueAtTime(.075*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.15);
+                o.start(n); o.stop(n+.15); o2.start(n+.01); o2.stop(n+.15); o3.start(n+.02); o3.stop(n+.15);
+                break;
+            }
+            case 'shootRapid': {
+                // Digital rivet gun: twin square snaps 8ms apart through tight resonant bandpass
+                const f=ac.createBiquadFilter(), o2=ac.createOscillator();
+                f.type='bandpass'; f.Q.value=5;
+                f.frequency.setValueAtTime(2400,n); f.frequency.exponentialRampToValueAtTime(800,n+.065);
+                o.connect(f); o2.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='square'; o.frequency.setValueAtTime(1600,n); o.frequency.exponentialRampToValueAtTime(580,n+.065);
+                o2.type='square'; o2.detune.value=8; o2.frequency.setValueAtTime(1600,n+.008); o2.frequency.exponentialRampToValueAtTime(580,n+.065);
+                g.gain.setValueAtTime(.1*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.065);
+                o.start(n); o.stop(n+.07); o2.start(n+.008); o2.stop(n+.07);
+                break;
+            }
+            case 'shootHeavy': {
+                // Sub-bass cannon: instant-attack sawtooth 80→22 Hz through plunging lowpass + triangle body thunk
+                const f=ac.createBiquadFilter(), o2=ac.createOscillator(), g2=ac.createGain();
+                f.type='lowpass'; f.Q.value=3;
+                f.frequency.setValueAtTime(900,n); f.frequency.exponentialRampToValueAtTime(30,n+.32);
+                o.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='sawtooth'; o.frequency.setValueAtTime(80,n); o.frequency.exponentialRampToValueAtTime(22,n+.32);
+                g.gain.setValueAtTime(.0001,n); g.gain.linearRampToValueAtTime(.16*vol,n+.01); g.gain.exponentialRampToValueAtTime(.001,n+.32);
+                o.start(n); o.stop(n+.33);
+                o2.connect(g2); g2.connect(ac.destination);
+                o2.type='triangle'; o2.frequency.setValueAtTime(360,n); o2.frequency.exponentialRampToValueAtTime(55,n+.12);
+                g2.gain.setValueAtTime(.08*vol,n); g2.gain.exponentialRampToValueAtTime(.001,n+.12);
+                o2.start(n); o2.stop(n+.13);
+                break;
+            }
+            case 'shootBurst': {
+                // Shotgun crack: instant-attack square through falling bandpass (crack body) + high fizz (scatter debris)
+                const f=ac.createBiquadFilter(), o2=ac.createOscillator(), g2=ac.createGain();
+                f.type='bandpass'; f.Q.value=2.5;
+                f.frequency.setValueAtTime(3200,n); f.frequency.exponentialRampToValueAtTime(240,n+.13);
+                o.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='square'; o.frequency.setValueAtTime(560+Math.random()*80,n); o.frequency.exponentialRampToValueAtTime(48,n+.13);
+                g.gain.setValueAtTime(.0001,n); g.gain.linearRampToValueAtTime(.19*vol,n+.004); g.gain.exponentialRampToValueAtTime(.001,n+.13);
+                o.start(n); o.stop(n+.14);
+                o2.connect(g2); g2.connect(ac.destination);
+                o2.type='square'; o2.frequency.value=4800+Math.random()*1800;
+                g2.gain.setValueAtTime(.09*vol,n); g2.gain.exponentialRampToValueAtTime(.001,n+.06);
+                o2.start(n); o2.stop(n+.07);
+                break;
+            }
+            case 'shootHoming': {
+                // Missile lock: sawtooth launch thwack + delayed rising triangle 260→1200 Hz (tracker arc)
+                const f=ac.createBiquadFilter(), o2=ac.createOscillator(), g2=ac.createGain();
+                f.type='lowpass'; f.Q.value=4;
+                f.frequency.setValueAtTime(1400,n); f.frequency.exponentialRampToValueAtTime(180,n+.24);
+                o.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='sawtooth'; o.frequency.setValueAtTime(190,n); o.frequency.exponentialRampToValueAtTime(44,n+.24);
+                g.gain.setValueAtTime(.13*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.24);
+                o.start(n); o.stop(n+.25);
+                o2.connect(g2); g2.connect(ac.destination);
+                o2.type='triangle'; o2.frequency.setValueAtTime(260,n+.03); o2.frequency.exponentialRampToValueAtTime(1200,n+.22);
+                g2.gain.setValueAtTime(.0001,n+.03); g2.gain.linearRampToValueAtTime(.06*vol,n+.07); g2.gain.exponentialRampToValueAtTime(.001,n+.22);
+                o2.start(n+.03); o2.stop(n+.25);
                 break;
             }
             case 'explode': {
@@ -909,6 +981,34 @@ function snd(t, vol) {
                 o.type='sawtooth'; o.frequency.setValueAtTime(2200,n); o.frequency.linearRampToValueAtTime(1800,n+.1);
                 g.gain.setValueAtTime(.05*vol,n); g.gain.linearRampToValueAtTime(.025*vol,n+.06); g.gain.exponentialRampToValueAtTime(.001,n+.1);
                 o.start(n); o.stop(n+.11); break;
+            }
+            case 'whizzSpread': {
+                // Three detuned triangles staggered 5ms — scattered multi-crackle fan passing
+                const f=ac.createBiquadFilter(), o2=ac.createOscillator(), o3=ac.createOscillator();
+                f.type='lowpass'; f.Q.value=1.5;
+                f.frequency.setValueAtTime(900,n); f.frequency.exponentialRampToValueAtTime(180,n+.11);
+                o.connect(f); o2.connect(f); o3.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='triangle'; o.frequency.setValueAtTime(620+Math.random()*100,n); o.frequency.exponentialRampToValueAtTime(210,n+.11);
+                o2.type='triangle'; o2.detune.value=-12; o2.frequency.setValueAtTime(580+Math.random()*80,n+.005); o2.frequency.exponentialRampToValueAtTime(190,n+.11);
+                o3.type='triangle'; o3.detune.value=12; o3.frequency.setValueAtTime(660+Math.random()*90,n+.01); o3.frequency.exponentialRampToValueAtTime(220,n+.11);
+                g.gain.setValueAtTime(.05*vol*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.11);
+                o.start(n); o.stop(n+.12); o2.start(n+.005); o2.stop(n+.12); o3.start(n+.01); o3.stop(n+.12);
+                break;
+            }
+            case 'whizzBurst': {
+                // Instant-attack square through sharp falling bandpass + high fizz — shotgun scatter debris
+                const f=ac.createBiquadFilter(), o2=ac.createOscillator(), g2=ac.createGain();
+                f.type='bandpass'; f.Q.value=3.5;
+                f.frequency.setValueAtTime(3200,n); f.frequency.exponentialRampToValueAtTime(280,n+.09);
+                o.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='square'; o.frequency.setValueAtTime(800+Math.random()*200,n); o.frequency.exponentialRampToValueAtTime(120,n+.09);
+                g.gain.setValueAtTime(.0001,n); g.gain.linearRampToValueAtTime(.09*vol*vol,n+.003); g.gain.exponentialRampToValueAtTime(.001,n+.09);
+                o.start(n); o.stop(n+.10);
+                o2.connect(g2); g2.connect(ac.destination);
+                o2.type='square'; o2.frequency.value=5400+Math.random()*1600;
+                g2.gain.setValueAtTime(.04*vol*vol,n); g2.gain.exponentialRampToValueAtTime(.001,n+.05);
+                o2.start(n); o2.stop(n+.06);
+                break;
             }
             case 'shieldBreak': {
                 // Power arc sweeping through resonant filter, then deep sub-bass pop
@@ -1943,6 +2043,7 @@ function survivalWaveCleared() {
     // DON'T clear bullets/beams here — we may be mid-iteration.
     // They expire naturally; spawnSurvivalWave clears them at safe time.
     waveAnnouncement = {text:'WAVE '+survivalWave+' CLEARED!', timer:150, sub:'+1 LIFE'};
+    dailyProgress.survWave = survivalWave;
 }
 
 function survivalGameOver() {
@@ -1955,6 +2056,8 @@ function survivalGameOver() {
         survivalBest[lobbyMap] = wave;
         try { localStorage.setItem('gravSurvivalBest', JSON.stringify(survivalBest)); } catch(e){}
     }
+    dailyProgress.survWave = wave;
+    checkDailyChallenge();
     setTimeout(() => {
         running = false;
         cancelAnimationFrame(af);
@@ -2229,6 +2332,7 @@ function beginGame(data) {
     draw._tg = null; draw._cg = null;
     lastLoopTime = 0; accumulator = 0; // reset fixed timestep
     dailyProgress = {homingKills:0,flawlessWin:false,uniqueLandings:0,survWave:0,gameKills:0,gamePickups:0,gameStreak:0};
+    dailyLandBins = new Set();
     playerStats.gamesPlayed++; saveStats();
     terrainDirty = true; // force terrain pre-render
     prerenderTerrain();
@@ -2563,6 +2667,8 @@ function landShip(p, surfY) {
     if (p.id === myIndex || (isHost && p.id === 0)) {
         playerStats.totalLandings++;
         addXP(XP_PER_LAND);
+        const bin = Math.floor(p.x / 100);
+        if (!dailyLandBins.has(bin)) { dailyLandBins.add(bin); dailyProgress.uniqueLandings++; }
     }
 }
 
@@ -2593,6 +2699,11 @@ function handleEvent(evt) {
         case 'land': sndAt('land', ex, ey); break;
         case 'pickup': sndAt('pickup', ex, ey); break;
         case 'shoot': sndAt('shoot', ex, ey); break;
+        case 'shootSpread': sndAt('shootSpread', ex, ey); break;
+        case 'shootRapid': sndAt('shootRapid', ex, ey); break;
+        case 'shootHeavy': sndAt('shootHeavy', ex, ey); break;
+        case 'shootBurst': sndAt('shootBurst', ex, ey); break;
+        case 'shootHoming': sndAt('shootHoming', ex, ey); break;
         case 'laser': sndAt('laser', ex, ey); break;
         case 'shieldHit':
             sndAt('shieldHit', ex, ey);
@@ -2714,7 +2825,7 @@ function killPlayer(p, force, killerIdx, shieldDmg) {
     checkGameEnd();
 }
 
-function awardKill(killer) {
+function awardKill(killer, homing) {
     killer.score++;
     // Floating score number
     scoreFloats.push({x:killer.x,y:killer.y-20,text:'+1',color:killer.color,timer:60});
@@ -2733,6 +2844,7 @@ function awardKill(killer) {
     if (killer.id === myIndex || (isHost && killer.id === 0)) {
         playerStats.totalKills++;
         dailyProgress.gameKills++;
+        if (homing) dailyProgress.homingKills++;
         if (killer.streak > playerStats.bestStreak) playerStats.bestStreak = killer.streak;
         if (killer.streak > dailyProgress.gameStreak) dailyProgress.gameStreak = killer.streak;
         addXP(XP_PER_KILL);
@@ -2784,8 +2896,15 @@ function checkGameEnd() {
         const stats = players.map((p,i)=>({name:p.name, color:p.color, kills:p.score, deaths:playerDeaths[i]||0, lives:p.lives}));
         // Victory/defeat stinger
         const me = players[myIndex];
-        if (me && me.lives > 0 && alive.length === 1) musicStinger('victory');
-        else musicStinger('defeat');
+        if (me && me.lives > 0 && alive.length === 1) {
+            musicStinger('victory');
+            playerStats.wins++;
+            addXP(XP_PER_WIN);
+            if ((playerDeaths[myIndex] || 0) === 0) dailyProgress.flawlessWin = true;
+        } else {
+            musicStinger('defeat');
+        }
+        checkDailyChallenge();
         setTimeout(() => {
             running = false;
             cancelAnimationFrame(af);
@@ -2909,23 +3028,24 @@ function fireBullets(p, pi) {
     // Fire rate perk multiplier (only for local player)
     const isLocalF = (isHost && pi === 0) || (!isHost && pi === myIndex);
     const fMul = isLocalF ? activeBonuses.fireMul : 1;
+    let sn = 'shoot';
     switch (p.weapon) {
         case 'spread':
             // 5-way fan — wider spread, more bullets
             for (const off of [-0.3, -0.15, 0, 0.15, 0.3]) {
                 const sa = a+off;
-                bullets.push({x:bx,y:by,vx:Math.cos(sa)*BULLET_SPD*1.05+vbx,vy:Math.sin(sa)*BULLET_SPD*1.05+vby,owner:pi,life:BULLET_LIFE*0.8,color:p.color,sz:2.5});
+                bullets.push({x:bx,y:by,vx:Math.cos(sa)*BULLET_SPD*1.05+vbx,vy:Math.sin(sa)*BULLET_SPD*1.05+vby,owner:pi,life:BULLET_LIFE*0.8,color:p.color,sz:2.5,spread:true});
             }
-            p.fireCd = Math.floor(FIRE_CD * fMul); break;
+            p.fireCd = Math.floor(FIRE_CD * fMul); sn='shootSpread'; break;
         case 'rapid':
             // Twin shots, 2.5x fire rate
             bullets.push({x:bx+Math.cos(a+Math.PI/2)*3,y:by+Math.sin(a+Math.PI/2)*3,vx:Math.cos(a)*BULLET_SPD*1.15+vbx,vy:Math.sin(a)*BULLET_SPD*1.15+vby,owner:pi,life:BULLET_LIFE,color:p.color,sz:2,shieldDmg:2});
             bullets.push({x:bx+Math.cos(a-Math.PI/2)*3,y:by+Math.sin(a-Math.PI/2)*3,vx:Math.cos(a)*BULLET_SPD*1.15+vbx,vy:Math.sin(a)*BULLET_SPD*1.15+vby,owner:pi,life:BULLET_LIFE,color:p.color,sz:2,shieldDmg:2});
-            p.fireCd = Math.floor(FIRE_CD*0.4 * fMul); break;
+            p.fireCd = Math.floor(FIRE_CD*0.4 * fMul); sn='shootRapid'; break;
         case 'heavy':
             // Massive cannonball — big, pierces one target
             bullets.push({x:bx,y:by,vx:Math.cos(a)*BULLET_SPD*0.9+vbx,vy:Math.sin(a)*BULLET_SPD*0.9+vby,owner:pi,life:Math.floor(BULLET_LIFE*1.5),color:p.color,sz:7,heavy:true,pierce:1,shieldDmg:2});
-            p.fireCd = Math.floor(FIRE_CD*1.2 * fMul); break;
+            p.fireCd = Math.floor(FIRE_CD*1.2 * fMul); sn='shootHeavy'; break;
         case 'laser':
             // Continuous beam — balanced duration and range
             beams.push({x:p.x,y:p.y,angle:a,owner:pi,life:LASER_DUR,maxLife:LASER_DUR,color:p.color,hitCd:0});
@@ -2935,12 +3055,12 @@ function fireBullets(p, pi) {
         case 'burst':
             // 7-bullet shotgun blast
             for(let n=0;n<7;n++){const j=(Math.random()-0.5)*0.12;
-            bullets.push({x:bx,y:by,vx:Math.cos(a+j)*BULLET_SPD*1.05+vbx,vy:Math.sin(a+j)*BULLET_SPD*1.05+vby,owner:pi,life:Math.floor(BULLET_LIFE*0.8),color:p.color,sz:2.5});}
-            p.fireCd = Math.floor(FIRE_CD*1.3 * fMul); break;
+            bullets.push({x:bx,y:by,vx:Math.cos(a+j)*BULLET_SPD*1.05+vbx,vy:Math.sin(a+j)*BULLET_SPD*1.05+vby,owner:pi,life:Math.floor(BULLET_LIFE*0.8),color:p.color,sz:2.5,burst:true});}
+            p.fireCd = Math.floor(FIRE_CD*1.3 * fMul); sn='shootBurst'; break;
         case 'homing':
             // Fast aggressive tracker
             bullets.push({x:bx,y:by,vx:Math.cos(a)*BULLET_SPD*0.9+vbx,vy:Math.sin(a)*BULLET_SPD*0.9+vby,owner:pi,life:Math.floor(BULLET_LIFE*1.5),color:p.color,sz:3.5,homing:true});
-            p.fireCd = Math.floor(FIRE_CD*1.1 * fMul); break;
+            p.fireCd = Math.floor(FIRE_CD*1.1 * fMul); sn='shootHoming'; break;
         case 'emp':
             // EMP pulse — one-shot activation, field moves with player
             p.empActive = EMP_PULSE_DUR;
@@ -2951,7 +3071,7 @@ function fireBullets(p, pi) {
             bullets.push({x:bx,y:by,vx:Math.cos(a)*BULLET_SPD+vbx,vy:Math.sin(a)*BULLET_SPD+vby,owner:pi,life:BULLET_LIFE,color:p.color,sz:2.5});
             p.fireCd = Math.floor(FIRE_CD / 1.5 * fMul); // stock fires 1.5x faster (perk can reduce further)
     }
-    emitEvent({t:'e',n:'shoot',x:bx,y:by});
+    emitEvent({t:'e',n:sn,x:bx,y:by});
     if (tutMode && pi === 0) tutShotCount++; // tutorial: count shot bursts
 }
 
@@ -3345,7 +3465,7 @@ function hostUpdate() {
     for (let i=bullets.length-1;i>=0;i--) {
         const b=bullets[i];
         b.x+=b.vx;b.y+=b.vy;b.vy+=gBul;b.life--;
-        if (b.life<=0||b.y<0||b.y>worldH){bullets.splice(i,1);continue;}
+        if (b.life<=0||b.y<0||b.y>worldH){bullets[i]=bullets[bullets.length-1];bullets.pop();continue;}
         if (b.x<0)b.x+=worldW;if(b.x>worldW)b.x-=worldW;
         // Homing bullet tracking
         if (b.homing) {
@@ -3360,27 +3480,27 @@ function hostUpdate() {
             const hitR = SHIP_SZ + (b.sz||2.5);
             if (p.id!==b.owner&&p.alive&&p.invT<=0&&dist(b.x,b.y,p.x,p.y)<hitR){
                 killPlayer(p, false, b.owner, b.shieldDmg);
-                if (p.alive) { /* shield absorbed — don't score */ } else { awardKill(players[b.owner]); }
+                if (p.alive) { /* shield absorbed — don't score */ } else { awardKill(players[b.owner], b.homing); }
                 boom(b.x,b.y,b.color,1);
                 // Heavy bullets pierce through first target
-                if (b.pierce && b.pierce > 0) { b.pierce--; hit=false; } else { bullets.splice(i,1);hit=true; }
+                if (b.pierce && b.pierce > 0) { b.pierce--; hit=false; } else { bullets[i]=bullets[bullets.length-1];bullets.pop();hit=true; }
                 break;
             }
         }
         if (hit) continue;
         const bt=getTerrainYAt(b.x,terrain);
-        if (bt&&b.y>bt.y){boom(b.x,b.y,b.color,.4);bullets.splice(i,1);continue;}
+        if (bt&&b.y>bt.y){boom(b.x,b.y,b.color,.4);bullets[i]=bullets[bullets.length-1];bullets.pop();continue;}
         const ct=getTerrainYAt(b.x,ceiling);
-        if (ct&&b.y<ct.y){boom(b.x,b.y,b.color,.4);bullets.splice(i,1);continue;}
-        for (const pl of platforms){if(ptInRect(b.x,b.y,pl.x,pl.y,pl.width,pl.height)){boom(b.x,b.y,b.color,.4);bullets.splice(i,1);break;}}
+        if (ct&&b.y<ct.y){boom(b.x,b.y,b.color,.4);bullets[i]=bullets[bullets.length-1];bullets.pop();continue;}
+        for (const pl of platforms){if(ptInRect(b.x,b.y,pl.x,pl.y,pl.width,pl.height)){boom(b.x,b.y,b.color,.4);bullets[i]=bullets[bullets.length-1];bullets.pop();break;}}
     }
 
     // Laser beams — follow firing player's position/angle, check hits along the line
     for (let i=beams.length-1;i>=0;i--) {
         const bm=beams[i]; bm.life--;
-        if (bm.life<=0){beams.splice(i,1);continue;}
+        if (bm.life<=0){beams[i]=beams[beams.length-1];beams.pop();continue;}
         const p=players[bm.owner];
-        if (!p||!p.alive){beams.splice(i,1);continue;}
+        if (!p||!p.alive){beams[i]=beams[beams.length-1];beams.pop();continue;}
         // Track ship position and angle
         bm.x=p.x; bm.y=p.y; bm.angle=p.angle;
         // Find beam end (terrain/ceiling/boundary collision)
@@ -3439,7 +3559,7 @@ function hostUpdate() {
             if(p.id===myIndex){screenShake=Math.max(screenShake,12);doHaptic(120);}
             killPlayer(p,true);}
         }
-        if (be.t>=be.dur) baseExps.splice(i,1);
+        if (be.t>=be.dur) {baseExps[i]=baseExps[baseExps.length-1];baseExps.pop();}
     }
 
     // Pickup spawning (host only)
@@ -3457,16 +3577,16 @@ function hostUpdate() {
             if (!p.alive) continue;
             if (dist(p.x,p.y,pk.x,pk.y) < PICKUP_R+SHIP_SZ) {
                 applyPickup(p, pk.type);
-                pickups.splice(i,1);
+                pickups[i]=pickups[pickups.length-1];pickups.pop();
                 break;
             }
         }
     }
 
     // Effects
-    for (let i=explosions.length-1;i>=0;i--){const e=explosions[i];if(e.growing){e.r+=2;if(e.r>=e.maxR)e.growing=false;}e.alpha-=.03;if(e.alpha<=0)explosions.splice(i,1);}
-    for (let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vy+=mapGrav*.3;p.vx*=.99;p.life--;if(p.life<=0)particles.splice(i,1);}
-    if (particles.length>300) particles.splice(0,particles.length-300);
+    for (let i=explosions.length-1;i>=0;i--){const e=explosions[i];if(e.growing){e.r+=2;if(e.r>=e.maxR)e.growing=false;}e.alpha-=.03;if(e.alpha<=0){explosions[i]=explosions[explosions.length-1];explosions.pop();}}
+    for (let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vy+=mapGrav*.3;p.vx*=.99;p.life--;if(p.life<=0){particles[i]=particles[particles.length-1];particles.pop();}}
+    if (particles.length>300) particles=particles.slice(-300);
     if (screenShake>0){screenShake*=.9;if(screenShake<.5)screenShake=0;}
 
     // Thrust sounds (host) — every 8 frames to keep it light
@@ -3659,9 +3779,9 @@ function clientUpdate() {
         particles.push({x:be.x+Math.cos(a)*d,y:be.y+Math.sin(a)*d,vx:(Math.random()-.5)*2,vy:-Math.random()*2-1,life:15+Math.random()*15,maxLife:15+Math.random()*15,color:['#ff4400','#ff8800'][Math.floor(Math.random()*2)],size:Math.random()*3+1});}
     }
 
-    for (let i=explosions.length-1;i>=0;i--){const e=explosions[i];if(e.growing){e.r+=2;if(e.r>=e.maxR)e.growing=false;}e.alpha-=.03;if(e.alpha<=0)explosions.splice(i,1);}
-    for (let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vy+=mapGrav*.3;p.vx*=.99;p.life--;if(p.life<=0)particles.splice(i,1);}
-    if (particles.length>150) particles.splice(0,particles.length-150);
+    for (let i=explosions.length-1;i>=0;i--){const e=explosions[i];if(e.growing){e.r+=2;if(e.r>=e.maxR)e.growing=false;}e.alpha-=.03;if(e.alpha<=0){explosions[i]=explosions[explosions.length-1];explosions.pop();}}
+    for (let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vy+=mapGrav*.3;p.vx*=.99;p.life--;if(p.life<=0){particles[i]=particles[particles.length-1];particles.pop();}}
+    if (particles.length>150) particles=particles.slice(-150);
     if (screenShake>0){screenShake*=.9;if(screenShake<.5)screenShake=0;}
 
     // Thrust sounds (client) — every 8 frames
@@ -3998,9 +4118,8 @@ function draw() {
 
     // Bullets — viewport cull, additive blending
     ctx.globalCompositeOperation='lighter';
-    for (const b of bullets){const wx=b.x+wOff;if(wx<visLeft||wx>visRight||b.y<visTop||b.y>visBot)continue;const bsz=b.sz||2.5;ctx.fillStyle=b.color;if(!isMultiplayer){ctx.shadowColor=b.color;ctx.shadowBlur=bsz>3?6:4;}ctx.beginPath();ctx.arc(b.x,b.y,bsz,0,Math.PI*2);ctx.fill();ctx.globalAlpha=.3;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x-b.vx*2,b.y-b.vy*2);ctx.stroke();ctx.globalAlpha=1;}
+    for (const b of bullets){const wx=b.x+wOff;if(wx<visLeft||wx>visRight||b.y<visTop||b.y>visBot)continue;const bsz=b.sz||2.5;ctx.fillStyle=b.color;ctx.beginPath();ctx.arc(b.x,b.y,bsz,0,Math.PI*2);ctx.fill();ctx.globalAlpha=.3;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x-b.vx*2,b.y-b.vy*2);ctx.stroke();ctx.globalAlpha=1;}
     ctx.globalCompositeOperation='source-over';
-    ctx.shadowBlur=0;
 
     // Laser beams
     for (const bm of beams) {
@@ -4009,7 +4128,7 @@ function draw() {
         const flicker=0.7+Math.random()*0.3;
         // Glow layer
         ctx.save();
-        if(!isMultiplayer){ctx.shadowColor='#00ddff';ctx.shadowBlur=20*intensity;}
+
         ctx.strokeStyle='rgba(0,221,255,'+(0.15*intensity*flicker)+')';ctx.lineWidth=12;
         ctx.beginPath();ctx.moveTo(bm.x+Math.cos(bm.angle)*SHIP_SZ*2,bm.y+Math.sin(bm.angle)*SHIP_SZ*2);ctx.lineTo(endX,endY);ctx.stroke();
         // Core beam
@@ -4019,7 +4138,7 @@ function draw() {
         ctx.strokeStyle='rgba(255,255,255,'+(0.5*intensity*flicker)+')';ctx.lineWidth=1.5;
         ctx.beginPath();ctx.moveTo(bm.x+Math.cos(bm.angle)*SHIP_SZ*2,bm.y+Math.sin(bm.angle)*SHIP_SZ*2);ctx.lineTo(endX,endY);ctx.stroke();
         // Impact flash at beam end
-        ctx.fillStyle='#00ddff';ctx.globalAlpha=0.4*intensity*flicker;if(!isMultiplayer){ctx.shadowBlur=15;}
+        ctx.fillStyle='#00ddff';ctx.globalAlpha=0.4*intensity*flicker;
         ctx.beginPath();ctx.arc(endX,endY,6+Math.random()*4,0,Math.PI*2);ctx.fill();
         ctx.restore();
     }
@@ -4045,14 +4164,13 @@ function draw() {
             }
             ctx.globalAlpha = 1;
         }
-        // Glow — skip shadowBlur in multiplayer
-        if(!isMultiplayer){ctx.shadowColor=pt.color;ctx.shadowBlur=12;}
+
         ctx.strokeStyle=pt.color;ctx.lineWidth=2;
         ctx.globalAlpha=0.4+Math.sin((pk.bobPhase||0)*2)*.2;
         ctx.beginPath();ctx.arc(pk.x,py,PICKUP_R,0,Math.PI*2);ctx.stroke();
         ctx.globalAlpha=0.15;ctx.fillStyle=pt.color;ctx.fill();
         // Icon
-        ctx.globalAlpha=1;ctx.shadowBlur=0;
+        ctx.globalAlpha=1;
         ctx.fillStyle=pt.color;ctx.font='bold 12px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
         ctx.fillText(pt.icon,pk.x,py);
         // Label
@@ -4067,12 +4185,12 @@ function draw() {
         ctx.save();ctx.translate(pp.x,pp.y);ctx.rotate(pp.angle+Math.PI/2);
         const flashing = pp.flashTimer && pp.flashTimer > 0;
         if (pp.invT&&Math.floor(frame/4)%2) ctx.globalAlpha=.4;
-        if(!isMultiplayer){ctx.shadowColor=flashing?'#fff':pp.color;ctx.shadowBlur=10;}
+
         // Cosmetic skin rendering
         const skinId = pp.skin || 'default';
         const skinDef = SHIP_SKINS.find(s=>s.id===skinId);
         const skinColor = (!flashing && skinDef && skinDef.color) ? skinDef.color : (flashing?'#fff':pp.color);
-        if (skinId==='neon' && !flashing) { ctx.shadowColor=skinDef.color; ctx.shadowBlur=18; }
+
         if (skinId==='ghost' && !flashing) { ctx.globalAlpha=Math.max(ctx.globalAlpha*0.55, 0.2); }
         ctx.fillStyle=skinColor;ctx.beginPath();
         drawShipShape(ctx, skinId, SHIP_SZ);
@@ -4158,15 +4276,13 @@ function draw() {
             } else if (trailDef && trailDef.colors) {
                 tCol1 = trailDef.colors[0]; tCol2 = trailDef.colors[1] || trailDef.colors[0];
             }
-            // Engine exhaust glow
+            // Engine exhaust glow — simple alpha circle instead of per-frame gradient
             const glowR = SHIP_SZ * (1.2 + Math.random() * 0.4);
-            const eg = ctx.createRadialGradient(0, SHIP_SZ * 0.5, 0, 0, SHIP_SZ * 0.5, glowR);
-            eg.addColorStop(0, tCol2); eg.addColorStop(0.4, tCol1); eg.addColorStop(1, 'rgba(0,0,0,0)');
             const prevCO = ctx.globalCompositeOperation;
             ctx.globalCompositeOperation = 'lighter';
-            ctx.globalAlpha = 0.25;
-            ctx.fillStyle = eg;
-            ctx.fillRect(-glowR, SHIP_SZ * 0.5 - glowR, glowR * 2, glowR * 2);
+            ctx.globalAlpha = 0.18;
+            ctx.fillStyle = tCol1;
+            ctx.beginPath();ctx.arc(0, SHIP_SZ * 0.5, glowR * 0.6, 0, Math.PI * 2);ctx.fill();
             ctx.globalAlpha = 1;
             ctx.globalCompositeOperation = prevCO;
             ctx.fillStyle=tCol1;ctx.beginPath();ctx.moveTo(-SHIP_SZ*.3,SHIP_SZ*.5);ctx.lineTo(0,SHIP_SZ*.5+fs);ctx.lineTo(SHIP_SZ*.3,SHIP_SZ*.5);ctx.closePath();ctx.fill();
@@ -4329,7 +4445,7 @@ function draw() {
     // Score floats (floating +1, WEAPON EXPIRED, etc.)
     for (let i=scoreFloats.length-1;i>=0;i--) {
         const sf=scoreFloats[i]; sf.timer--; sf.y -= 0.8;
-        if (sf.timer<=0) { scoreFloats.splice(i,1); continue; }
+        if (sf.timer<=0) { scoreFloats[i]=scoreFloats[scoreFloats.length-1];scoreFloats.pop(); continue; }
         ctx.globalAlpha=Math.min(1,sf.timer/20);
         ctx.fillStyle=sf.color;ctx.font='bold 13px Courier New';ctx.textAlign='center';
         ctx.fillText(sf.text,W/2+(sf.x-players[myIndex]?.x||0)*.1,H/2+(sf.y-players[myIndex]?.y||0)*.1);
@@ -4337,10 +4453,8 @@ function draw() {
     ctx.globalAlpha=1;
 
     // Ambient vignette — subtle dark edges for depth
-    const vig = ctx.createRadialGradient(W/2, H/2, W*0.35, W/2, H/2, W*0.85);
-    vig.addColorStop(0, 'rgba(0,0,0,0)');
-    vig.addColorStop(1, 'rgba(0,0,0,0.35)');
-    ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
+    if (!vigCache || vigW !== W || vigH !== H) { vigW = W; vigH = H; vigCache = ctx.createRadialGradient(W/2, H/2, W*0.35, W/2, H/2, W*0.85); vigCache.addColorStop(0, 'rgba(0,0,0,0)'); vigCache.addColorStop(1, 'rgba(0,0,0,0.35)'); }
+    ctx.fillStyle = vigCache; ctx.fillRect(0, 0, W, H);
 
     // HUD
     drawHUD();
@@ -4434,7 +4548,7 @@ function drawHUD() {
     for (let i=killFeed.length-1;i>=0;i--) {
         const kf = killFeed[i];
         kf.timer--;
-        if (kf.timer<=0) { killFeed.splice(i,1); continue; }
+        if (kf.timer<=0) { killFeed[i]=killFeed[killFeed.length-1];killFeed.pop(); continue; }
         const alpha = Math.min(1, kf.timer/30);
         const scale = kf.big ? 1.6 : 1.2;
         const yOff = (killFeed.length-1-i) * (fs*scale+6);
@@ -4995,8 +5109,6 @@ function getShopCategory(tab) {
     if (tab === 'engines') return { items: ENGINE_SOUNDS, owned: shopData.ownedEngines,     active: shopData.activeEngine };
     return                        { items: KILL_EFFECTS,  owned: shopData.ownedKillEffects, active: shopData.activeKillEffect };
 }
-
-function stopShopPreview() {} // no-op, kept for BACK button compat
 
 function drawInlineShip(canvas, item) {
     const sz = canvas.width;
@@ -5908,11 +6020,6 @@ function updateMusicVolume() {
 // =====================================================
 // NETWORK RESILIENCE
 // =====================================================
-function wsConnectWithRetry(onOpen) {
-    if (reconnectTimer) clearTimeout(reconnectTimer);
-    wsConnect(onOpen);
-}
-
 function attemptReconnect() {
     if (reconnectAttempts >= 5) {
         pendingReconnect = false;
