@@ -409,13 +409,13 @@ let tutShieldGot = false;
 let tutEmpGot = false;
 
 const TUT_STEPS = [
-    { title:'THRUST',    msg:'Hold the RIGHT side of the screen to thrust.',    sub:'Lift off your landing pad and take flight!' },
-    { title:'ROTATE',    msg:'Drag the LEFT side up/down to rotate.',            sub:'Spin a full 360\u00b0 to master turning.'   },
-    { title:'GRAVITY',   msg:'Cut thrust and let gravity pull you.',             sub:'Reach speed 1.5 by diving or arcing!'       },
-    { title:'LANDING',   msg:'Fly to the glowing platform and land gently.',     sub:'Approach slowly from above — too fast = crash!' },
-    { title:'PICKUP',    msg:'Fly through the glowing \u2295 SPREAD pickup.',    sub:'Pickups give powerful temporary weapons!'   },
-    { title:'WEAPONS',   msg:'Hold RIGHT (or SPACE) to fire your weapon!',       sub:'Fire 3 shots to continue.'                  },
-    { title:'SPECIALS',  msg:'Collect the \u25ce SHIELD then the \u26a1 EMP.',   sub:'Shield absorbs a hit. EMP stuns nearby ships!' },
+    { title:'THRUST',   msg:'Drag LEFT joystick UP to thrust.',      sub:'Lift off and take flight!' },
+    { title:'ROTATE',   msg:'Drag LEFT joystick LEFT or RIGHT.',      sub:'Spin a full 360\u00b0 to continue.' },
+    { title:'GRAVITY',  msg:'Release thrust — let gravity pull you.', sub:'Reach speed 1.5 by diving!' },
+    { title:'LANDING',  msg:'Land on the glowing platform.',          sub:'Approach slowly — too fast = crash!' },
+    { title:'PICKUP',   msg:'Fly through the \u2295 SPREAD pickup.',  sub:'Pickups give powerful weapons!' },
+    { title:'WEAPONS',  msg:'Tap RIGHT side to fire!',                sub:'Fire 3 shots to continue.' },
+    { title:'SPECIALS', msg:'Get the \u25ce SHIELD, then \u26a1 EMP.',sub:'Shield blocks hits. EMP stuns foes!' },
 ];
 // Tutorial world-space target positions (in tutorial map coords: 2400×1200)
 const TUT_PLATFORM_X = 1020, TUT_PLATFORM_Y = 600; // matches platform in generateMap tutorial
@@ -718,52 +718,254 @@ function snd(t, vol) {
     vol = (vol !== undefined ? vol : 1) * settings.sfxVol;
     if (vol <= 0.01) return;
     try {
+        // Each case sets up its own routing so it can insert a filter node for synth warmth
         const o = ac.createOscillator(), g = ac.createGain();
-        o.connect(g); g.connect(ac.destination);
         const n = ac.currentTime;
         switch (t) {
-            case 'shoot': o.type='square'; o.frequency.setValueAtTime(600,n); o.frequency.exponentialRampToValueAtTime(100,n+.1); g.gain.setValueAtTime(.07*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.1); o.start(n); o.stop(n+.1); break;
-            case 'explode': { const pv=0.85+Math.random()*0.3; o.type='sawtooth'; o.frequency.setValueAtTime(150*pv,n); o.frequency.exponentialRampToValueAtTime(30*pv,n+.35); g.gain.setValueAtTime(.1*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.35); o.start(n); o.stop(n+.35); break; }
-            case 'baseExp': o.type='sawtooth'; o.frequency.setValueAtTime(200,n); o.frequency.exponentialRampToValueAtTime(15,n+.8); g.gain.setValueAtTime(.13*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.8); o.start(n); o.stop(n+.8); break;
-            case 'land': o.type='sine'; o.frequency.setValueAtTime(523,n); o.frequency.setValueAtTime(659,n+.08); o.frequency.setValueAtTime(784,n+.16); g.gain.setValueAtTime(.07*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.25); o.start(n); o.stop(n+.25); break;
-            case 'bugKill': o.type='square'; o.frequency.setValueAtTime(100,n); o.frequency.exponentialRampToValueAtTime(2000,n+.05); o.frequency.exponentialRampToValueAtTime(50,n+.25); g.gain.setValueAtTime(.1*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.25); o.start(n); o.stop(n+.25); break;
-            case 'pickup': o.type='sine'; o.frequency.setValueAtTime(880,n); o.frequency.setValueAtTime(1320,n+.06); o.frequency.setValueAtTime(1760,n+.12); g.gain.setValueAtTime(.08*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.2); o.start(n); o.stop(n+.2); break;
-            case 'shieldHit': o.type='triangle'; o.frequency.setValueAtTime(1200,n); o.frequency.exponentialRampToValueAtTime(200,n+.2); g.gain.setValueAtTime(.12*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.25); o.start(n); o.stop(n+.25); break;
-            case 'thrust': o.type='sawtooth'; o.frequency.setValueAtTime(80,n); o.frequency.exponentialRampToValueAtTime(60,n+.06); g.gain.setValueAtTime(.025*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.06); o.start(n); o.stop(n+.06); break;
-            case 'laser': o.type='sawtooth'; o.frequency.setValueAtTime(1800,n); o.frequency.linearRampToValueAtTime(1400,n+.15); g.gain.setValueAtTime(.06*vol,n); g.gain.linearRampToValueAtTime(.04*vol,n+.1); g.gain.exponentialRampToValueAtTime(.001,n+.15); o.start(n); o.stop(n+.15); break;
-            // Bullet whizz variants — pitch rises then falls as bullet passes
-            case 'whizz': o.type='sine'; o.frequency.setValueAtTime(800+Math.random()*400,n); o.frequency.exponentialRampToValueAtTime(300+Math.random()*200,n+.12); g.gain.setValueAtTime(.06*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.12); o.start(n); o.stop(n+.13); break;
-            case 'whizzHeavy': o.type='sawtooth'; o.frequency.setValueAtTime(200+Math.random()*60,n); o.frequency.exponentialRampToValueAtTime(80,n+.2); g.gain.setValueAtTime(.09*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.2); o.start(n); o.stop(n+.21); break;
-            case 'whizzHoming': o.type='triangle'; o.frequency.setValueAtTime(1200,n); o.frequency.setValueAtTime(1400,n+.04); o.frequency.setValueAtTime(1100,n+.08); o.frequency.exponentialRampToValueAtTime(600,n+.15); g.gain.setValueAtTime(.05*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.15); o.start(n); o.stop(n+.16); break;
-            case 'whizzRapid': o.type='square'; o.frequency.setValueAtTime(1500+Math.random()*500,n); o.frequency.exponentialRampToValueAtTime(500,n+.06); g.gain.setValueAtTime(.04*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.06); o.start(n); o.stop(n+.07); break;
-            case 'whizzBeam': o.type='sawtooth'; o.frequency.setValueAtTime(2200,n); o.frequency.linearRampToValueAtTime(1800,n+.1); g.gain.setValueAtTime(.04*vol,n); g.gain.linearRampToValueAtTime(.02*vol,n+.06); g.gain.exponentialRampToValueAtTime(.001,n+.1); o.start(n); o.stop(n+.11); break;
-            // Shield break — power arc then pop
-            case 'shieldBreak': {
-              o.type='sawtooth'; o.frequency.setValueAtTime(300,n);
-              o.frequency.exponentialRampToValueAtTime(3500,n+.12);
-              o.frequency.setValueAtTime(3500,n+.12);
-              o.frequency.exponentialRampToValueAtTime(80,n+.18);
-              g.gain.setValueAtTime(.15*vol,n); g.gain.setValueAtTime(.18*vol,n+.1);
-              g.gain.setValueAtTime(.04*vol,n+.13); g.gain.exponentialRampToValueAtTime(.001,n+.25);
-              o.start(n); o.stop(n+.26);
-              // pop burst on second oscillator
-              const o2=ac.createOscillator(),g2=ac.createGain();
-              o2.connect(g2); g2.connect(ac.destination);
-              o2.type='square'; o2.frequency.setValueAtTime(120+Math.random()*60,n+.12);
-              o2.frequency.exponentialRampToValueAtTime(40,n+.22);
-              g2.gain.setValueAtTime(.16*vol,n+.12); g2.gain.exponentialRampToValueAtTime(.001,n+.24);
-              o2.start(n+.12); o2.stop(n+.25);
-              break;
+            case 'shoot': {
+                // Tron laser bolt: two detuned sawtooths through resonant falling lowpass
+                const f=ac.createBiquadFilter(), o2=ac.createOscillator();
+                f.type='lowpass'; f.Q.value=5;
+                f.frequency.setValueAtTime(3200,n); f.frequency.exponentialRampToValueAtTime(280,n+.18);
+                o.connect(f); o2.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='sawtooth'; o.frequency.setValueAtTime(370,n); o.frequency.exponentialRampToValueAtTime(58,n+.18);
+                o2.type='sawtooth'; o2.detune.value=8; o2.frequency.setValueAtTime(370,n); o2.frequency.exponentialRampToValueAtTime(58,n+.18);
+                g.gain.setValueAtTime(.08*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.18);
+                o.start(n); o.stop(n+.18); o2.start(n); o2.stop(n+.18);
+                break;
             }
-            // Wall/terrain impact — metallic thud
-            case 'wallHit': o.type='triangle'; o.frequency.setValueAtTime(250+Math.random()*80,n); o.frequency.exponentialRampToValueAtTime(60,n+.08); g.gain.setValueAtTime(.06*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.1); o.start(n); o.stop(n+.1); break;
-            // Pickup spawn sparkle
-            case 'pickupSpawn': o.type='sine'; o.frequency.setValueAtTime(1200,n); o.frequency.setValueAtTime(1600,n+.06); o.frequency.setValueAtTime(2000,n+.12); o.frequency.exponentialRampToValueAtTime(1400,n+.2); g.gain.setValueAtTime(.04*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.25); o.start(n); o.stop(n+.25); break;
-            // EMP spawn — dramatic rising siren
-            case 'empSpawn': o.type='sawtooth'; o.frequency.setValueAtTime(200,n); o.frequency.exponentialRampToValueAtTime(1800,n+.3); o.frequency.exponentialRampToValueAtTime(600,n+.5); g.gain.setValueAtTime(.1*vol,n); g.gain.setValueAtTime(.12*vol,n+.15); g.gain.exponentialRampToValueAtTime(.001,n+.55); o.start(n); o.stop(n+.56); break;
-            case 'empActivate': o.type='sawtooth'; o.frequency.setValueAtTime(2500,n); o.frequency.exponentialRampToValueAtTime(80,n+.5); g.gain.setValueAtTime(.15*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.5); o.start(n); o.stop(n+.51); break;
-            case 'empStruck': o.type='square'; o.frequency.setValueAtTime(60,n); o.frequency.setValueAtTime(40,n+.15); o.frequency.setValueAtTime(80,n+.25); g.gain.setValueAtTime(.12*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.35); o.start(n); o.stop(n+.36); break;
-            case 'empPulse': o.type='sine'; o.frequency.setValueAtTime(200,n); o.frequency.exponentialRampToValueAtTime(50,n+.15); g.gain.setValueAtTime(.03*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.15); o.start(n); o.stop(n+.16); break;
+            case 'explode': {
+                // Deep cinematic boom: layered detuned sawtooths + sweeping lowpass
+                const pv=0.85+Math.random()*0.3;
+                const f=ac.createBiquadFilter(), o2=ac.createOscillator();
+                f.type='lowpass'; f.Q.value=2;
+                f.frequency.setValueAtTime(1400*pv,n); f.frequency.exponentialRampToValueAtTime(55,n+.48);
+                o.connect(f); o2.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='sawtooth'; o.frequency.setValueAtTime(130*pv,n); o.frequency.exponentialRampToValueAtTime(22*pv,n+.48);
+                o2.type='sawtooth'; o2.detune.value=-8; o2.frequency.setValueAtTime(195*pv,n); o2.frequency.exponentialRampToValueAtTime(33*pv,n+.48);
+                g.gain.setValueAtTime(.13*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.48);
+                o.start(n); o.stop(n+.49); o2.start(n+.02); o2.stop(n+.49);
+                break;
+            }
+            case 'baseExp': {
+                // Massive base explosion: extended deep rumble with sub-bass layer
+                const f=ac.createBiquadFilter(), o2=ac.createOscillator();
+                f.type='lowpass'; f.Q.value=2.5;
+                f.frequency.setValueAtTime(1800,n); f.frequency.exponentialRampToValueAtTime(30,n+.9);
+                o.connect(f); o2.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='sawtooth'; o.frequency.setValueAtTime(220,n); o.frequency.exponentialRampToValueAtTime(14,n+.9);
+                o2.type='sawtooth'; o2.detune.value=-10; o2.frequency.setValueAtTime(110,n); o2.frequency.exponentialRampToValueAtTime(20,n+.85);
+                g.gain.setValueAtTime(.15*vol,n); g.gain.setValueAtTime(.15*vol,n+.1); g.gain.exponentialRampToValueAtTime(.001,n+.9);
+                o.start(n); o.stop(n+.9); o2.start(n+.03); o2.stop(n+.88);
+                break;
+            }
+            case 'land': {
+                // Tron success chime: staggered detuned arpeggio for shimmer
+                const f=ac.createBiquadFilter(), o2=ac.createOscillator();
+                f.type='lowpass'; f.Q.value=1; f.frequency.value=3000;
+                o.connect(f); o2.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='sine'; o.frequency.setValueAtTime(523,n); o.frequency.setValueAtTime(659,n+.08); o.frequency.setValueAtTime(784,n+.16); o.frequency.setValueAtTime(1047,n+.22);
+                o2.type='triangle'; o2.detune.value=5;
+                o2.frequency.setValueAtTime(523,n+.02); o2.frequency.setValueAtTime(659,n+.1); o2.frequency.setValueAtTime(784,n+.18); o2.frequency.setValueAtTime(1047,n+.24);
+                g.gain.setValueAtTime(.08*vol,n); g.gain.setValueAtTime(.09*vol,n+.1); g.gain.exponentialRampToValueAtTime(.001,n+.34);
+                o.start(n); o.stop(n+.34); o2.start(n+.02); o2.stop(n+.34);
+                break;
+            }
+            case 'bugKill': {
+                // Sci-fi zap rising then falling: resonant filter sweep gives electronic crunch
+                const f=ac.createBiquadFilter();
+                f.type='lowpass'; f.Q.value=6;
+                f.frequency.setValueAtTime(300,n); f.frequency.exponentialRampToValueAtTime(4500,n+.06); f.frequency.exponentialRampToValueAtTime(800,n+.26);
+                o.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='sawtooth'; o.frequency.setValueAtTime(90,n); o.frequency.exponentialRampToValueAtTime(2200,n+.06); o.frequency.exponentialRampToValueAtTime(50,n+.26);
+                const o2=ac.createOscillator(), g2=ac.createGain();
+                o2.connect(g2); g2.connect(ac.destination);
+                o2.type='square'; o2.detune.value=12; o2.frequency.setValueAtTime(180,n); o2.frequency.exponentialRampToValueAtTime(4400,n+.06); o2.frequency.exponentialRampToValueAtTime(100,n+.22);
+                g.gain.setValueAtTime(.1*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.26);
+                g2.gain.setValueAtTime(.03*vol,n); g2.gain.exponentialRampToValueAtTime(.001,n+.22);
+                o.start(n); o.stop(n+.27); o2.start(n); o2.stop(n+.23);
+                break;
+            }
+            case 'pickup': {
+                // Sparkling Tron pickup: staggered detuned arpeggio through highpass
+                const f=ac.createBiquadFilter(), o2=ac.createOscillator();
+                f.type='highpass'; f.frequency.value=400; f.Q.value=1;
+                o.connect(f); o2.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='sine'; o.frequency.setValueAtTime(880,n); o.frequency.setValueAtTime(1320,n+.06); o.frequency.setValueAtTime(1760,n+.12); o.frequency.setValueAtTime(2200,n+.17);
+                o2.type='triangle'; o2.detune.value=7;
+                o2.frequency.setValueAtTime(880,n+.02); o2.frequency.setValueAtTime(1320,n+.08); o2.frequency.setValueAtTime(1760,n+.14); o2.frequency.setValueAtTime(2200,n+.19);
+                g.gain.setValueAtTime(.09*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.25);
+                o.start(n); o.stop(n+.25); o2.start(n+.02); o2.stop(n+.25);
+                break;
+            }
+            case 'shieldHit': {
+                // Tron force-field impact: resonant bandpass "pong" with warm sub layer
+                const f=ac.createBiquadFilter(), o2=ac.createOscillator();
+                f.type='bandpass'; f.Q.value=5;
+                f.frequency.setValueAtTime(900,n); f.frequency.exponentialRampToValueAtTime(200,n+.3);
+                o.connect(f); o2.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='triangle'; o.frequency.setValueAtTime(1200,n); o.frequency.exponentialRampToValueAtTime(220,n+.3);
+                o2.type='sawtooth'; o2.detune.value=-5; o2.frequency.setValueAtTime(600,n); o2.frequency.exponentialRampToValueAtTime(110,n+.3);
+                g.gain.setValueAtTime(.14*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.32);
+                o.start(n); o.stop(n+.32); o2.start(n); o2.stop(n+.32);
+                break;
+            }
+            case 'thrust': {
+                // Tron thruster pulse — single osc + filter (called frequently, keep light)
+                const f=ac.createBiquadFilter();
+                f.type='lowpass'; f.Q.value=1.5; f.frequency.value=350;
+                o.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='sawtooth'; o.frequency.setValueAtTime(88,n); o.frequency.exponentialRampToValueAtTime(66,n+.06);
+                g.gain.setValueAtTime(.028*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.06);
+                o.start(n); o.stop(n+.06);
+                break;
+            }
+            case 'laser': {
+                // Tron beam weapon: detuned pair through resonant bandpass for focus
+                const f=ac.createBiquadFilter(), o2=ac.createOscillator();
+                f.type='bandpass'; f.Q.value=3; f.frequency.value=1600;
+                o.connect(f); o2.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='sawtooth'; o.frequency.setValueAtTime(1800,n); o.frequency.linearRampToValueAtTime(1400,n+.15);
+                o2.type='sawtooth'; o2.detune.value=7; o2.frequency.setValueAtTime(1800,n); o2.frequency.linearRampToValueAtTime(1400,n+.15);
+                g.gain.setValueAtTime(.06*vol,n); g.gain.linearRampToValueAtTime(.04*vol,n+.1); g.gain.exponentialRampToValueAtTime(.001,n+.15);
+                o.start(n); o.stop(n+.15); o2.start(n); o2.stop(n+.15);
+                break;
+            }
+            // Bullet whizz variants — single osc kept light; filter adds synth warmth
+            case 'whizz': {
+                const f=ac.createBiquadFilter();
+                f.type='bandpass'; f.Q.value=2;
+                f.frequency.setValueAtTime(700+Math.random()*300,n); f.frequency.exponentialRampToValueAtTime(300,n+.12);
+                o.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='triangle'; o.frequency.setValueAtTime(800+Math.random()*400,n); o.frequency.exponentialRampToValueAtTime(280+Math.random()*150,n+.12);
+                g.gain.setValueAtTime(.07*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.12);
+                o.start(n); o.stop(n+.13); break;
+            }
+            case 'whizzHeavy': {
+                const f=ac.createBiquadFilter();
+                f.type='lowpass'; f.Q.value=2;
+                f.frequency.setValueAtTime(800,n); f.frequency.exponentialRampToValueAtTime(150,n+.22);
+                o.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='sawtooth'; o.frequency.setValueAtTime(220+Math.random()*60,n); o.frequency.exponentialRampToValueAtTime(75,n+.22);
+                g.gain.setValueAtTime(.1*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.22);
+                o.start(n); o.stop(n+.23); break;
+            }
+            case 'whizzHoming': {
+                const f=ac.createBiquadFilter();
+                f.type='bandpass'; f.Q.value=3;
+                f.frequency.setValueAtTime(1100,n); f.frequency.setValueAtTime(1300,n+.04); f.frequency.exponentialRampToValueAtTime(500,n+.16);
+                o.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='triangle'; o.frequency.setValueAtTime(1200,n); o.frequency.setValueAtTime(1400,n+.04); o.frequency.setValueAtTime(1100,n+.08); o.frequency.exponentialRampToValueAtTime(550,n+.16);
+                g.gain.setValueAtTime(.06*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.16);
+                o.start(n); o.stop(n+.17); break;
+            }
+            case 'whizzRapid': {
+                const f=ac.createBiquadFilter();
+                f.type='highpass'; f.Q.value=1; f.frequency.value=600;
+                o.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='square'; o.frequency.setValueAtTime(1400+Math.random()*500,n); o.frequency.exponentialRampToValueAtTime(450,n+.06);
+                g.gain.setValueAtTime(.04*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.06);
+                o.start(n); o.stop(n+.07); break;
+            }
+            case 'whizzBeam': {
+                const f=ac.createBiquadFilter();
+                f.type='bandpass'; f.Q.value=4;
+                f.frequency.setValueAtTime(2000,n); f.frequency.linearRampToValueAtTime(1700,n+.1);
+                o.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='sawtooth'; o.frequency.setValueAtTime(2200,n); o.frequency.linearRampToValueAtTime(1800,n+.1);
+                g.gain.setValueAtTime(.05*vol,n); g.gain.linearRampToValueAtTime(.025*vol,n+.06); g.gain.exponentialRampToValueAtTime(.001,n+.1);
+                o.start(n); o.stop(n+.11); break;
+            }
+            case 'shieldBreak': {
+                // Power arc sweeping through resonant filter, then deep sub-bass pop
+                const f=ac.createBiquadFilter(), o2=ac.createOscillator(), g2=ac.createGain();
+                f.type='lowpass'; f.Q.value=4;
+                f.frequency.setValueAtTime(400,n); f.frequency.exponentialRampToValueAtTime(5000,n+.12); f.frequency.exponentialRampToValueAtTime(100,n+.2);
+                o.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='sawtooth'; o.frequency.setValueAtTime(300,n); o.frequency.exponentialRampToValueAtTime(3500,n+.12); o.frequency.exponentialRampToValueAtTime(80,n+.18);
+                g.gain.setValueAtTime(.16*vol,n); g.gain.setValueAtTime(.2*vol,n+.1); g.gain.setValueAtTime(.045*vol,n+.13); g.gain.exponentialRampToValueAtTime(.001,n+.28);
+                o.start(n); o.stop(n+.28);
+                o2.connect(g2); g2.connect(ac.destination);
+                o2.type='sawtooth'; o2.detune.value=-6; o2.frequency.setValueAtTime(130+Math.random()*60,n+.12); o2.frequency.exponentialRampToValueAtTime(35,n+.26);
+                g2.gain.setValueAtTime(.18*vol,n+.12); g2.gain.exponentialRampToValueAtTime(.001,n+.27);
+                o2.start(n+.12); o2.stop(n+.28);
+                break;
+            }
+            case 'wallHit': {
+                // Metallic Tron clank: resonant bandpass body + sine sub thud
+                const f=ac.createBiquadFilter(), o2=ac.createOscillator(), g2=ac.createGain();
+                f.type='bandpass'; f.Q.value=4;
+                f.frequency.setValueAtTime(350+Math.random()*80,n); f.frequency.exponentialRampToValueAtTime(80,n+.1);
+                o.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='triangle'; o.frequency.setValueAtTime(280+Math.random()*80,n); o.frequency.exponentialRampToValueAtTime(65,n+.1);
+                g.gain.setValueAtTime(.07*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.1);
+                o.start(n); o.stop(n+.1);
+                o2.connect(g2); g2.connect(ac.destination);
+                o2.type='sine'; o2.frequency.setValueAtTime(140+Math.random()*40,n); o2.frequency.exponentialRampToValueAtTime(30,n+.08);
+                g2.gain.setValueAtTime(.04*vol,n); g2.gain.exponentialRampToValueAtTime(.001,n+.08);
+                o2.start(n); o2.stop(n+.09);
+                break;
+            }
+            case 'pickupSpawn': {
+                // Shimmer sparkle: staggered detuned pair through highpass
+                const f=ac.createBiquadFilter(), o2=ac.createOscillator();
+                f.type='highpass'; f.Q.value=1; f.frequency.value=500;
+                o.connect(f); o2.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='sine'; o.frequency.setValueAtTime(1200,n); o.frequency.setValueAtTime(1600,n+.06); o.frequency.setValueAtTime(2000,n+.12); o.frequency.exponentialRampToValueAtTime(1400,n+.22);
+                o2.type='triangle'; o2.detune.value=5;
+                o2.frequency.setValueAtTime(1200,n+.03); o2.frequency.setValueAtTime(1600,n+.09); o2.frequency.setValueAtTime(2000,n+.15); o2.frequency.exponentialRampToValueAtTime(1400,n+.25);
+                g.gain.setValueAtTime(.045*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.28);
+                o.start(n); o.stop(n+.28); o2.start(n+.03); o2.stop(n+.28);
+                break;
+            }
+            case 'empSpawn': {
+                // Dramatic Tron power-up: detuned pair through resonant siren sweep
+                const f=ac.createBiquadFilter(), o2=ac.createOscillator();
+                f.type='lowpass'; f.Q.value=5;
+                f.frequency.setValueAtTime(300,n); f.frequency.exponentialRampToValueAtTime(3000,n+.3); f.frequency.exponentialRampToValueAtTime(800,n+.56);
+                o.connect(f); o2.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='sawtooth'; o.frequency.setValueAtTime(200,n); o.frequency.exponentialRampToValueAtTime(1800,n+.3); o.frequency.exponentialRampToValueAtTime(600,n+.56);
+                o2.type='sawtooth'; o2.detune.value=-8; o2.frequency.setValueAtTime(200,n); o2.frequency.exponentialRampToValueAtTime(1800,n+.3); o2.frequency.exponentialRampToValueAtTime(600,n+.56);
+                g.gain.setValueAtTime(.1*vol,n); g.gain.setValueAtTime(.13*vol,n+.15); g.gain.exponentialRampToValueAtTime(.001,n+.6);
+                o.start(n); o.stop(n+.6); o2.start(n); o2.stop(n+.6);
+                break;
+            }
+            case 'empActivate': {
+                // EMP detonation: massive falling sweep with singing resonant filter + sub layer
+                const f=ac.createBiquadFilter(), o2=ac.createOscillator(), g2=ac.createGain();
+                f.type='lowpass'; f.Q.value=7;
+                f.frequency.setValueAtTime(6000,n); f.frequency.exponentialRampToValueAtTime(60,n+.55);
+                o.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='sawtooth'; o.frequency.setValueAtTime(2500,n); o.frequency.exponentialRampToValueAtTime(80,n+.55);
+                g.gain.setValueAtTime(.16*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.55);
+                o.start(n); o.stop(n+.56);
+                o2.connect(g2); g2.connect(ac.destination);
+                o2.type='sawtooth'; o2.detune.value=12; o2.frequency.setValueAtTime(1250,n); o2.frequency.exponentialRampToValueAtTime(40,n+.5);
+                g2.gain.setValueAtTime(.08*vol,n); g2.gain.exponentialRampToValueAtTime(.001,n+.5);
+                o2.start(n); o2.stop(n+.56);
+                break;
+            }
+            case 'empStruck': {
+                // EMP paralysis: stuttering low square + triangle octave through lowpass
+                const f=ac.createBiquadFilter(), o2=ac.createOscillator();
+                f.type='lowpass'; f.Q.value=3; f.frequency.value=700;
+                o.connect(f); o2.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='square'; o.frequency.setValueAtTime(60,n); o.frequency.setValueAtTime(40,n+.15); o.frequency.setValueAtTime(80,n+.25);
+                o2.type='triangle'; o2.detune.value=12; o2.frequency.setValueAtTime(120,n); o2.frequency.setValueAtTime(80,n+.15); o2.frequency.setValueAtTime(160,n+.25);
+                g.gain.setValueAtTime(.13*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.38);
+                o.start(n); o.stop(n+.38); o2.start(n); o2.stop(n+.38);
+                break;
+            }
+            case 'empPulse': {
+                // Soft EMP pulse — single osc + filter (called often, keep light)
+                const f=ac.createBiquadFilter();
+                f.type='lowpass'; f.Q.value=2;
+                f.frequency.setValueAtTime(400,n); f.frequency.exponentialRampToValueAtTime(80,n+.16);
+                o.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='sine'; o.frequency.setValueAtTime(200,n); o.frequency.exponentialRampToValueAtTime(50,n+.16);
+                g.gain.setValueAtTime(.035*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.16);
+                o.start(n); o.stop(n+.17); break;
+            }
         }
     } catch (e) {}
 }
@@ -786,34 +988,47 @@ function engineSnd(engineId, vol, speed) {
     if (vol <= 0.01) return;
     const pm = 1 + (speed || 0) * 0.4; // pitch multiplier: 1.0 at rest → 1.4 at max speed
     try {
-        const o = ac.createOscillator(), g = ac.createGain();
-        o.connect(g); g.connect(ac.destination);
+        // Single osc + filter (3 nodes) — called every 8 frames, must stay light
+        const o = ac.createOscillator(), f = ac.createBiquadFilter(), g = ac.createGain();
+        o.connect(f); f.connect(g); g.connect(ac.destination);
         const n = ac.currentTime;
         switch(engineId) {
             case 'rumble':
-                o.type='sawtooth'; o.frequency.setValueAtTime(40*pm,n); o.frequency.exponentialRampToValueAtTime(25*pm,n+.08);
-                g.gain.setValueAtTime(.035*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.08);
-                o.start(n); o.stop(n+.08); break;
-            case 'whine':
-                o.type='triangle'; o.frequency.setValueAtTime(600*pm,n); o.frequency.exponentialRampToValueAtTime(400*pm,n+.06);
-                g.gain.setValueAtTime(.015*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.06);
-                o.start(n); o.stop(n+.06); break;
-            case 'pulse':
-                o.type='square'; o.frequency.setValueAtTime(120*pm,n); o.frequency.setValueAtTime(60*pm,n+.02);
-                o.frequency.setValueAtTime(120*pm,n+.04); o.frequency.exponentialRampToValueAtTime(60*pm,n+.08);
-                g.gain.setValueAtTime(.03*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.08);
-                o.start(n); o.stop(n+.08); break;
-            case 'roar':
-                o.type='sawtooth'; o.frequency.setValueAtTime(200*pm,n); o.frequency.exponentialRampToValueAtTime(50*pm,n+.08);
+                // Deep sub-bass thruster rumble — warm lowpass
+                f.type='lowpass'; f.Q.value=2; f.frequency.value=180;
+                o.type='sawtooth'; o.frequency.setValueAtTime(42*pm,n); o.frequency.exponentialRampToValueAtTime(26*pm,n+.08);
                 g.gain.setValueAtTime(.04*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.08);
                 o.start(n); o.stop(n+.08); break;
+            case 'whine':
+                // High electronic whine — bandpass focuses the tone
+                f.type='bandpass'; f.Q.value=4; f.frequency.value=500*pm;
+                o.type='sawtooth'; o.frequency.setValueAtTime(600*pm,n); o.frequency.exponentialRampToValueAtTime(400*pm,n+.06);
+                g.gain.setValueAtTime(.02*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.06);
+                o.start(n); o.stop(n+.06); break;
+            case 'pulse':
+                // Pulsing thruster — sawtooth through warm lowpass
+                f.type='lowpass'; f.Q.value=2.5; f.frequency.value=300;
+                o.type='sawtooth'; o.frequency.setValueAtTime(120*pm,n); o.frequency.setValueAtTime(70*pm,n+.02);
+                o.frequency.setValueAtTime(120*pm,n+.04); o.frequency.exponentialRampToValueAtTime(65*pm,n+.08);
+                g.gain.setValueAtTime(.035*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.08);
+                o.start(n); o.stop(n+.08); break;
+            case 'roar':
+                // Beefy engine roar — lowpass filter sweep gives it body
+                f.type='lowpass'; f.Q.value=1.5;
+                f.frequency.setValueAtTime(600,n); f.frequency.exponentialRampToValueAtTime(200,n+.08);
+                o.type='sawtooth'; o.frequency.setValueAtTime(220*pm,n); o.frequency.exponentialRampToValueAtTime(55*pm,n+.08);
+                g.gain.setValueAtTime(.045*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.08);
+                o.start(n); o.stop(n+.08); break;
             case 'hum':
-                o.type='sine'; o.frequency.setValueAtTime(180*pm,n); o.frequency.exponentialRampToValueAtTime(160*pm,n+.08);
-                g.gain.setValueAtTime(.02*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.08);
+                // Smooth synthetic hum — gentle lowpass keeps it warm
+                f.type='lowpass'; f.Q.value=1; f.frequency.value=400;
+                o.type='sawtooth'; o.frequency.setValueAtTime(180*pm,n); o.frequency.exponentialRampToValueAtTime(160*pm,n+.08);
+                g.gain.setValueAtTime(.025*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.08);
                 o.start(n); o.stop(n+.08); break;
             default:
+                f.type='lowpass'; f.Q.value=1.5; f.frequency.value=350;
                 o.type='sawtooth'; o.frequency.setValueAtTime(80*pm,n); o.frequency.exponentialRampToValueAtTime(60*pm,n+.06);
-                g.gain.setValueAtTime(.025*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.06);
+                g.gain.setValueAtTime(.028*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.06);
                 o.start(n); o.stop(n+.06); break;
         }
     } catch(e){}
@@ -1144,6 +1359,7 @@ function computeSpawns(numPlayers, wW, wH, terr, ceil, plats) {
     const c = document.getElementById('mapBtns');
     const sc = document.getElementById('soloMapBtns');
     for (const [k,m] of Object.entries(MAPS)) {
+        if (m.hidden) continue; // exclude tutorial and any other hidden maps
         const b = document.createElement('button');
         b.className = 'btn';
         b.textContent = m.name;
@@ -1227,6 +1443,7 @@ function showSurvival() {
     const c = document.getElementById('survivalMapBtns');
     c.innerHTML = '';
     for (const k in MAPS) {
+        if (MAPS[k].hidden) continue; // exclude tutorial and any other hidden maps
         const b = document.createElement('button');
         b.className = 'btn';
         b.textContent = MAPS[k].name;
@@ -2790,8 +3007,10 @@ function drawTutorialHUD() {
     const me = players[myIndex];
     if (!me) return;
     const fs = Math.max(11, Math.min(W * 0.03, 16));
-    const panelH = fs * 5 + 30;
-    const panelY = H - panelH - (H > 600 ? 18 : 8);
+    const panelH = fs * 4 + 24;
+    // Place panel just below the top HUD bar so it never covers controls
+    const topHudH = fs * 2 + 16;
+    const panelY = hudT + topHudH + 4;
 
     // Panel background
     ctx.fillStyle = 'rgba(2,8,20,0.88)';
@@ -2811,14 +3030,11 @@ function drawTutorialHUD() {
     if (tutComplete) {
         ctx.textAlign = 'center';
         ctx.fillStyle = '#33ff66';
-        ctx.font = `bold ${Math.round(fs * 1.7)}px Courier New`;
-        ctx.fillText('TRAINING COMPLETE!', W / 2, panelY + panelH * 0.38);
+        ctx.font = `bold ${Math.round(fs * 1.4)}px Courier New`;
+        ctx.fillText('TRAINING COMPLETE!', W / 2, panelY + panelH * 0.42);
         ctx.fillStyle = '#ffcc00';
         ctx.font = `${fs}px Courier New`;
-        ctx.fillText("You're ready for battle!", W / 2, panelY + panelH * 0.66);
-        ctx.fillStyle = '#555';
-        ctx.font = `${Math.round(fs * 0.82)}px Courier New`;
-        ctx.fillText('Returning to menu...', W / 2, panelY + panelH * 0.88);
+        ctx.fillText("You're ready for battle!", W / 2, panelY + panelH * 0.72);
         return;
     }
 
@@ -2826,7 +3042,7 @@ function drawTutorialHUD() {
     const n = TUT_STEPS.length;
 
     // Progress dots
-    const dotR = 4, dotSpacing = 14, dotY = panelY + 11;
+    const dotR = 4, dotSpacing = 14, dotY = panelY + 10;
     const totalDotW = n * dotSpacing - (dotSpacing - dotR * 2);
     let dotX = W / 2 - totalDotW / 2 + dotR;
     for (let i = 0; i < n; i++) {
@@ -2853,23 +3069,24 @@ function drawTutorialHUD() {
     ctx.fillStyle = '#444';
     ctx.font = `${Math.round(fs * 0.82)}px Courier New`;
     ctx.textAlign = 'right';
-    ctx.fillText(`${tutStep + 1}/${n}`, W - 18, panelY + fs + 4);
+    ctx.fillText(`${tutStep + 1}/${n}`, W - 18, panelY + fs + 2);
 
     // Title
     ctx.fillStyle = '#ff9900';
     ctx.font = `bold ${Math.round(fs * 1.12)}px Courier New`;
     ctx.textAlign = 'left';
-    ctx.fillText(step.title, 20, panelY + fs * 2.2 + 8);
+    ctx.fillText(step.title, 20, panelY + fs * 2.1 + 6);
 
-    // Instruction
+    // Instruction — truncate to fit screen width
     ctx.fillStyle = '#e8e8e8';
     ctx.font = `${fs}px Courier New`;
-    ctx.fillText(step.msg, 20, panelY + fs * 3.4 + 10);
+    const maxW = W - 40;
+    ctx.fillText(step.msg, 20, panelY + fs * 3.1 + 8);
 
     // Sub-text
-    ctx.fillStyle = '#666';
+    ctx.fillStyle = '#888';
     ctx.font = `${Math.round(fs * 0.85)}px Courier New`;
-    ctx.fillText(step.sub, 20, panelY + fs * 4.45 + 12);
+    ctx.fillText(step.sub, 20, panelY + fs * 3.95 + 10);
 
     // Off-screen arrow
     drawTutArrow();

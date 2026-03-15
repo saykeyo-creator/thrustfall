@@ -119,6 +119,36 @@ function setupTutStepLogic(step) {
 }
 
 // =====================================================
+// STORE / IAP billing helpers (must match index.html)
+// =====================================================
+
+// Replicated from index.html — prefix lookup for billing IDs
+function getProductId(tab, id) {
+    const prefix = tab === 'skins' ? 'skin' : tab === 'trails' ? 'trail' : tab === 'engines' ? 'engine' : 'killfx';
+    return prefix + '_' + id;
+}
+
+// shopData and saveShop are replaced inside the test with isolated stubs;
+// provide real defaults here so the module-level references resolve.
+let shopData = {
+    ownedSkins: ['default'], ownedTrails: ['default'],
+    ownedEngines: ['default'], ownedKillEffects: ['default'],
+};
+let saveShop = () => {};
+
+// Replicated from index.html — maps a product ID back to its owned array
+function unlockByProductId(productId) {
+    const parts = productId.split('_');
+    const prefix = parts[0];
+    const id = parts.slice(1).join('_');
+    if (prefix === 'skin')        { if (!shopData.ownedSkins.includes(id))         shopData.ownedSkins.push(id); }
+    else if (prefix === 'trail')  { if (!shopData.ownedTrails.includes(id))        shopData.ownedTrails.push(id); }
+    else if (prefix === 'engine') { if (!shopData.ownedEngines.includes(id))       shopData.ownedEngines.push(id); }
+    else if (prefix === 'killfx') { if (!shopData.ownedKillEffects.includes(id))   shopData.ownedKillEffects.push(id); }
+    saveShop();
+}
+
+// =====================================================
 // REPLICATED CORE FUNCTIONS (exact copies from game)
 // =====================================================
 let worldW = 2000, worldH = 1200; // defaults, overridden per test
@@ -5415,7 +5445,8 @@ section('146. Height-Fit Viewport — Tablet Controls Visible');
     assert(code.includes("case 'explode':"), 'explode sound handler present');
     assert(code.includes('0.85+Math.random()*0.3') || code.includes('0.85 + Math.random() * 0.3'),
            'pitch variation 0.85-1.15 range');
-    assert(code.includes('150*pv') || code.includes('150 * pv'), 'explode frequency modulated by pitch variation');
+    assert(code.includes('130*pv') || code.includes('130 * pv') || code.includes('150*pv') || code.includes('150 * pv'),
+           'explode frequency modulated by pitch variation');
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -7798,6 +7829,142 @@ section('262. Tutorial — Map Excluded From Regular Map Rotation');
     assert(hiddenMaps.length  === 1, 'exactly 1 hidden map (tutorial)');
     assert(hiddenMaps[0][0]   === 'tutorial', 'tutorial is the only hidden map');
 }
+
+// =====================================================
+section('263. Store — IAP Product ID Stability');
+// =====================================================
+// These IDs are registered with Google Play. Changing them would break
+// existing purchases for all users. This section is a canary: if any
+// ID ever changes, a test will fail loudly before a build ships.
+{
+    // ── Skin IDs ──────────────────────────────────────────────────────────
+    const EXPECTED_SKIN_IDS = [
+        'skin_neon', 'skin_stealth', 'skin_phoenix', 'skin_gold', 'skin_ghost',
+        'skin_trident', 'skin_manta', 'skin_blade', 'skin_fortress', 'skin_falcon',
+    ];
+    // ── Trail IDs ─────────────────────────────────────────────────────────
+    const EXPECTED_TRAIL_IDS = [
+        'trail_ice', 'trail_fire', 'trail_plasma', 'trail_rainbow', 'trail_toxic',
+    ];
+    // ── Engine IDs ────────────────────────────────────────────────────────
+    const EXPECTED_ENGINE_IDS = [
+        'engine_rumble', 'engine_whine', 'engine_pulse', 'engine_roar', 'engine_hum',
+    ];
+    // ── Kill-effect IDs ───────────────────────────────────────────────────
+    const EXPECTED_KILLFX_IDS = [
+        'killfx_vortex', 'killfx_electric', 'killfx_shatter', 'killfx_nova', 'killfx_void',
+    ];
+
+    const ALL_EXPECTED = [
+        ...EXPECTED_SKIN_IDS,
+        ...EXPECTED_TRAIL_IDS,
+        ...EXPECTED_ENGINE_IDS,
+        ...EXPECTED_KILLFX_IDS,
+    ];
+
+    // Derive product IDs from the live SHIP_SKINS / TRAIL_EFFECTS / ENGINE_SOUNDS / KILL_EFFECTS
+    // objects, using the same getProductId prefix logic as the billing code.
+    const tabMap = [
+        { prefix: 'skin',   items: SHIP_SKINS },
+        { prefix: 'trail',  items: TRAIL_EFFECTS },
+        { prefix: 'engine', items: ENGINE_SOUNDS },
+        { prefix: 'killfx', items: KILL_EFFECTS },
+    ];
+    const actualIds = [];
+    for (const { prefix, items } of tabMap) {
+        for (const item of items) {
+            if (!item.free) actualIds.push(prefix + '_' + item.id);
+        }
+    }
+
+    // 1. Count must match
+    assert(
+        actualIds.length === ALL_EXPECTED.length,
+        `Total purchasable product count is ${ALL_EXPECTED.length} (got ${actualIds.length})`
+    );
+
+    // 2. Every expected ID must be present (catches renames / deletions)
+    for (const id of ALL_EXPECTED) {
+        assert(actualIds.includes(id), `Product ID '${id}' must exist in the store catalog`);
+    }
+
+    // 3. No unexpected IDs (catches silent additions that weren't registered with Google Play)
+    for (const id of actualIds) {
+        assert(ALL_EXPECTED.includes(id), `Unexpected product ID '${id}' — must be added to EXPECTED list in tests.js`);
+    }
+
+    // 4. No duplicate IDs
+    const seen = new Set();
+    for (const id of actualIds) {
+        assert(!seen.has(id), `Duplicate product ID detected: '${id}'`);
+        seen.add(id);
+    }
+
+    // 5. Prefix format: each ID must match <prefix>_<id> with no double-underscores
+    for (const id of actualIds) {
+        assert(/^(skin|trail|engine|killfx)_[a-z][a-z0-9]*$/.test(id),
+            `Product ID '${id}' must match pattern <prefix>_<lowercase-alnum>`);
+    }
+
+    // 6. Verify the exact ordered list for each category (order matters for Google Play listing)
+    const actualSkins   = actualIds.filter(id => id.startsWith('skin_'));
+    const actualTrails  = actualIds.filter(id => id.startsWith('trail_'));
+    const actualEngines = actualIds.filter(id => id.startsWith('engine_'));
+    const actualKillfx  = actualIds.filter(id => id.startsWith('killfx_'));
+
+    assert(
+        JSON.stringify(actualSkins) === JSON.stringify(EXPECTED_SKIN_IDS),
+        `Skin product IDs must be exactly: ${EXPECTED_SKIN_IDS.join(', ')}`
+    );
+    assert(
+        JSON.stringify(actualTrails) === JSON.stringify(EXPECTED_TRAIL_IDS),
+        `Trail product IDs must be exactly: ${EXPECTED_TRAIL_IDS.join(', ')}`
+    );
+    assert(
+        JSON.stringify(actualEngines) === JSON.stringify(EXPECTED_ENGINE_IDS),
+        `Engine product IDs must be exactly: ${EXPECTED_ENGINE_IDS.join(', ')}`
+    );
+    assert(
+        JSON.stringify(actualKillfx) === JSON.stringify(EXPECTED_KILLFX_IDS),
+        `Kill-effect product IDs must be exactly: ${EXPECTED_KILLFX_IDS.join(', ')}`
+    );
+
+    // 7. getProductId() helper produces the correct prefix for each tab name
+    assert(getProductId('skins',   'neon')     === 'skin_neon',       "getProductId('skins','neon') === 'skin_neon'");
+    assert(getProductId('trails',  'fire')     === 'trail_fire',      "getProductId('trails','fire') === 'trail_fire'");
+    assert(getProductId('engines', 'rumble')   === 'engine_rumble',   "getProductId('engines','rumble') === 'engine_rumble'");
+    assert(getProductId('killfx',  'vortex')   === 'killfx_vortex',   "getProductId('killfx','vortex') === 'killfx_vortex'");
+
+    // 8. unlockByProductId correctly maps each prefix to its owned-array
+    const testShop = { ownedSkins:[], ownedTrails:[], ownedEngines:[], ownedKillEffects:[] };
+    const origShop = shopData;
+    shopData = testShop;
+    const origSave = saveShop;
+    saveShop = () => {};
+    unlockByProductId('skin_neon');
+    assert(testShop.ownedSkins.includes('neon'),         "unlockByProductId('skin_neon') adds 'neon' to ownedSkins");
+    unlockByProductId('trail_fire');
+    assert(testShop.ownedTrails.includes('fire'),        "unlockByProductId('trail_fire') adds 'fire' to ownedTrails");
+    unlockByProductId('engine_rumble');
+    assert(testShop.ownedEngines.includes('rumble'),     "unlockByProductId('engine_rumble') adds 'rumble' to ownedEngines");
+    unlockByProductId('killfx_vortex');
+    assert(testShop.ownedKillEffects.includes('vortex'), "unlockByProductId('killfx_vortex') adds 'vortex' to ownedKillEffects");
+    // Idempotent — unlocking again must not add a duplicate
+    unlockByProductId('skin_neon');
+    assert(testShop.ownedSkins.filter(s => s === 'neon').length === 1, "unlockByProductId is idempotent (no duplicates)");
+    shopData = origShop;
+    saveShop = origSave;
+
+    // 9. Source-code snapshot — the IDs must appear verbatim in index.html
+    const cCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    for (const id of ALL_EXPECTED) {
+        // The raw item id (without prefix) must appear as a string literal in index.html
+        const rawId = id.replace(/^[a-z]+_/, '');
+        assert(cCode.includes(`'${rawId}'`) || cCode.includes(`"${rawId}"`),
+            `Item id '${rawId}' must appear as a string literal in index.html`);
+    }
+}
+
 console.log(`RESULTS: ${passed}/${total} passed, ${failed} failed`);
 console.log(`${'='.repeat(50)}`);
 if (failed > 0) {
