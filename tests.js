@@ -61,7 +61,8 @@ const MAPS = {
     asteroid: { name:'ASTEROID FIELD', w:4000, h:2400, gravity:0.032 },
     fortress: { name:'TWIN FORTRESS',  w:4400, h:2000 },
     tunnels:  { name:'THE LABYRINTH',  w:4000, h:2400 },
-    arena:    { name:'THE ARENA',      w:3200, h:1800 }
+    arena:    { name:'THE ARENA',      w:3200, h:1800 },
+    tutorial: { name:'TRAINING',       w:2400, h:1200, desc:'Guided tutorial', hidden:true }
 };
 
 // Kill streak constants
@@ -72,6 +73,50 @@ const STREAK_NAMES = ['','','DOUBLE KILL','TRIPLE KILL','MULTI KILL','MEGA KILL'
 const BOT_NAMES = ['NOVA','BLAZE','VIPER','STORM','GHOST','COBRA','FANG'];
 const COLORS = ['#00ccff','#ff3366','#33ff66','#ffcc00','#ff66ff','#66ffcc','#ff8833','#aa66ff'];
 let survivalMode = false;
+
+// Tutorial constants (must match index.html)
+const TUT_STEPS_DATA = [
+    { title:'THRUST',   msg:'Hold the RIGHT side of the screen to thrust.',    sub:'Lift off your landing pad and take flight!' },
+    { title:'ROTATE',   msg:'Drag the LEFT side up/down to rotate.',            sub:'Spin a full 360\u00b0 to master turning.'  },
+    { title:'GRAVITY',  msg:'Cut thrust and let gravity pull you.',             sub:'Reach speed 1.5 by diving or arcing!'      },
+    { title:'LANDING',  msg:'Fly to the glowing platform and land gently.',     sub:'Approach slowly from above \u2014 too fast = crash!' },
+    { title:'PICKUP',   msg:'Fly through the glowing \u2295 SPREAD pickup.',   sub:'Pickups give powerful temporary weapons!'  },
+    { title:'WEAPONS',  msg:'Hold RIGHT (or SPACE) to fire your weapon!',       sub:'Fire 3 shots to continue.'                 },
+    { title:'SPECIALS', msg:'Collect the \u25ce SHIELD then the \u26a1 EMP.',  sub:'Shield absorbs a hit. EMP stuns nearby ships!' },
+];
+const TUT_PLATFORM_X = 1020, TUT_PLATFORM_Y = 600;
+const TUT_PICKUP_X   = 1400, TUT_PICKUP_Y   = 500;
+const TUT_SHIELD_X   = 1700, TUT_SHIELD_Y   = 540;
+const TUT_EMP_X      = 1860, TUT_EMP_Y      = 540;
+
+// Simplified tutorial step-check logic (mirrors index.html checkTutStep)
+function checkTutStepLogic(step, me, tutRotAccum, tutShotCount, tutShieldGot, tutEmpGot) {
+    switch (step) {
+        case 0: return !me.landed && me.vy < -0.25;
+        case 1: return tutRotAccum >= Math.PI * 2;
+        case 2: return Math.sqrt(me.vx * me.vx + me.vy * me.vy) >= 1.5;
+        case 3: return me.landed && me.x > 700;
+        case 4: return me.weapon !== 'normal';
+        case 5: return tutShotCount >= 3;
+        case 6: return tutShieldGot && tutEmpGot;
+        default: return false;
+    }
+}
+
+// Simplified setupTutStep logic (mirrors index.html setupTutStep)
+function setupTutStepLogic(step) {
+    const pickups = [];
+    switch (step) {
+        case 4:
+            pickups.push({x: TUT_PICKUP_X, y: TUT_PICKUP_Y, type:'spread', bobPhase:0, age:0});
+            break;
+        case 6:
+            pickups.push({x: TUT_SHIELD_X, y: TUT_SHIELD_Y, type:'shield', bobPhase:0,      age:0});
+            pickups.push({x: TUT_EMP_X,    y: TUT_EMP_Y,    type:'emp',    bobPhase:Math.PI, age:0});
+            break;
+    }
+    return pickups;
+}
 
 // =====================================================
 // REPLICATED CORE FUNCTIONS (exact copies from game)
@@ -305,6 +350,20 @@ function generateMap(key) {
             break;
         case 'arena':
             break;
+        case 'tutorial':
+            p.push({x: w*0.42, y: h*0.50, width: 120, height: 14});
+            break;
+    }
+    // Tutorial terrain is special: return early with hand-crafted flat map
+    if (key === 'tutorial') {
+        const floorY = Math.round(h * 0.882);
+        const ceilY  = Math.round(h * 0.088);
+        const tt = [{x:0, y:floorY}, {x:w, y:floorY}];
+        const tc = [{x:0, y:ceilY},  {x:w, y:ceilY}];
+        const stars = [];
+        const starCount = Math.round(w * h / 5000 * 1.5);
+        for (let i=0;i<starCount;i++) stars.push({x:i*(w/starCount), y:(i*137)%h, sz:1, br:0.5, tw:0});
+        return { terrain: tt, ceiling: tc, platforms: p, stars, worldW:w, worldH:h };
     }
     return { terrain:t, ceiling:c, platforms:p, worldW:w, worldH:h, seg };
 }
@@ -977,7 +1036,7 @@ section('18. Horizontal Position Wrapping');
 // ── 19. MAP GENERATION ──
 section('19. Map Generation');
 {
-    for (const key of Object.keys(MAPS)) {
+    for (const key of Object.keys(MAPS).filter(k => !MAPS[k].hidden)) {
         const m = MAPS[key];
         const map = generateMap(key);
         assert(map.worldW === m.w, `${key}: worldW = ${m.w}`);
@@ -1012,7 +1071,7 @@ section('19. Map Generation');
 // ── 19b. SPAWN PLACEMENT ──
 section('19b. Spawn Placement');
 {
-    for (const key of Object.keys(MAPS)) {
+    for (const key of Object.keys(MAPS).filter(k => !MAPS[k].hidden)) {
         const map = generateMap(key);
         for (const n of [1, 2, 4, 8]) {
             const sb = computeSpawns(n, map.worldW, map.worldH, map.terrain, map.ceiling, map.platforms);
@@ -2142,7 +2201,8 @@ section('68. Map Definitions Alignment');
         asteroid: { w:4000, h:2400 },
         fortress: { w:4400, h:2000 },
         tunnels:  { w:4000, h:2400 },
-        arena:    { w:3200, h:1800 }
+        arena:    { w:3200, h:1800 },
+        tutorial: { w:2400, h:1200 }
     };
     const mapKeys = Object.keys(expectedMaps);
     assert(mapKeys.length === Object.keys(MAPS).length, 'same number of maps');
@@ -7287,6 +7347,456 @@ section('247. HUD Safe-Area Padding — Defaults and Computation');
     assert(code.includes('hudR'), 'HUD elements reference hudR for right-side position');
     // Top HUD elements use hudT
     assert(code.includes('hudT'), 'HUD elements reference hudT for top position');
+}
+
+// =====================================================
+section('248. Tutorial — TUT_STEPS Definitions');
+// =====================================================
+{
+    const cCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    // Array exists and is named correctly
+    assert(cCode.includes('const TUT_STEPS = ['), 'TUT_STEPS array declared');
+    // Exactly 7 step entries (7 closing braces for step objects in the array)
+    assert(TUT_STEPS_DATA.length === 7, 'exactly 7 tutorial steps');
+    // Each step has required fields
+    for (let i = 0; i < TUT_STEPS_DATA.length; i++) {
+        const s = TUT_STEPS_DATA[i];
+        assert(typeof s.title === 'string' && s.title.length > 0, `step ${i} has non-empty title`);
+        assert(typeof s.msg   === 'string' && s.msg.length   > 0, `step ${i} has non-empty msg`);
+        assert(typeof s.sub   === 'string' && s.sub.length   > 0, `step ${i} has non-empty sub`);
+    }
+    // Titles match expected values in order
+    const expectedTitles = ['THRUST','ROTATE','GRAVITY','LANDING','PICKUP','WEAPONS','SPECIALS'];
+    for (let i = 0; i < expectedTitles.length; i++) {
+        assert(TUT_STEPS_DATA[i].title === expectedTitles[i], `step ${i} title is '${expectedTitles[i]}'`);
+    }
+    // All step titles present in index.html source
+    for (const title of expectedTitles) {
+        assert(cCode.includes(title), `TUT_STEPS title '${title}' present in index.html`);
+    }
+}
+
+// =====================================================
+section('249. Tutorial — MAPS Entry & Hidden Flag');
+// =====================================================
+{
+    const cCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    // Tutorial exists in MAPS with correct dimensions
+    assert(MAPS.tutorial !== undefined, 'tutorial key exists in MAPS');
+    assert(MAPS.tutorial.w === 2400, 'tutorial map width = 2400');
+    assert(MAPS.tutorial.h === 1200, 'tutorial map height = 1200');
+    // Hidden flag prevents tutorial appearing in normal map selection
+    assert(MAPS.tutorial.hidden === true, 'tutorial map has hidden:true');
+    // Only tutorial has hidden flag
+    const regularMaps = ['caves','canyon','asteroid','fortress','tunnels','arena'];
+    for (const key of regularMaps) {
+        assert(!MAPS[key].hidden, `${key} map does NOT have hidden flag`);
+    }
+    // Verify in source
+    assert(cCode.includes("tutorial: {") && cCode.includes("hidden:true"), 'tutorial hidden:true in index.html source');
+    // Confirmed: 6 non-hidden maps
+    const nonHidden = Object.keys(MAPS).filter(k => !MAPS[k].hidden);
+    assert(nonHidden.length === 6, '6 non-hidden maps for normal rotation');
+}
+
+// =====================================================
+section('250. Tutorial — Map Generation (Flat Terrain)');
+// =====================================================
+{
+    const m = generateMap('tutorial');
+    // Dimensions
+    assert(m.worldW === 2400, 'tutorial worldW = 2400');
+    assert(m.worldH === 1200, 'tutorial worldH = 1200');
+    // Flat terrain: exactly 2 points
+    assert(m.terrain.length === 2, 'tutorial terrain has exactly 2 points (perfectly flat)');
+    assert(m.ceiling.length === 2, 'tutorial ceiling has exactly 2 points (perfectly flat)');
+    // Terrain spans full width
+    assert(m.terrain[0].x === 0, 'tutorial terrain starts at x=0');
+    assert(m.terrain[1].x === 2400, 'tutorial terrain ends at x=2400');
+    assert(m.ceiling[0].x === 0, 'tutorial ceiling starts at x=0');
+    assert(m.ceiling[1].x === 2400, 'tutorial ceiling ends at x=2400');
+    // Flat floor Y = Math.round(1200 * 0.882) = 1058
+    const expectedFloorY = Math.round(1200 * 0.882);
+    assert(expectedFloorY === 1058, 'tutorial floorY formula yields 1058');
+    assert(m.terrain[0].y === expectedFloorY, `tutorial floor y = ${expectedFloorY}`);
+    assert(m.terrain[1].y === expectedFloorY, 'tutorial floor is perfectly flat');
+    // Flat ceiling Y = Math.round(1200 * 0.088) = 106
+    const expectedCeilY = Math.round(1200 * 0.088);
+    assert(expectedCeilY === 106, 'tutorial ceilY formula yields 106');
+    assert(m.ceiling[0].y === expectedCeilY, `tutorial ceiling y = ${expectedCeilY}`);
+    assert(m.ceiling[1].y === expectedCeilY, 'tutorial ceiling is perfectly flat');
+    // Floor must be below ceiling
+    assert(m.terrain[0].y > m.ceiling[0].y, 'tutorial floor is below ceiling');
+    // Vertical space is adequate
+    const gap = expectedFloorY - expectedCeilY;
+    assert(gap === 952, `tutorial vertical gap = ${gap} px`);
+    assert(gap > 800, 'tutorial has generous vertical space');
+    // Stars populated
+    assert(Array.isArray(m.stars) && m.stars.length > 0, 'tutorial map has stars');
+}
+
+// =====================================================
+section('251. Tutorial — Platform Placement & Bounds');
+// =====================================================
+{
+    const m = generateMap('tutorial');
+    // Exactly one platform
+    assert(m.platforms.length === 1, 'tutorial has exactly 1 platform');
+    const pl = m.platforms[0];
+    // Platform position matches TUT_PLATFORM constants
+    assert(pl.x === 2400 * 0.42, `tutorial platform x = ${2400*0.42} (TUT_PLATFORM_X area)`);
+    assert(pl.y === 1200 * 0.50, 'tutorial platform y = 600 (mid-height)');
+    assert(pl.width === 120, 'tutorial platform width = 120');
+    assert(pl.height === 14, 'tutorial platform height = 14');
+    // Platform is within map bounds
+    assert(pl.x >= 0, 'platform x >= 0');
+    assert(pl.x + pl.width <= 2400, 'platform right edge within map');
+    assert(pl.y >= 0, 'platform y >= 0');
+    assert(pl.y + pl.height <= 1200, 'platform bottom within map');
+    // Platform is between floor and ceiling
+    const floorY = Math.round(1200 * 0.882);
+    const ceilY  = Math.round(1200 * 0.088);
+    assert(pl.y > ceilY, 'platform is below ceiling');
+    assert(pl.y + pl.height < floorY, 'platform is above floor');
+    // TUT_PLATFORM_X is approximate — comment says it matches, check within 15px
+    assertApprox(TUT_PLATFORM_X, pl.x, 15, 'TUT_PLATFORM_X ~ platform x (within 15px)');
+    assert(TUT_PLATFORM_Y === pl.y, 'TUT_PLATFORM_Y === platform y');
+}
+
+// =====================================================
+section('252. Tutorial — Step 0 THRUST Completion Logic');
+// =====================================================
+{
+    // Step 0: player must be airborne AND vy < -0.25 (moving upward)
+    const landed   = makePlayer({landed: true,  vy: -0.5,  x: 400});
+    const airSlow  = makePlayer({landed: false, vy: 0.0,   x: 400});
+    const airDown  = makePlayer({landed: false, vy: 0.3,   x: 400});
+    const airBarelyUp = makePlayer({landed: false, vy: -0.24, x: 400}); // vy > -0.25, not enough
+    const airThrst = makePlayer({landed: false, vy: -0.30, x: 400}); // should complete
+
+    assert(!checkTutStepLogic(0, landed,   0,0,false,false), 'step 0: landed player does NOT complete');
+    assert(!checkTutStepLogic(0, airSlow,  0,0,false,false), 'step 0: airborne but vy=0 does NOT complete');
+    assert(!checkTutStepLogic(0, airDown,  0,0,false,false), 'step 0: airborne but vy>0 does NOT complete');
+    assert(!checkTutStepLogic(0, airBarelyUp, 0,0,false,false), 'step 0: vy=-0.24 does NOT complete (threshold is -0.25)');
+    assert( checkTutStepLogic(0, airThrst, 0,0,false,false), 'step 0: airborne + vy<-0.25 DOES complete');
+
+    // Edge case: exactly -0.25 does not satisfy strict less-than
+    const airExact = makePlayer({landed: false, vy: -0.25, x: 400});
+    assert(!checkTutStepLogic(0, airExact, 0,0,false,false), 'step 0: vy=-0.25 exactly does NOT complete (strict <)');
+    // vy=-0.26 completes
+    const airOver = makePlayer({landed: false, vy: -0.26, x: 400});
+    assert( checkTutStepLogic(0, airOver,  0,0,false,false), 'step 0: vy=-0.26 DOES complete');
+}
+
+// =====================================================
+section('253. Tutorial — Steps 1–6 Completion Logic');
+// =====================================================
+{
+    const me = makePlayer({});
+
+    // Step 1 ROTATE: needs tutRotAccum >= 2π
+    assert(!checkTutStepLogic(1, me, 0,                0,false,false), 'step 1: 0 rad NOT done');
+    assert(!checkTutStepLogic(1, me, Math.PI,          0,false,false), 'step 1: π rad NOT done (need 2π)');
+    assert(!checkTutStepLogic(1, me, Math.PI*2 - 0.01, 0,false,false), 'step 1: just under 2π NOT done');
+    assert( checkTutStepLogic(1, me, Math.PI*2,        0,false,false), 'step 1: exactly 2π IS done');
+    assert( checkTutStepLogic(1, me, Math.PI*2 + 1.0,  0,false,false), 'step 1: over 2π IS done');
+
+    // Step 2 GRAVITY: speed >= 1.5
+    const slow   = makePlayer({vx: 0.5, vy: 0.5}); // speed = √0.5 ≈ 0.707
+    const medium = makePlayer({vx: 1.0, vy: 1.0}); // speed = √2   ≈ 1.414
+    const fast   = makePlayer({vx: 1.1, vy: 1.0}); // speed = √2.21 ≈ 1.487
+    const exact  = makePlayer({vx: 1.5, vy: 0.0}); // speed = 1.5 exactly
+    const quick  = makePlayer({vx: 1.2, vy: 1.0}); // speed = √2.44 ≈ 1.562
+    assert(!checkTutStepLogic(2, slow,   0,0,false,false), 'step 2: speed≈0.707 NOT done');
+    assert(!checkTutStepLogic(2, medium, 0,0,false,false), 'step 2: speed≈1.414 NOT done');
+    assert(!checkTutStepLogic(2, fast,   0,0,false,false), 'step 2: speed≈1.487 NOT done');
+    assert( checkTutStepLogic(2, exact,  0,0,false,false), 'step 2: speed=1.5 exactly IS done');
+    assert( checkTutStepLogic(2, quick,  0,0,false,false), 'step 2: speed≈1.562 IS done');
+
+    // Step 3 LANDING: landed AND x > 700
+    const landedLeft  = makePlayer({landed: true,  x: 500});
+    const landedRight = makePlayer({landed: true,  x: 800});
+    const airRight    = makePlayer({landed: false, x: 800});
+    const landedEdge  = makePlayer({landed: true,  x: 700}); // x=700 is NOT > 700 (strict)
+    assert(!checkTutStepLogic(3, landedLeft,  0,0,false,false), 'step 3: landed but x=500 NOT done');
+    assert( checkTutStepLogic(3, landedRight, 0,0,false,false), 'step 3: landed and x=800 IS done');
+    assert(!checkTutStepLogic(3, airRight,    0,0,false,false), 'step 3: not landed even with x=800 NOT done');
+    assert(!checkTutStepLogic(3, landedEdge,  0,0,false,false), 'step 3: x=700 exactly NOT done (strict >)');
+
+    // Step 4 PICKUP: weapon !== 'normal'
+    const normal = makePlayer({weapon:'normal'});
+    const spread = makePlayer({weapon:'spread'});
+    const heavy  = makePlayer({weapon:'heavy'});
+    assert(!checkTutStepLogic(4, normal, 0,0,false,false), 'step 4: weapon=normal NOT done');
+    assert( checkTutStepLogic(4, spread, 0,0,false,false), 'step 4: weapon=spread IS done');
+    assert( checkTutStepLogic(4, heavy,  0,0,false,false), 'step 4: weapon=heavy IS done (any non-normal)');
+
+    // Step 5 WEAPONS: tutShotCount >= 3
+    const defMe = makePlayer({});
+    assert(!checkTutStepLogic(5, defMe, 0, 0, false,false), 'step 5: 0 shots NOT done');
+    assert(!checkTutStepLogic(5, defMe, 0, 1, false,false), 'step 5: 1 shot NOT done');
+    assert(!checkTutStepLogic(5, defMe, 0, 2, false,false), 'step 5: 2 shots NOT done');
+    assert( checkTutStepLogic(5, defMe, 0, 3, false,false), 'step 5: 3 shots IS done');
+    assert( checkTutStepLogic(5, defMe, 0, 5, false,false), 'step 5: 5 shots also IS done');
+
+    // Step 6 SPECIALS: need BOTH shield and EMP
+    assert(!checkTutStepLogic(6, defMe, 0,0, false, false), 'step 6: neither shield nor EMP NOT done');
+    assert(!checkTutStepLogic(6, defMe, 0,0, true,  false), 'step 6: only shield NOT done');
+    assert(!checkTutStepLogic(6, defMe, 0,0, false, true),  'step 6: only EMP NOT done');
+    assert( checkTutStepLogic(6, defMe, 0,0, true,  true),  'step 6: both shield AND EMP IS done');
+}
+
+// =====================================================
+section('254. Tutorial — setupTutStep Pickup Spawning');
+// =====================================================
+{
+    // Steps 0-3, 5: no pickups spawned
+    for (const step of [0,1,2,3,5]) {
+        const picks = setupTutStepLogic(step);
+        assert(picks.length === 0, `setupTutStep(${step}) spawns 0 pickups`);
+    }
+
+    // Step 4: exactly 1 spread pickup at TUT_PICKUP_X/Y
+    const p4 = setupTutStepLogic(4);
+    assert(p4.length === 1, 'setupTutStep(4) spawns exactly 1 pickup');
+    assert(p4[0].type === 'spread', 'step 4 pickup type is spread');
+    assert(p4[0].x === TUT_PICKUP_X, `step 4 pickup x = TUT_PICKUP_X (${TUT_PICKUP_X})`);
+    assert(p4[0].y === TUT_PICKUP_Y, `step 4 pickup y = TUT_PICKUP_Y (${TUT_PICKUP_Y})`);
+    assert(p4[0].bobPhase === 0, 'step 4 pickup bobPhase = 0');
+    assert(p4[0].age === 0, 'step 4 pickup age = 0');
+
+    // Step 6: exactly 2 pickups — shield then EMP
+    const p6 = setupTutStepLogic(6);
+    assert(p6.length === 2, 'setupTutStep(6) spawns exactly 2 pickups');
+    const shield = p6.find(p => p.type === 'shield');
+    const emp    = p6.find(p => p.type === 'emp');
+    assert(shield !== undefined, 'step 6 has a shield pickup');
+    assert(emp    !== undefined, 'step 6 has an EMP pickup');
+    assert(shield.x === TUT_SHIELD_X, `shield pickup x = TUT_SHIELD_X (${TUT_SHIELD_X})`);
+    assert(shield.y === TUT_SHIELD_Y, `shield pickup y = TUT_SHIELD_Y (${TUT_SHIELD_Y})`);
+    assert(emp.x    === TUT_EMP_X,    `EMP pickup x = TUT_EMP_X (${TUT_EMP_X})`);
+    assert(emp.y    === TUT_EMP_Y,    `EMP pickup y = TUT_EMP_Y (${TUT_EMP_Y})`);
+    assert(emp.bobPhase === Math.PI, 'EMP pickup bobPhase = π (offset from shield)');
+}
+
+// =====================================================
+section('255. Tutorial — State Machine Transitions');
+// =====================================================
+{
+    const cCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    // Step advance increments tutStep
+    assert(cCode.includes('tutStep++'), 'intermediate step completion increments tutStep');
+    // Flash on intermediate step
+    assert(cCode.includes('tutFlash = 60'), 'intermediate step sets tutFlash=60');
+    // Final step sets tutComplete
+    assert(cCode.includes('tutComplete = true'), 'final step completion sets tutComplete=true');
+    // Final step flash is longer
+    assert(cCode.includes('tutFlash = 280'), 'final step sets tutFlash=280 (~4.7s before auto-return)');
+    // setupTutStep called on step advance
+    assert(cCode.includes('setupTutStep(tutStep)'), 'setupTutStep called with new step on advance');
+    // Auto-return to menu after flash expires
+    assert(cCode.includes('showMenu()'), 'tutorial calls showMenu() on completion');
+
+    // Verify flash countdown: 280 frames at 60fps ≈ 4.67 seconds
+    const flashFrames = 280;
+    const secondsAtSixty = flashFrames / 60;
+    assertApprox(secondsAtSixty, 4.67, 0.01, 'final flash = 280 frames ≈ 4.67 seconds');
+
+    // Intermediate flash: 60 frames = 1 second
+    const interFlashSec = 60 / 60;
+    assert(interFlashSec === 1.0, 'intermediate flash = 60 frames = 1 second');
+}
+
+// =====================================================
+section('256. Tutorial — Rotation Accumulation (Step 1)');
+// =====================================================
+{
+    // tutRotAccum += Math.abs(me.rot) * ROT_SPD_MAX each frame
+    // Full 360° = 2π radians; ROT_SPD_MAX = 0.045 rad/frame at max input (rot=±1)
+    // Frames needed to accumulate 2π: ceil(2π / 0.045) = ceil(6.283/0.045) = ceil(139.6) = 140
+    const framesNeeded = Math.ceil(Math.PI * 2 / ROT_SPD_MAX);
+    assert(framesNeeded === 140, `need ${framesNeeded} frames of max rotation to complete step 1`);
+
+    // Simulate accumulation
+    let accum = 0;
+    for (let f = 0; f < 139; f++) accum += 1.0 * ROT_SPD_MAX; // 139 frames at max input
+    assertApprox(accum, 139 * ROT_SPD_MAX, 0.0001, '139 frames accumulates 139×ROT_SPD_MAX');
+    assert(!checkTutStepLogic(1, makePlayer({}), accum, 0,false,false),
+        'step 1: 139 frames of max rotation NOT complete (<2π)');
+
+    accum += ROT_SPD_MAX; // frame 140
+    assertApprox(accum, 140 * ROT_SPD_MAX, 0.0001, '140 frames = 140×ROT_SPD_MAX');
+    assert( checkTutStepLogic(1, makePlayer({}), accum, 0,false,false),
+        'step 1: 140 frames of max rotation IS complete (>=2π)');
+
+    // Verify threshold: 140 * 0.045 = 6.3 >= 2π (6.283...)
+    assertApprox(140 * ROT_SPD_MAX, 6.3, 0.001, '140 * ROT_SPD_MAX = 6.3');
+    assert(140 * ROT_SPD_MAX >= Math.PI * 2, '140 * ROT_SPD_MAX >= 2π');
+    assert(139 * ROT_SPD_MAX <  Math.PI * 2, '139 * ROT_SPD_MAX < 2π');
+
+    // Half-rotation (180°) does not complete the step
+    const halfRot = Math.PI;
+    assert(!checkTutStepLogic(1, makePlayer({}), halfRot, 0,false,false), 'step 1: π rad (180°) NOT complete');
+
+    // Accumulation uses Math.abs so negative rotation also counts
+    let mixedAccum = 0;
+    for (let f = 0; f < 70; f++)  mixedAccum += 1.0  * ROT_SPD_MAX; // CW
+    for (let f = 0; f < 70; f++)  mixedAccum += 1.0  * ROT_SPD_MAX; // same direction (using abs)
+    assertApprox(mixedAccum, 140 * ROT_SPD_MAX, 0.0001, 'mixing positive rot still accumulates correctly');
+    assert( checkTutStepLogic(1, makePlayer({}), mixedAccum, 0,false,false), 'step 1: 140 abs-frames completes');
+}
+
+// =====================================================
+section('257. Tutorial — Pickup Positions Within Map Bounds');
+// =====================================================
+{
+    const TUT_W = 2400, TUT_H = 1200;
+    // All scripted pickup positions must be within tutorial map
+    const positions = [
+        {name:'TUT_PICKUP',  x:TUT_PICKUP_X,  y:TUT_PICKUP_Y},
+        {name:'TUT_SHIELD',  x:TUT_SHIELD_X,  y:TUT_SHIELD_Y},
+        {name:'TUT_EMP',     x:TUT_EMP_X,     y:TUT_EMP_Y},
+    ];
+    const floorY = Math.round(TUT_H * 0.882); // 1058
+    const ceilY  = Math.round(TUT_H * 0.088); // 106
+    for (const pos of positions) {
+        assert(pos.x > 0,     `${pos.name} x > 0`);
+        assert(pos.x < TUT_W, `${pos.name} x < ${TUT_W}`);
+        assert(pos.y > ceilY, `${pos.name} y > ceilY (${ceilY})`);
+        assert(pos.y < floorY,`${pos.name} y < floorY (${floorY})`);
+    }
+    // Pickups are in the right half of the map (player starts near x=0)
+    assert(TUT_PICKUP_X > TUT_W / 2, 'spread pickup is in the right half of the map');
+    assert(TUT_SHIELD_X > TUT_W / 2, 'shield pickup is in the right half of the map');
+    assert(TUT_EMP_X    > TUT_W / 2, 'EMP pickup is in the right half of the map');
+    // EMP is to the right of shield (encounter shield first)
+    assert(TUT_EMP_X > TUT_SHIELD_X, 'EMP is to the right of shield (progressive discovery)');
+    // Spread pickup is to the left of shield/EMP (step 4 before step 6)
+    assert(TUT_PICKUP_X < TUT_SHIELD_X, 'spread pickup is to the left of specials');
+    // Constant values verified
+    assert(TUT_PICKUP_X === 1400, 'TUT_PICKUP_X = 1400');
+    assert(TUT_PICKUP_Y === 500,  'TUT_PICKUP_Y = 500');
+    assert(TUT_SHIELD_X === 1700, 'TUT_SHIELD_X = 1700');
+    assert(TUT_SHIELD_Y === 540,  'TUT_SHIELD_Y = 540');
+    assert(TUT_EMP_X    === 1860, 'TUT_EMP_X = 1860');
+    assert(TUT_EMP_Y    === 540,  'TUT_EMP_Y = 540');
+}
+
+// =====================================================
+section('258. Tutorial — cleanup() Resets All State');
+// =====================================================
+{
+    const cCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    // All 8 tutorial state variables must be reset in cleanup()
+    assert(cCode.includes('tutMode = false'),     'cleanup resets tutMode = false');
+    assert(cCode.includes('tutComplete = false'),  'cleanup resets tutComplete = false');
+    assert(cCode.includes('tutStep = 0'),          'cleanup resets tutStep = 0');
+    assert(cCode.includes('tutFlash = 0'),         'cleanup resets tutFlash = 0');
+    assert(cCode.includes('tutRotAccum = 0'),      'cleanup resets tutRotAccum = 0');
+    assert(cCode.includes('tutShotCount = 0'),     'cleanup resets tutShotCount = 0');
+    assert(cCode.includes('tutShieldGot = false'), 'cleanup resets tutShieldGot = false');
+    assert(cCode.includes('tutEmpGot = false'),    'cleanup resets tutEmpGot = false');
+    // All appear in expected cleanup function context
+    const cleanupIdx = cCode.indexOf('function cleanup()');
+    assert(cleanupIdx > 0, 'cleanup() function exists');
+    const cleanupBlock = cCode.substring(cleanupIdx, cleanupIdx + 2000);
+    assert(cleanupBlock.includes('tutMode = false'),     'tutMode reset inside cleanup()');
+    assert(cleanupBlock.includes('tutComplete = false'),  'tutComplete reset inside cleanup()');
+    assert(cleanupBlock.includes('tutStep = 0'),          'tutStep reset inside cleanup()');
+    assert(cleanupBlock.includes('tutRotAccum = 0'),      'tutRotAccum reset inside cleanup()');
+    assert(cleanupBlock.includes('tutShotCount = 0'),     'tutShotCount reset inside cleanup()');
+}
+
+// =====================================================
+section('259. Tutorial — Shot Counter & hostUpdate Integration');
+// =====================================================
+{
+    const cCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    // fireBullets increments tutShotCount when in tutorial mode
+    assert(cCode.includes('if (tutMode && pi === 0) tutShotCount++'),
+        'fireBullets increments tutShotCount for player 0 in tutMode');
+    // hostUpdate calls checkTutStep each tick
+    assert(cCode.includes('if (tutMode) checkTutStep()'),
+        'hostUpdate calls checkTutStep() each tick when tutMode is active');
+    // Normal pickup spawner is suppressed in tutorial
+    assert(cCode.includes('if (!tutMode && frame % PICKUP_SPAWN_INTERVAL === 0') ||
+           cCode.includes('if (!tutMode&&frame%PICKUP_SPAWN_INTERVAL===0'),
+        'pickup spawner wrapped in !tutMode guard (no random pickups during tutorial)');
+    // tutShotCount resets when setupTutStep is called
+    assert(cCode.includes('tutShotCount = 0'), 'tutShotCount reset in setupTutStep');
+    // Shot count logic: 3 shots to complete step 5
+    let shots = 0;
+    assert(!checkTutStepLogic(5, makePlayer({}), 0, shots++, false,false), 'step 5: 0 shots initially NOT done');
+    assert(!checkTutStepLogic(5, makePlayer({}), 0, shots++, false,false), 'step 5: after 1st shot NOT done');
+    assert(!checkTutStepLogic(5, makePlayer({}), 0, shots++, false,false), 'step 5: after 2nd shot NOT done');
+    assert( checkTutStepLogic(5, makePlayer({}), 0, shots,   false,false), 'step 5: after 3rd shot IS done');
+}
+
+// =====================================================
+section('260. Tutorial — startTutorial Function Wiring');
+// =====================================================
+{
+    const cCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    // startTutorial function exists
+    assert(cCode.includes('function startTutorial()'), 'startTutorial() function declared');
+    // Sets tutMode = true
+    assert(cCode.includes('tutMode = true'), 'startTutorial sets tutMode = true');
+    // Sets lobbyMap to 'tutorial' and calls generateMap + beginGame
+    assert(cCode.includes("lobbyMap = 'tutorial'"),
+        'startTutorial sets lobbyMap to tutorial map');
+    // Button wired in soloScreen
+    assert(cCode.includes('onclick="startTutorial()"'), 'soloScreen has startTutorial() onclick button');
+    assert(cCode.includes('GUIDED TUTORIAL'), 'soloScreen button is labelled GUIDED TUTORIAL');
+}
+
+// =====================================================
+section('261. Tutorial — Shield/EMP Tracking in Step 6');
+// =====================================================
+{
+    const cCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    // tutShieldGot set when player gains a shield
+    assert(cCode.includes("if (!tutShieldGot && me.shield > 0) tutShieldGot = true"),
+        'step 6 tracks shield pickup via me.shield > 0');
+    // tutEmpGot set when player picks up EMP
+    assert(cCode.includes("if (!tutEmpGot && me.weapon === 'emp') tutEmpGot = true"),
+        "step 6 tracks EMP pickup via me.weapon === 'emp'");
+    // Tracking only happens during step 6
+    assert(cCode.includes('if (tutStep === 6)'), 'shield/EMP tracking guarded by tutStep === 6');
+
+    // Logic verification: both must be true
+    assert(!checkTutStepLogic(6, makePlayer({shield:1, weapon:'normal'}), 0,0, true,  false),
+        'step 6: has shield but no EMP — NOT done');
+    assert(!checkTutStepLogic(6, makePlayer({shield:0, weapon:'emp'}),    0,0, false, true),
+        'step 6: has EMP but no shield — NOT done');
+    assert( checkTutStepLogic(6, makePlayer({shield:1, weapon:'emp'}),    0,0, true,  true),
+        'step 6: both shield and EMP collected — IS done');
+}
+
+// =====================================================
+section('262. Tutorial — Map Excluded From Regular Map Rotation');
+// =====================================================
+{
+    const cCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    // Tutorial map should not appear in map selection buttons (hidden:true should filter it)
+    assert(cCode.includes('hidden'), 'index.html references hidden flag for maps');
+    assert(cCode.includes('MAPS.tutorial.hidden') || cCode.includes('hidden:true'),
+        'tutorial hidden flag present in index.html');
+    // generateMap supports tutorial key without crashing
+    const m = generateMap('tutorial');
+    assert(m !== null && m !== undefined, 'generateMap(tutorial) returns a valid object');
+    assert(m.worldW === 2400, 'generateMap(tutorial) worldW correct');
+    assert(m.terrain.length === 2, 'generateMap(tutorial) produces flat terrain');
+    // No regular map has a hidden flag
+    const regularKeys = ['caves','canyon','asteroid','fortress','tunnels','arena'];
+    for (const k of regularKeys) {
+        assert(!MAPS[k].hidden, `regular map '${k}' not hidden`);
+    }
+    // Filtering works as expected
+    const visibleMaps = Object.entries(MAPS).filter(([,v]) => !v.hidden);
+    assert(visibleMaps.length === 6, 'exactly 6 visible maps after filtering hidden');
+    const hiddenMaps  = Object.entries(MAPS).filter(([,v]) =>  v.hidden);
+    assert(hiddenMaps.length  === 1, 'exactly 1 hidden map (tutorial)');
+    assert(hiddenMaps[0][0]   === 'tutorial', 'tutorial is the only hidden map');
 }
 console.log(`RESULTS: ${passed}/${total} passed, ${failed} failed`);
 console.log(`${'='.repeat(50)}`);
