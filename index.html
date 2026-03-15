@@ -274,13 +274,15 @@ Land on bases to refuel · Collect weapons · Survive!
 const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
 
 // ---------- CONSTANTS ----------
-const G = 0.0396, THRUST = 0.138, ROT_SPD_MAX = 0.045, MAX_SPD = 2.24;
+const G = 0.0396, THRUST = 0.138, ROT_SPD_MAX = 0.045, MAX_SPD = 3.2;
+const MAX_SPD_WITH_GRAV = MAX_SPD * 2.0;    // 6.4 — diving with gravity
+const MAX_SPD_AGAINST_GRAV = MAX_SPD * 1.5; // 4.8 — climbing against gravity
 const REV_THRUST = THRUST; // reverse thrust (same as forward)
 const BULLET_SPD = 5.5, BULLET_LIFE = 110, FIRE_CD = 14, SHIP_SZ = 10;
 const LIVES = 10, RESPAWN_T = 90, INVINCE_T = 120;
 const BASE_W = 50, BASE_H = 28;
 const BASE_EXP_DUR = 240, BASE_EXP_R = 65, RESPAWN_KILL_R = 58;
-const LAND_MAX_SPD = 2.2, LAND_MAX_ANGLE = 0.85;
+const LAND_MAX_SPD = 2.7, LAND_MAX_ANGLE = 0.85;
 const STATE_INTERVAL = 2; // send state every N frames (60/2 = 30fps)
 const COLORS = ['#00ccff','#ff3366','#33ff66','#ffcc00','#ff66ff','#66ffcc','#ff8833','#aa66ff'];
 
@@ -2548,7 +2550,10 @@ function shipCollision(p) {
 function canLand(p,surface) {
     const speed = Math.sqrt(p.vx**2+p.vy**2);
     const upright = Math.abs(p.angle+Math.PI/2);
-    return speed < LAND_MAX_SPD && upright < LAND_MAX_ANGLE && Math.abs(surface.slope)<0.7 && p.vy>=0 && p.vy<LAND_MAX_SPD*1.5;
+    const flat = Math.abs(surface.slope) < 0.2; // near-flat surface gets more forgiveness
+    const spdLimit = flat ? LAND_MAX_SPD * 1.35 : LAND_MAX_SPD;
+    const angLimit = flat ? LAND_MAX_ANGLE * 1.25 : LAND_MAX_ANGLE;
+    return speed < spdLimit && upright < angLimit && Math.abs(surface.slope) < 0.7 && p.vy >= 0 && p.vy < spdLimit * 1.5;
 }
 
 function landShip(p, surfY) {
@@ -3255,7 +3260,8 @@ function hostUpdate() {
         // Air drag — slight deceleration for smoother control
         p.vx *= 0.997; p.vy *= 0.997;
         const spd = Math.sqrt(p.vx**2+p.vy**2);
-        if (spd>MAX_SPD){p.vx*=MAX_SPD/spd;p.vy*=MAX_SPD/spd;}
+        const spdCap = p.vy > 0 ? MAX_SPD_WITH_GRAV : MAX_SPD_AGAINST_GRAV;
+        if (spd>spdCap){p.vx*=spdCap/spd;p.vy*=spdCap/spd;}
         p.x+=p.vx; p.y+=p.vy;
         if (p.x<0) p.x+=worldW; if (p.x>worldW) p.x-=worldW;
         if (p.invT>0) p.invT--;
@@ -3528,7 +3534,8 @@ function clientUpdate() {
         me.vy += mapGrav;
         me.vx *= 0.997; me.vy *= 0.997;
         const spd = Math.sqrt(me.vx*me.vx + me.vy*me.vy);
-        if (spd > MAX_SPD) { me.vx *= MAX_SPD/spd; me.vy *= MAX_SPD/spd; }
+        const spdCap = me.vy > 0 ? MAX_SPD_WITH_GRAV : MAX_SPD_AGAINST_GRAV;
+        if (spd > spdCap) { me.vx *= spdCap/spd; me.vy *= spdCap/spd; }
         me.x += me.vx; me.y += me.vy;
         if (me.x < 0) me.x += worldW; if (me.x > worldW) me.x -= worldW;
         // Terrain collision
