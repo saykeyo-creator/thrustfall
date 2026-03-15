@@ -816,46 +816,45 @@ function snd(t, vol) {
                 break;
             }
             case 'explode': {
-                // CATASTROPHIC 5-layer ship destruction
+                // PUNCHY Hollywood explosion — sharp bang + rumbling decay
                 const pv=0.88+Math.random()*0.24;
-                // L1: sub-bass pile-driver — instant-attack gut punch (uses initial o+g)
+                // L1: sub-bass thump — instant gut-punch boom
                 o.type='sine';
-                o.frequency.setValueAtTime(95*pv,n); o.frequency.exponentialRampToValueAtTime(10,n+.5);
-                g.gain.setValueAtTime(.0001,n); g.gain.linearRampToValueAtTime(.26*vol,n+.012); g.gain.exponentialRampToValueAtTime(.001,n+.55);
+                o.frequency.setValueAtTime(60*pv,n); o.frequency.exponentialRampToValueAtTime(20,n+.35);
+                g.gain.setValueAtTime(.0001,n); g.gain.linearRampToValueAtTime(.32*vol,n+.005); g.gain.exponentialRampToValueAtTime(.001,n+.4);
                 o.connect(g); g.connect(ac.destination);
-                o.start(n); o.stop(n+.56);
-                // L2: dual detuned sawtooth boom through sweeping lowpass — the catastrophic rumble
-                const f2=ac.createBiquadFilter(), o2a=ac.createOscillator(), o2b=ac.createOscillator(), g2=ac.createGain();
-                f2.type='lowpass'; f2.Q.value=2;
-                f2.frequency.setValueAtTime(1600,n); f2.frequency.exponentialRampToValueAtTime(45,n+.62);
-                o2a.type='sawtooth'; o2a.frequency.setValueAtTime(160*pv,n); o2a.frequency.exponentialRampToValueAtTime(18,n+.62);
-                o2b.type='sawtooth'; o2b.detune.value=-10; o2b.frequency.setValueAtTime(250*pv,n); o2b.frequency.exponentialRampToValueAtTime(26,n+.58);
-                o2a.connect(f2); o2b.connect(f2); f2.connect(g2); g2.connect(ac.destination);
-                g2.gain.setValueAtTime(.17*vol,n); g2.gain.setValueAtTime(.17*vol,n+.04); g2.gain.exponentialRampToValueAtTime(.001,n+.66);
-                o2a.start(n); o2a.stop(n+.67); o2b.start(n+.01); o2b.stop(n+.63);
-                // L3: square wave bandpass crack — meaty mid-range impact body
+                o.start(n); o.stop(n+.41);
+                // L2: initial BANG crack — high-freq detuned square burst (percussive snap)
+                const oC=ac.createOscillator(), oC2=ac.createOscillator(), gC=ac.createGain(), fC=ac.createBiquadFilter();
+                fC.type='bandpass'; fC.Q.value=0.8; fC.frequency.value=2000;
+                oC.type='square'; oC.frequency.value=3200+Math.random()*1800;
+                oC2.type='square'; oC2.frequency.value=4700+Math.random()*2200; oC2.detune.value=37;
+                oC.connect(fC); oC2.connect(fC); fC.connect(gC); gC.connect(ac.destination);
+                gC.gain.setValueAtTime(.22*vol,n); gC.gain.exponentialRampToValueAtTime(.001,n+.06);
+                oC.start(n); oC.stop(n+.07); oC2.start(n); oC2.stop(n+.07);
+                // L3: mid-range body — sawtooth rumble with lowpass sweep
                 const f3=ac.createBiquadFilter(), o3=ac.createOscillator(), g3=ac.createGain();
-                f3.type='bandpass'; f3.Q.value=1.8;
-                f3.frequency.setValueAtTime(1100,n); f3.frequency.exponentialRampToValueAtTime(130,n+.26);
-                o3.type='square'; o3.frequency.setValueAtTime(290*pv,n); o3.frequency.exponentialRampToValueAtTime(38,n+.26);
+                f3.type='lowpass'; f3.Q.value=2;
+                f3.frequency.setValueAtTime(2400,n); f3.frequency.exponentialRampToValueAtTime(80,n+.45);
+                o3.type='sawtooth'; o3.frequency.setValueAtTime(180*pv,n); o3.frequency.exponentialRampToValueAtTime(25,n+.45);
                 o3.connect(f3); f3.connect(g3); g3.connect(ac.destination);
-                g3.gain.setValueAtTime(.11*vol,n); g3.gain.exponentialRampToValueAtTime(.001,n+.28);
-                o3.start(n); o3.stop(n+.29);
-                // L4: high shrapnel fizz — metallic debris scatter (filtered square burst)
+                g3.gain.setValueAtTime(.0001,n); g3.gain.linearRampToValueAtTime(.16*vol,n+.015); g3.gain.exponentialRampToValueAtTime(.001,n+.5);
+                o3.start(n); o3.stop(n+.51);
+                // L4: shrapnel crackle — high-freq metallic debris
                 const oN=ac.createOscillator(), fN=ac.createBiquadFilter(), gN=ac.createGain();
-                fN.type='highpass'; fN.frequency.value=3500;
-                oN.type='square'; oN.frequency.value=6800+Math.random()*3500;
+                fN.type='highpass'; fN.frequency.value=4000;
+                oN.type='square'; oN.frequency.value=7500+Math.random()*4000;
                 oN.connect(fN); fN.connect(gN); gN.connect(ac.destination);
-                gN.gain.setValueAtTime(.11*vol,n); gN.gain.exponentialRampToValueAtTime(.001,n+.13);
-                oN.start(n); oN.stop(n+.14);
-                // L5: "kill confirmed" reward arc — triangle sweeps 185→740→185 Hz
+                gN.gain.setValueAtTime(.09*vol,n+.01); gN.gain.exponentialRampToValueAtTime(.001,n+.1);
+                oN.start(n+.01); oN.stop(n+.11);
+                // L5: reward confirmer — subtle rising triangle ping
                 const oR=ac.createOscillator(), fR=ac.createBiquadFilter(), gR=ac.createGain();
                 fR.type='lowpass'; fR.frequency.value=2400; fR.Q.value=3;
                 oR.type='triangle';
-                oR.frequency.setValueAtTime(185*pv,n); oR.frequency.exponentialRampToValueAtTime(740*pv,n+.07); oR.frequency.exponentialRampToValueAtTime(185*pv,n+.26);
+                oR.frequency.setValueAtTime(185*pv,n+.03); oR.frequency.exponentialRampToValueAtTime(740*pv,n+.1); oR.frequency.exponentialRampToValueAtTime(185*pv,n+.26);
                 oR.connect(fR); fR.connect(gR); gR.connect(ac.destination);
-                gR.gain.setValueAtTime(.0001,n); gR.gain.linearRampToValueAtTime(.075*vol,n+.035); gR.gain.exponentialRampToValueAtTime(.001,n+.26);
-                oR.start(n); oR.stop(n+.27);
+                gR.gain.setValueAtTime(.0001,n+.03); gR.gain.linearRampToValueAtTime(.06*vol,n+.065); gR.gain.exponentialRampToValueAtTime(.001,n+.26);
+                oR.start(n+.03); oR.stop(n+.27);
                 break;
             }
             case 'baseExp': {

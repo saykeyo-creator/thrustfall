@@ -5445,7 +5445,7 @@ section('146. Height-Fit Viewport — Tablet Controls Visible');
     assert(code.includes("case 'explode':"), 'explode sound handler present');
     assert(code.includes('0.88+Math.random()*0.24') || code.includes('0.88 + Math.random() * 0.24'),
            'pitch variation 0.88-1.12 range');
-    assert(code.includes('95*pv') || code.includes('95 * pv'),
+    assert(code.includes('60*pv') || code.includes('60 * pv') || code.includes('95*pv') || code.includes('95 * pv'),
            'explode frequency modulated by pitch variation');
 }
 
