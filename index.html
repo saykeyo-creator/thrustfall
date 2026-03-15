@@ -735,16 +735,46 @@ function snd(t, vol) {
                 break;
             }
             case 'explode': {
-                // Deep cinematic boom: layered detuned sawtooths + sweeping lowpass
-                const pv=0.85+Math.random()*0.3;
-                const f=ac.createBiquadFilter(), o2=ac.createOscillator();
-                f.type='lowpass'; f.Q.value=2;
-                f.frequency.setValueAtTime(1400*pv,n); f.frequency.exponentialRampToValueAtTime(55,n+.48);
-                o.connect(f); o2.connect(f); f.connect(g); g.connect(ac.destination);
-                o.type='sawtooth'; o.frequency.setValueAtTime(130*pv,n); o.frequency.exponentialRampToValueAtTime(22*pv,n+.48);
-                o2.type='sawtooth'; o2.detune.value=-8; o2.frequency.setValueAtTime(195*pv,n); o2.frequency.exponentialRampToValueAtTime(33*pv,n+.48);
-                g.gain.setValueAtTime(.13*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.48);
-                o.start(n); o.stop(n+.49); o2.start(n+.02); o2.stop(n+.49);
+                // CATASTROPHIC 5-layer ship destruction
+                const pv=0.88+Math.random()*0.24;
+                // L1: sub-bass pile-driver — instant-attack gut punch (uses initial o+g)
+                o.type='sine';
+                o.frequency.setValueAtTime(95*pv,n); o.frequency.exponentialRampToValueAtTime(10,n+.5);
+                g.gain.setValueAtTime(.0001,n); g.gain.linearRampToValueAtTime(.26*vol,n+.012); g.gain.exponentialRampToValueAtTime(.001,n+.55);
+                o.connect(g); g.connect(ac.destination);
+                o.start(n); o.stop(n+.56);
+                // L2: dual detuned sawtooth boom through sweeping lowpass — the catastrophic rumble
+                const f2=ac.createBiquadFilter(), o2a=ac.createOscillator(), o2b=ac.createOscillator(), g2=ac.createGain();
+                f2.type='lowpass'; f2.Q.value=2;
+                f2.frequency.setValueAtTime(1600,n); f2.frequency.exponentialRampToValueAtTime(45,n+.62);
+                o2a.type='sawtooth'; o2a.frequency.setValueAtTime(160*pv,n); o2a.frequency.exponentialRampToValueAtTime(18,n+.62);
+                o2b.type='sawtooth'; o2b.detune.value=-10; o2b.frequency.setValueAtTime(250*pv,n); o2b.frequency.exponentialRampToValueAtTime(26,n+.58);
+                o2a.connect(f2); o2b.connect(f2); f2.connect(g2); g2.connect(ac.destination);
+                g2.gain.setValueAtTime(.17*vol,n); g2.gain.setValueAtTime(.17*vol,n+.04); g2.gain.exponentialRampToValueAtTime(.001,n+.66);
+                o2a.start(n); o2a.stop(n+.67); o2b.start(n+.01); o2b.stop(n+.63);
+                // L3: square wave bandpass crack — meaty mid-range impact body
+                const f3=ac.createBiquadFilter(), o3=ac.createOscillator(), g3=ac.createGain();
+                f3.type='bandpass'; f3.Q.value=1.8;
+                f3.frequency.setValueAtTime(1100,n); f3.frequency.exponentialRampToValueAtTime(130,n+.26);
+                o3.type='square'; o3.frequency.setValueAtTime(290*pv,n); o3.frequency.exponentialRampToValueAtTime(38,n+.26);
+                o3.connect(f3); f3.connect(g3); g3.connect(ac.destination);
+                g3.gain.setValueAtTime(.11*vol,n); g3.gain.exponentialRampToValueAtTime(.001,n+.28);
+                o3.start(n); o3.stop(n+.29);
+                // L4: high shrapnel fizz — metallic debris scatter (filtered square burst)
+                const oN=ac.createOscillator(), fN=ac.createBiquadFilter(), gN=ac.createGain();
+                fN.type='highpass'; fN.frequency.value=3500;
+                oN.type='square'; oN.frequency.value=6800+Math.random()*3500;
+                oN.connect(fN); fN.connect(gN); gN.connect(ac.destination);
+                gN.gain.setValueAtTime(.11*vol,n); gN.gain.exponentialRampToValueAtTime(.001,n+.13);
+                oN.start(n); oN.stop(n+.14);
+                // L5: "kill confirmed" reward arc — triangle sweeps 185→740→185 Hz
+                const oR=ac.createOscillator(), fR=ac.createBiquadFilter(), gR=ac.createGain();
+                fR.type='lowpass'; fR.frequency.value=2400; fR.Q.value=3;
+                oR.type='triangle';
+                oR.frequency.setValueAtTime(185*pv,n); oR.frequency.exponentialRampToValueAtTime(740*pv,n+.07); oR.frequency.exponentialRampToValueAtTime(185*pv,n+.26);
+                oR.connect(fR); fR.connect(gR); gR.connect(ac.destination);
+                gR.gain.setValueAtTime(.0001,n); gR.gain.linearRampToValueAtTime(.075*vol,n+.035); gR.gain.exponentialRampToValueAtTime(.001,n+.26);
+                oR.start(n); oR.stop(n+.27);
                 break;
             }
             case 'baseExp': {
@@ -767,7 +797,7 @@ function snd(t, vol) {
                 o.type='sine'; o.frequency.setValueAtTime(523,n); o.frequency.setValueAtTime(659,n+.08); o.frequency.setValueAtTime(784,n+.16); o.frequency.setValueAtTime(1047,n+.22);
                 o2.type='triangle'; o2.detune.value=5;
                 o2.frequency.setValueAtTime(523,n+.02); o2.frequency.setValueAtTime(659,n+.1); o2.frequency.setValueAtTime(784,n+.18); o2.frequency.setValueAtTime(1047,n+.24);
-                g.gain.setValueAtTime(.08*vol,n); g.gain.setValueAtTime(.09*vol,n+.1); g.gain.exponentialRampToValueAtTime(.001,n+.34);
+                g.gain.setValueAtTime(.05*vol,n); g.gain.setValueAtTime(.055*vol,n+.1); g.gain.exponentialRampToValueAtTime(.001,n+.34);
                 o.start(n); o.stop(n+.34); o2.start(n+.02); o2.stop(n+.34);
                 break;
             }
@@ -838,7 +868,9 @@ function snd(t, vol) {
                 f.frequency.setValueAtTime(700+Math.random()*300,n); f.frequency.exponentialRampToValueAtTime(300,n+.12);
                 o.connect(f); f.connect(g); g.connect(ac.destination);
                 o.type='triangle'; o.frequency.setValueAtTime(800+Math.random()*400,n); o.frequency.exponentialRampToValueAtTime(280+Math.random()*150,n+.12);
-                g.gain.setValueAtTime(.07*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.12);
+                // vol already reflects proximity (0.15–1.0 from checkBulletWhizz); square it so
+                // only truly close calls are loud — distant ones barely audible
+                g.gain.setValueAtTime(.13*vol*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.12);
                 o.start(n); o.stop(n+.13); break;
             }
             case 'whizzHeavy': {
@@ -997,38 +1029,38 @@ function engineSnd(engineId, vol, speed) {
                 // Deep sub-bass thruster rumble — warm lowpass
                 f.type='lowpass'; f.Q.value=2; f.frequency.value=180;
                 o.type='sawtooth'; o.frequency.setValueAtTime(42*pm,n); o.frequency.exponentialRampToValueAtTime(26*pm,n+.08);
-                g.gain.setValueAtTime(.04*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.08);
+                g.gain.setValueAtTime(.072*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.08);
                 o.start(n); o.stop(n+.08); break;
             case 'whine':
                 // High electronic whine — bandpass focuses the tone
                 f.type='bandpass'; f.Q.value=4; f.frequency.value=500*pm;
                 o.type='sawtooth'; o.frequency.setValueAtTime(600*pm,n); o.frequency.exponentialRampToValueAtTime(400*pm,n+.06);
-                g.gain.setValueAtTime(.02*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.06);
+                g.gain.setValueAtTime(.042*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.06);
                 o.start(n); o.stop(n+.06); break;
             case 'pulse':
                 // Pulsing thruster — sawtooth through warm lowpass
                 f.type='lowpass'; f.Q.value=2.5; f.frequency.value=300;
                 o.type='sawtooth'; o.frequency.setValueAtTime(120*pm,n); o.frequency.setValueAtTime(70*pm,n+.02);
                 o.frequency.setValueAtTime(120*pm,n+.04); o.frequency.exponentialRampToValueAtTime(65*pm,n+.08);
-                g.gain.setValueAtTime(.035*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.08);
+                g.gain.setValueAtTime(.063*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.08);
                 o.start(n); o.stop(n+.08); break;
             case 'roar':
                 // Beefy engine roar — lowpass filter sweep gives it body
                 f.type='lowpass'; f.Q.value=1.5;
                 f.frequency.setValueAtTime(600,n); f.frequency.exponentialRampToValueAtTime(200,n+.08);
                 o.type='sawtooth'; o.frequency.setValueAtTime(220*pm,n); o.frequency.exponentialRampToValueAtTime(55*pm,n+.08);
-                g.gain.setValueAtTime(.045*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.08);
+                g.gain.setValueAtTime(.078*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.08);
                 o.start(n); o.stop(n+.08); break;
             case 'hum':
                 // Smooth synthetic hum — gentle lowpass keeps it warm
                 f.type='lowpass'; f.Q.value=1; f.frequency.value=400;
                 o.type='sawtooth'; o.frequency.setValueAtTime(180*pm,n); o.frequency.exponentialRampToValueAtTime(160*pm,n+.08);
-                g.gain.setValueAtTime(.025*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.08);
+                g.gain.setValueAtTime(.050*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.08);
                 o.start(n); o.stop(n+.08); break;
             default:
                 f.type='lowpass'; f.Q.value=1.5; f.frequency.value=350;
                 o.type='sawtooth'; o.frequency.setValueAtTime(80*pm,n); o.frequency.exponentialRampToValueAtTime(60*pm,n+.06);
-                g.gain.setValueAtTime(.028*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.06);
+                g.gain.setValueAtTime(.055*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.06);
                 o.start(n); o.stop(n+.06); break;
         }
     } catch(e){}
@@ -2555,8 +2587,8 @@ function handleEvent(evt) {
     switch(evt.n) {
         case 'land': sndAt('land', ex, ey); break;
         case 'pickup': sndAt('pickup', ex, ey); break;
-        case 'shoot': sndAt('shoot', ex, ey); bumpCombat(COMBAT_SHOOT_BUMP); break;
-        case 'laser': sndAt('laser', ex, ey); bumpCombat(COMBAT_SHOOT_BUMP); break;
+        case 'shoot': sndAt('shoot', ex, ey); break;
+        case 'laser': sndAt('laser', ex, ey); break;
         case 'shieldHit':
             sndAt('shieldHit', ex, ey);
             bumpCombat(COMBAT_SHIELD_BUMP);
@@ -5220,9 +5252,6 @@ function updateCombatIntensity() {
         }
     }
     nearbyPlayerCount = nearCount;
-    // Active bullets also raise a little tension
-    if (bullets.length > 0) bumpCombat(Math.min(bullets.length * 0.001, 0.01));
-
     // Decay
     if (combatDecayTimer > 0) { combatDecayTimer--; }
     else { combatIntensity = Math.max(0, combatIntensity - COMBAT_DECAY_RATE); }
@@ -5297,17 +5326,23 @@ function startMusic() {
         mOsc('square', freq * 0.5, vol * 0.35, dur * 0.8, startT); // sub octave
     }
 
-    // --- Helper: synth kick ---
+    // --- Helper: war drum kick ---
     function mKick(vol, startT) {
-        mSweep('sine', 150, 30, vol * 0.7, 0.15, startT);
-        mOsc('triangle', 55, vol * 0.3, 0.08, startT);
+        // Deep double-sweep — thick sub thud with long decay
+        mSweep('sine',     200, 28, vol * 0.9, 0.24, startT);
+        mSweep('sine',     180, 25, vol * 0.6, 0.22, startT + 0.01); // detuned layer for body
+        mOsc  ('sine',      40,     vol * 0.5, 0.18, startT);        // sub rumble
+        mNoise(vol * 0.18, 0.02, startT, 2500);                      // beater transient crack
     }
 
-    // --- Helper: heavy snare ---
+    // --- Helper: war drum strike (deep tom, not a snare) ---
     function mSnare(vol, startT) {
-        mNoise(vol * 0.2, 0.08, startT, 4000);
-        mNoise(vol * 0.15, 0.12, startT, 7000);
-        mSweep('triangle', 250, 100, vol * 0.25, 0.06, startT);
+        // Big resonant tom body — no thin noise, just deep impact
+        mSweep('sine',     180, 60,  vol * 0.75, 0.22, startT);
+        mSweep('triangle', 160, 55,  vol * 0.55, 0.20, startT + 0.01); // detuned layer
+        mOsc  ('sine',      80,      vol * 0.40, 0.14, startT);         // sub thump
+        mNoise(vol * 0.28, 0.035, startT, 2800);                        // short stick crack
+        mNoise(vol * 0.10, 0.10,  startT + 0.02, 1800);                 // decay rumble
     }
 
     function playBeat() {
@@ -5358,16 +5393,19 @@ function startMusic() {
                 mOsc('sawtooth', note * 1.498, tv * 0.06, bl * 1.4, now); // dim 5th
             }
 
-            // High eerie tone — Halo monk-choir vibe (slow sine with vibrato-like detune)
+            // High eerie tone — dropped to lower register and triangle for body
+            // (plain sine at 293-349Hz register sounded thin and cartoony)
             if (bi % 8 === 0) {
-                const hi = M_TENSE_HIGH[bi % M_TENSE_HIGH.length];
-                mOsc('sine', hi, tv * 0.08, bl * 5, now);
-                mOsc('sine', hi * 1.003, tv * 0.06, bl * 4.5, now);
+                const hi = M_TENSE_HIGH[bi % M_TENSE_HIGH.length] * 0.5; // drop an octave
+                mOsc('triangle', hi, tv * 0.07, bl * 5, now);
+                mOsc('triangle', hi * 1.003, tv * 0.05, bl * 4.5, now);
             }
 
-            // Suspense riser every 16 beats
+            // Tension swell every 16 beats — two detuned sub-sines swelling up
+            // (replaced sawtooth 200→800 glissando which sounded cartoony)
             if (bi % 16 === 14) {
-                mSweep('sawtooth', 200, 800, tv * 0.07, bl * 2, now);
+                mSweep('sine', 55, 110, tv * 0.12, bl * 2, now);
+                mSweep('sine', 55.3, 110.5, tv * 0.09, bl * 1.8, now + bl * 0.1);
             }
         }
 
