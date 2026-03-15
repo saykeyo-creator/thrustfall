@@ -144,6 +144,8 @@ input[type=text]::placeholder{color:#555;text-transform:none}
 <div class="overlay" id="soloScreen">
 <h2>PRACTICE</h2>
 <div class="sub">Explore maps &amp; practice controls</div>
+<button class="btn" onclick="startTutorial()" style="border-color:#00eeff;color:#00eeff;margin-bottom:.6em">&#9654; GUIDED TUTORIAL</button>
+<div class="sub" style="font-size:clamp(.55rem,1.8vw,.75rem);color:#555;margin-top:-.4em;margin-bottom:.8em">Learn landing, gravity, pickups, shields &amp; more</div>
 <div class="maps-grid" id="soloMapBtns"></div>
 <button class="btn sm" onclick="showMenu()">BACK</button>
 </div>
@@ -393,6 +395,33 @@ let survivalEnding = false; // guard against double game-over
 let survivalBest = {};
 try { survivalBest = JSON.parse(localStorage.getItem('gravSurvivalBest')) || {}; } catch(e){}
 let waveAnnouncement = null;
+
+// =====================================================
+// TUTORIAL STATE
+// =====================================================
+let tutMode = false;
+let tutStep = 0;        // current step index (0-based)
+let tutComplete = false;
+let tutFlash = 0;       // frames of green flash on step complete
+let tutRotAccum = 0;    // accumulated absolute rotation (radians) for rotate step
+let tutShotCount = 0;   // bullets fired for the weapons step
+let tutShieldGot = false;
+let tutEmpGot = false;
+
+const TUT_STEPS = [
+    { title:'THRUST',    msg:'Hold the RIGHT side of the screen to thrust.',    sub:'Lift off your landing pad and take flight!' },
+    { title:'ROTATE',    msg:'Drag the LEFT side up/down to rotate.',            sub:'Spin a full 360\u00b0 to master turning.'   },
+    { title:'GRAVITY',   msg:'Cut thrust and let gravity pull you.',             sub:'Reach speed 1.5 by diving or arcing!'       },
+    { title:'LANDING',   msg:'Fly to the glowing platform and land gently.',     sub:'Approach slowly from above — too fast = crash!' },
+    { title:'PICKUP',    msg:'Fly through the glowing \u2295 SPREAD pickup.',    sub:'Pickups give powerful temporary weapons!'   },
+    { title:'WEAPONS',   msg:'Hold RIGHT (or SPACE) to fire your weapon!',       sub:'Fire 3 shots to continue.'                  },
+    { title:'SPECIALS',  msg:'Collect the \u25ce SHIELD then the \u26a1 EMP.',   sub:'Shield absorbs a hit. EMP stuns nearby ships!' },
+];
+// Tutorial world-space target positions (in tutorial map coords: 2400×1200)
+const TUT_PLATFORM_X = 1020, TUT_PLATFORM_Y = 600; // matches platform in generateMap tutorial
+const TUT_PICKUP_X   = 1400, TUT_PICKUP_Y   = 500;
+const TUT_SHIELD_X   = 1700, TUT_SHIELD_Y   = 540;
+const TUT_EMP_X      = 1860, TUT_EMP_Y      = 540;
 
 // ---------- SETTINGS (persisted to localStorage) ----------
 let settings = {sfxVol:0.8, musicVol:0.5, sensitivity:1.0, leftHanded:false, colorBlind:false, haptic:true, playerName:''};
@@ -855,7 +884,8 @@ const MAPS = {
     asteroid: { name:'ASTEROID FIELD', w:4000, h:2400, desc:'Low gravity', gravity:0.032 },
     fortress: { name:'TWIN FORTRESS',  w:4400, h:2000, desc:'Fortified bases' },
     tunnels:  { name:'THE LABYRINTH',  w:4000, h:2400, desc:'Maze of tunnels' },
-    arena:    { name:'THE ARENA',      w:3200, h:1800, desc:'Open dogfight' }
+    arena:    { name:'THE ARENA',      w:3200, h:1800, desc:'Open dogfight' },
+    tutorial: { name:'TRAINING',       w:2400, h:1200, desc:'Guided tutorial', hidden:true }
 };
 
 // Per-map visual theme — client-only rendering data
@@ -866,6 +896,7 @@ const MAP_THEME = {
     fortress: { bg:'#080c0e',  terrainTop:'#1e2c2e', terrainBot:'#060a0c', terrainStroke:'#304850', ceilTop:'#060a0c', ceilBot:'#1e2c2e', ceilStroke:'#304850', platFill:'#1a2830', platStroke:'#304858', platTop:'#506878', padColor:'#ffcc00', padGlow:'#ffaa00', starMult:0.6 },
     tunnels:  { bg:'#050408',  terrainTop:'#1e1428', terrainBot:'#0a0610', terrainStroke:'#4a2870', ceilTop:'#0a0610', ceilBot:'#1e1428', ceilStroke:'#4a2870', platFill:'#1a1028', platStroke:'#503878', platTop:'#7050a8', padColor:'#ff44cc', padGlow:'#ff44cc', starMult:0.15 },
     arena:    { bg:'#0a0810',  terrainTop:'#2a1e38', terrainBot:'#0e0818', terrainStroke:'#6040a0', ceilTop:'#0e0818', ceilBot:'#2a1e38', ceilStroke:'#6040a0', platFill:'#221838', platStroke:'#5040a0', platTop:'#9070e0', padColor:'#ffffff', padGlow:'#aaddff', starMult:2.0 },
+    tutorial: { bg:'#04060f',  terrainTop:'#0d1a2e', terrainBot:'#050a18', terrainStroke:'#1a3060', ceilTop:'#050a18', ceilBot:'#0d1a2e', ceilStroke:'#1a3060', platFill:'#0a1830', platStroke:'#00eeff', platTop:'#00ccdd', padColor:'#00eeff', padGlow:'#00eeff', starMult:1.5 },
 };
 
 function generateMap(key) {
@@ -1020,6 +1051,21 @@ function generateMap(key) {
         case 'arena':
             // No platforms — pure open dogfight
             break;
+        case 'tutorial':
+            // Single wide landing platform at mid-height (tutorial challenge target)
+            p.push({x: w*0.42, y: h*0.50, width: 120, height: 14});
+            break;
+    }
+    // Tutorial terrain is special: return early with hand-crafted flat map
+    if (key === 'tutorial') {
+        const floorY = Math.round(h * 0.882);
+        const ceilY  = Math.round(h * 0.088);
+        const tt = [{x:0, y:floorY}, {x:w, y:floorY}];
+        const tc = [{x:0, y:ceilY},  {x:w, y:ceilY}];
+        const starCount = Math.round(w * h / 5000 * 1.5);
+        const tst = [];
+        for (let i=0;i<starCount;i++) tst.push({x:Math.random()*w,y:Math.random()*h,sz:Math.random()*2+.5,br:Math.random()*.5+.3,tw:Math.random()*Math.PI*2});
+        return { terrain: tt, ceiling: tc, platforms: p, stars: tst, worldW:w, worldH:h };
     }
     // Stars — scale count with map size
     const st = [];
@@ -1436,6 +1482,49 @@ function startSoloGame(mapKey) {
     });
 }
 
+function startTutorial() {
+    maybeShowOnboarding(() => {
+        cleanup();
+        lobbyMap = 'tutorial';
+        isHost = true;
+        myIndex = 0;
+        tutMode = true;
+        tutStep = 0;
+        tutComplete = false;
+        tutFlash = 0;
+        tutRotAccum = 0;
+        tutShotCount = 0;
+        tutShieldGot = false;
+        tutEmpGot = false;
+        const mapData = generateMap('tutorial');
+        const sb = computeSpawns(1, mapData.worldW, mapData.worldH, mapData.terrain, mapData.ceiling, mapData.platforms);
+        beginGame({
+            worldW: mapData.worldW, worldH: mapData.worldH,
+            terrain: mapData.terrain, ceiling: mapData.ceiling,
+            platforms: mapData.platforms, stars: mapData.stars,
+            spawns: sb.spawns, bases: sb.bases,
+            players: [{name:'PILOT'}]
+        });
+        players[0].lives = 999;
+        // No pickups at start; each step spawns its own
+    });
+}
+
+function setupTutStep(step) {
+    // Clear tutorial-managed pickups and reset per-step state
+    pickups = [];
+    tutShotCount = 0;
+    switch (step) {
+        case 4: // PICKUP — spawn a spread weapon in the air ahead
+            pickups.push({x: TUT_PICKUP_X, y: TUT_PICKUP_Y, type:'spread', bobPhase:0, age:0});
+            break;
+        case 6: // SPECIALS — spawn shield and EMP side by side
+            pickups.push({x: TUT_SHIELD_X, y: TUT_SHIELD_Y, type:'shield', bobPhase:0,      age:0});
+            pickups.push({x: TUT_EMP_X,    y: TUT_EMP_Y,    type:'emp',    bobPhase:Math.PI, age:0});
+            break;
+    }
+}
+
 function cleanup() {
     running = false;
     paused = false;
@@ -1457,6 +1546,14 @@ function cleanup() {
     survivalWaveState = 'fighting';
     survivalEnding = false;
     waveAnnouncement = null;
+    tutMode = false;
+    tutComplete = false;
+    tutStep = 0;
+    tutFlash = 0;
+    tutRotAccum = 0;
+    tutShotCount = 0;
+    tutShieldGot = false;
+    tutEmpGot = false;
 }
 
 // =====================================================
@@ -2601,6 +2698,226 @@ function fireBullets(p, pi) {
             p.fireCd = Math.floor(FIRE_CD / 1.5 * fMul); // stock fires 1.5x faster (perk can reduce further)
     }
     emitEvent({t:'e',n:'shoot',x:bx,y:by});
+    if (tutMode && pi === 0) tutShotCount++; // tutorial: count shot bursts
+}
+
+// =====================================================
+// TUTORIAL LOGIC + RENDERING
+// =====================================================
+function tutGetTargets() {
+    switch (tutStep) {
+        case 3: return [{x: TUT_PLATFORM_X + 60, y: TUT_PLATFORM_Y - 4, label: 'LAND HERE', color: '#00ffcc'}];
+        case 4: return [{x: TUT_PICKUP_X, y: TUT_PICKUP_Y, label: 'COLLECT', color: '#ff6600'}];
+        case 6: return [
+            {x: TUT_SHIELD_X, y: TUT_SHIELD_Y, label: 'SHIELD', color: '#00ffaa'},
+            {x: TUT_EMP_X,    y: TUT_EMP_Y,    label: 'EMP',    color: '#ffff00'}
+        ];
+        default: return [];
+    }
+}
+
+function checkTutStep() {
+    if (!tutMode) return;
+    // AUTO-RETURN when complete
+    if (tutComplete) {
+        if (tutFlash > 0) { tutFlash--; }
+        else { tutMode = false; showMenu(); }
+        return;
+    }
+    if (tutStep >= TUT_STEPS.length) return;
+    const me = players[0];
+    if (!me || !me.alive) return;
+
+    // Track per-step state
+    if (tutStep === 1) { tutRotAccum += Math.abs(me.rot || 0) * ROT_SPD_MAX; }
+    if (tutStep === 6) {
+        if (!tutShieldGot && me.shield > 0) tutShieldGot = true;
+        if (!tutEmpGot && me.weapon === 'emp') tutEmpGot = true;
+    }
+
+    let done = false;
+    switch (tutStep) {
+        case 0: done = !me.landed && me.vy < -0.25; break;
+        case 1: done = tutRotAccum >= Math.PI * 2; break;
+        case 2: done = Math.sqrt(me.vx * me.vx + me.vy * me.vy) >= 1.5; break;
+        case 3: done = me.landed && me.x > 700; break;
+        case 4: done = me.weapon !== 'normal'; break;
+        case 5: done = tutShotCount >= 3; break;
+        case 6: done = tutShieldGot && tutEmpGot; break;
+    }
+
+    if (done) {
+        if (tutStep < TUT_STEPS.length - 1) {
+            tutStep++;
+            tutFlash = 60;
+            setupTutStep(tutStep);
+        } else {
+            tutComplete = true;
+            tutFlash = 280; // ~4.7 sec before auto-return to menu
+        }
+    }
+}
+
+function drawTutorialWorld() {
+    // Pulsing indicator rings in world-space (camera transform active)
+    const targets = tutGetTargets();
+    if (targets.length === 0) return;
+    const t = Date.now() / 1000;
+    for (const tg of targets) {
+        const pulse = 0.5 + 0.5 * Math.sin(t * 5);
+        const r1 = 30 + pulse * 12;
+        const r2 = 52 + pulse * 10;
+        ctx.globalAlpha = 0.55 + pulse * 0.45;
+        ctx.strokeStyle = tg.color;
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([8, 5]);
+        ctx.beginPath(); ctx.arc(tg.x, tg.y, r1, 0, Math.PI * 2); ctx.stroke();
+        ctx.lineWidth = 1;
+        ctx.globalAlpha = 0.25 + pulse * 0.3;
+        ctx.beginPath(); ctx.arc(tg.x, tg.y, r2, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 0.7 + pulse * 0.3;
+        ctx.fillStyle = tg.color;
+        ctx.font = 'bold 11px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText(tg.label, tg.x, tg.y - r2 - 6);
+    }
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 1;
+}
+
+function drawTutorialHUD() {
+    const me = players[myIndex];
+    if (!me) return;
+    const fs = Math.max(11, Math.min(W * 0.03, 16));
+    const panelH = fs * 5 + 30;
+    const panelY = H - panelH - (H > 600 ? 18 : 8);
+
+    // Panel background
+    ctx.fillStyle = 'rgba(2,8,20,0.88)';
+    ctx.strokeStyle = 'rgba(0,238,255,0.3)';
+    ctx.lineWidth = 1;
+    roundRect(ctx, 10, panelY, W - 20, panelH, 6);
+    ctx.fill(); ctx.stroke();
+
+    // Step completion flash
+    if (!tutComplete && tutFlash > 0) {
+        const alpha = (tutFlash / 60) * 0.35;
+        ctx.fillStyle = `rgba(51,255,102,${alpha})`;
+        roundRect(ctx, 10, panelY, W - 20, panelH, 6);
+        ctx.fill();
+    }
+
+    if (tutComplete) {
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#33ff66';
+        ctx.font = `bold ${Math.round(fs * 1.7)}px Courier New`;
+        ctx.fillText('TRAINING COMPLETE!', W / 2, panelY + panelH * 0.38);
+        ctx.fillStyle = '#ffcc00';
+        ctx.font = `${fs}px Courier New`;
+        ctx.fillText("You're ready for battle!", W / 2, panelY + panelH * 0.66);
+        ctx.fillStyle = '#555';
+        ctx.font = `${Math.round(fs * 0.82)}px Courier New`;
+        ctx.fillText('Returning to menu...', W / 2, panelY + panelH * 0.88);
+        return;
+    }
+
+    const step = TUT_STEPS[tutStep];
+    const n = TUT_STEPS.length;
+
+    // Progress dots
+    const dotR = 4, dotSpacing = 14, dotY = panelY + 11;
+    const totalDotW = n * dotSpacing - (dotSpacing - dotR * 2);
+    let dotX = W / 2 - totalDotW / 2 + dotR;
+    for (let i = 0; i < n; i++) {
+        ctx.globalAlpha = 1;
+        if (i < tutStep) {
+            ctx.fillStyle = '#33ff66';
+            ctx.beginPath(); ctx.arc(dotX, dotY, dotR, 0, Math.PI * 2); ctx.fill();
+        } else if (i === tutStep) {
+            const pulse = 0.6 + 0.4 * Math.sin(Date.now() * 0.01);
+            ctx.fillStyle = '#00eeff';
+            ctx.globalAlpha = pulse;
+            ctx.beginPath(); ctx.arc(dotX, dotY, dotR + 1.5, 0, Math.PI * 2); ctx.fill();
+            ctx.globalAlpha = 1;
+        } else {
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.arc(dotX, dotY, dotR, 0, Math.PI * 2); ctx.stroke();
+        }
+        dotX += dotSpacing;
+    }
+    ctx.globalAlpha = 1;
+
+    // Step counter (right)
+    ctx.fillStyle = '#444';
+    ctx.font = `${Math.round(fs * 0.82)}px Courier New`;
+    ctx.textAlign = 'right';
+    ctx.fillText(`${tutStep + 1}/${n}`, W - 18, panelY + fs + 4);
+
+    // Title
+    ctx.fillStyle = '#ff9900';
+    ctx.font = `bold ${Math.round(fs * 1.12)}px Courier New`;
+    ctx.textAlign = 'left';
+    ctx.fillText(step.title, 20, panelY + fs * 2.2 + 8);
+
+    // Instruction
+    ctx.fillStyle = '#e8e8e8';
+    ctx.font = `${fs}px Courier New`;
+    ctx.fillText(step.msg, 20, panelY + fs * 3.4 + 10);
+
+    // Sub-text
+    ctx.fillStyle = '#666';
+    ctx.font = `${Math.round(fs * 0.85)}px Courier New`;
+    ctx.fillText(step.sub, 20, panelY + fs * 4.45 + 12);
+
+    // Off-screen arrow
+    drawTutArrow();
+}
+
+function drawTutArrow() {
+    const targets = tutGetTargets();
+    if (targets.length === 0) return;
+    const me = players[myIndex];
+    if (!me) return;
+    const tg = targets[0];
+    const camTarget = me.alive ? me : me;
+    const dx = tg.x - camTarget.camX, dy = tg.y - camTarget.camY;
+    const cos = Math.cos(camAngle), sin = Math.sin(camAngle);
+    const sx = W / 2 + dx * cos - dy * sin;
+    const sy = H / 2 + dx * sin + dy * cos;
+    // Only draw arrow if target is off-screen
+    const margin = 55;
+    if (sx > margin && sx < W - margin && sy > margin && sy < H - margin) return;
+    const ang = Math.atan2(sy - H / 2, sx - W / 2);
+    const edgeX = Math.max(28, Math.min(W - 28, W / 2 + Math.cos(ang) * (W * 0.36)));
+    const edgeY = Math.max(28, Math.min(H - 28, H / 2 + Math.sin(ang) * (H * 0.36)));
+    const pulse = 0.6 + 0.4 * Math.sin(Date.now() * 0.008);
+    ctx.save();
+    ctx.translate(edgeX, edgeY);
+    ctx.rotate(ang);
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = targets[0].color;
+    ctx.beginPath();
+    ctx.moveTo(12, 0); ctx.lineTo(-7, -6); ctx.lineTo(-4, 0); ctx.lineTo(-7, 6);
+    ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.restore();
+}
+
+// Simple rounded rectangle helper used by tutorial HUD
+function roundRect(c, x, y, w, h, r) {
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.lineTo(x + w - r, y);
+    c.arcTo(x + w, y, x + w, y + r, r);
+    c.lineTo(x + w, y + h - r);
+    c.arcTo(x + w, y + h, x + w - r, y + h, r);
+    c.lineTo(x + r, y + h);
+    c.arcTo(x, y + h, x, y + h - r, r);
+    c.lineTo(x, y + r);
+    c.arcTo(x, y, x + r, y, r);
+    c.closePath();
 }
 
 // =====================================================
@@ -2867,9 +3184,11 @@ function hostUpdate() {
     }
 
     // Pickup spawning (host only)
-    if (frame % PICKUP_SPAWN_INTERVAL === 0 && pickups.length < PICKUP_MAX) {
+    if (!tutMode && frame % PICKUP_SPAWN_INTERVAL === 0 && pickups.length < PICKUP_MAX) {
         spawnPickup();
     }
+    // Tutorial step tracking
+    if (tutMode) checkTutStep();
     // Pickup collection
     for (let i=pickups.length-1;i>=0;i--) {
         const pk = pickups[i];
@@ -3698,6 +4017,9 @@ function draw() {
     ctx.restore(); // end wrap offset
     } // end wrapOffsets loop
 
+    // Tutorial world-space indicators (rings at step targets)
+    if (tutMode) drawTutorialWorld();
+
     ctx.restore(); // end camera
 
     // Red vignette overlay when MY base is on fire
@@ -3766,6 +4088,8 @@ function draw() {
     drawRadar();
     // Controls
     drawControls();
+    // Tutorial overlay
+    if (tutMode) drawTutorialHUD();
 }
 
 // ---------- HUD ----------
