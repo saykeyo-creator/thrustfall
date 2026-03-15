@@ -2033,8 +2033,10 @@ function spawnSurvivalWave(wave) {
         base:{x:sb.bases[0].x, y:sb.bases[0].y, w:sb.bases[0].w||BASE_W, h:sb.bases[0].h||BASE_H},
         landed:hs.landed, landedTimer:hs.landedTimer,
         camX:hs.camX, camY:hs.camY, disconnected:false,
-        weapon:hs.weapon, shield:hs.shield, streak:hs.streak, lastKillFrame:hs.lastKillFrame,
+        weapon:hs.weapon, shield:hs.shield, shieldHP:hs.shieldHP||0, streak:hs.streak, lastKillFrame:hs.lastKillFrame,
         weaponTimer:hs.weaponTimer, flashTimer:hs.flashTimer,
+        hasEmp:false, hasTractor:false, empActive:0, empStruck:0,
+        tractorActive:0, tractorTarget:-1, tractorVictim:-1,
         skin:hs.skin, trail:hs.trail
     });
     playerInputs.push({rot:0, thrust:false, revThrust:false, fire:false});
@@ -2075,6 +2077,8 @@ function spawnSurvivalWave(wave) {
             bot:true, botDifficulty:difficulty, botType:botType.label,
             weapon:botWeapon, weaponTimer: botWeapon !== 'normal' ? WEAPON_TIMER : 0,
             shield: (wave>=5 || isBossWave) ? 1 : 0, shieldHP: (wave>=5 || isBossWave) ? 2 : 0, flashTimer:0,
+            hasEmp:false, hasTractor:false, empActive:0, empStruck:0,
+            tractorActive:0, tractorTarget:-1, tractorVictim:-1,
             streak:0, lastKillFrame:-999, lastInput:null
         });
         playerInputs.push({rot:0, thrust:false, revThrust:false, fire:false});

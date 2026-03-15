@@ -6164,6 +6164,14 @@ section('202. Survival Human State Preservation Across Waves');
     assert(cCode.includes('lives:hs.lives') || cCode.includes('lives: hs.lives'), 'human lives restored');
     assert(cCode.includes('weapon:hs.weapon') || cCode.includes('weapon: hs.weapon'), 'human weapon restored');
     assert(cCode.includes('shield:hs.shield') || cCode.includes('shield: hs.shield'), 'human shield restored');
+
+    // Verify tractor/emp fields initialized on survival wave human restore (prevents stuck-on-base regression)
+    const survivalHumanBlock = cCode.substring(cCode.indexOf('spawnSurvivalWave'), cCode.indexOf('spawnSurvivalWave') + 3000);
+    assert(survivalHumanBlock.includes('tractorVictim:-1') || survivalHumanBlock.includes('tractorVictim: -1'), 'survival human has tractorVictim initialized');
+    assert(survivalHumanBlock.includes('empStruck:0') || survivalHumanBlock.includes('empStruck: 0'), 'survival human has empStruck initialized');
+
+    // Verify bot spawn in survival also has tractor fields
+    assert(survivalHumanBlock.includes('tractorActive:0') || survivalHumanBlock.includes('tractorActive: 0'), 'survival bots have tractorActive initialized');
 }
 
 // =====================================================
