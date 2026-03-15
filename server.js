@@ -1254,6 +1254,27 @@ wss.on('connection', (ws) => {
                 wsRoomMap.delete(ws);
                 break;
             }
+            case 'hostQuit': {
+                const code = wsRoomMap.get(ws);
+                if (!code) return;
+                const room = rooms.get(code);
+                if (!room) return;
+                // Sanitize name to prevent injection in the message shown to other clients
+                const hostName = String(data.name || 'Host').slice(0, 32).replace(/[<>&"'`]/g, '');
+                // Notify all other players with a descriptive message
+                for (const p of room.lobbyPlayers) {
+                    if (p.ws !== ws) {
+                        room.sendTo(p.ws, { t: 'over', w: hostName + ' quit the game', stats: null });
+                    }
+                }
+                // Clean up room without broadcasting a second 'over' message
+                room.stopGame();
+                if (room.autoTimer) { clearInterval(room.autoTimer); room.autoTimer = null; }
+                wsRoomMap.delete(ws);
+                rooms.delete(room.code);
+                console.log(`Room ${room.code} ended: host quit`);
+                break;
+            }
             case 'ping': {
                 ws.send(JSON.stringify({ t: 'pong' }));
                 break;

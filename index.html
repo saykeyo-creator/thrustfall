@@ -16,6 +16,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:'Co
 #c{display:block;position:fixed;top:0;left:0;width:100%;height:100%}
 .overlay{position:fixed;top:0;left:0;width:100%;height:100%;display:none;flex-direction:column;align-items:center;justify-content:center;z-index:100;background:radial-gradient(ellipse at center,#1a0a2e 0%,#0d0015 60%,#000 100%);padding:1em;padding-top:max(1em,env(safe-area-inset-top));padding-bottom:max(1em,env(safe-area-inset-bottom));padding-left:max(1em,env(safe-area-inset-left));padding-right:max(1em,env(safe-area-inset-right));overflow-y:auto;transition:opacity .25s ease}
 .overlay.active{display:flex;animation:fadeIn .25s ease}
+#pauseBtn{position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:50;padding:6px 22px;color:rgba(255,255,255,0.5);font-family:'Courier New',monospace;font-size:1.5em;cursor:pointer;touch-action:manipulation;-webkit-user-select:none;user-select:none;display:none;letter-spacing:3px;line-height:1}
+#pauseBtn.active{display:block}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
 h1{font-size:clamp(2rem,8vw,4.5rem);color:#ff6600;text-shadow:0 0 20px #ff6600,0 0 40px #ff3300;margin-bottom:.1em;letter-spacing:.12em;animation:tp 2s ease-in-out infinite}
@@ -157,8 +159,18 @@ input[type=text]::placeholder{color:#555;text-transform:none}
 <button class="btn sm" onclick="showMenu()">BACK</button>
 </div>
 
+<!-- PAUSE BUTTON (shown during gameplay) -->
+<div id="pauseBtn" onclick="togglePause()">≡</div>
+
 <!-- COUNTDOWN -->
 <div class="overlay" id="countdown" style="background:rgba(0,0,0,.75)"></div>
+
+<!-- PAUSE SCREEN -->
+<div class="overlay" id="pauseScreen" style="background:rgba(0,0,0,0.85)">
+<div style="color:#00eeff;font-size:clamp(1.6rem,6vw,2.5rem);letter-spacing:6px;margin-bottom:.8em;text-shadow:0 0 20px #00eeff">PAUSED</div>
+<button class="btn" onclick="resumeGame()">&#9654; RESUME</button>
+<button class="btn" onclick="quitToMenu()" style="margin-top:.4em;border-color:#cc3300;color:#ff5500">QUIT TO MENU</button>
+</div>
 
 <!-- GAME OVER -->
 <div class="overlay" id="gameOverScreen">
@@ -339,7 +351,7 @@ let W = VIEW_W, H = VIEW_H;
 let screenW, screenH, viewScale = 1, viewOffX = 0, viewOffY = 0; // scaling state
 // HUD safe-area bounds in game coords (updated by resize, accounts for notch + screen overflow)
 let hudT = 4, hudL = 8, hudR = VIEW_W - 8;
-let running = false, frame = 0, af;
+let running = false, paused = false, frame = 0, af;
 
 // Networking — WebSocket to dedicated server
 const WS_URL = (location.protocol === 'file:' || location.hostname === 'localhost') ? 'wss://thrustfall-qr58.onrender.com' : (location.protocol==='https:'?'wss:':'ws:') + '//' + location.host;
@@ -1105,10 +1117,41 @@ function computeSpawns(numPlayers, wW, wH, terr, ceil, plats) {
 // =====================================================
 function showScreen(id) {
     document.querySelectorAll('.overlay').forEach(el => el.classList.remove('active'));
-    if (id) document.getElementById(id).classList.add('active');
+    if (id) {
+        document.getElementById(id).classList.add('active');
+        document.getElementById('pauseBtn').classList.remove('active');
+        document.getElementById('pauseScreen').classList.remove('active');
+        paused = false;
+    }
 }
 function showMenu() { cleanup(); showScreen('menuScreen'); startMenuTheme(); }
 function showMultiplayer() { showScreen('multiplayerScreen'); }
+
+function togglePause() {
+    if (!running) return;
+    paused = !paused;
+    document.getElementById('pauseScreen').classList.toggle('active', paused);
+}
+function resumeGame() {
+    paused = false;
+    document.getElementById('pauseScreen').classList.remove('active');
+}
+function quitToMenu() {
+    paused = false;
+    document.getElementById('pauseScreen').classList.remove('active');
+    if (isMultiplayer && isRoomCreator) {
+        // Host quitting: tell server so other players get a proper message
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            const hostName = players[myIndex] ? players[myIndex].name : 'Host';
+            ws.send(JSON.stringify({ t: 'hostQuit', name: hostName }));
+        }
+    } else if (isMultiplayer && !isRoomCreator) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ t: 'leave' }));
+        }
+    }
+    showMenu();
+}
 function showCreate() { showScreen('createScreen'); document.getElementById('createErr').textContent=''; document.getElementById('createStatus').textContent=''; setPublic(false); }
 function showJoin() { showScreen('joinScreen'); document.getElementById('joinErr').textContent=''; document.getElementById('joinStatus').textContent=''; }
 function showSolo() { showScreen('soloScreen'); }
@@ -1395,8 +1438,11 @@ function startSoloGame(mapKey) {
 
 function cleanup() {
     running = false;
+    paused = false;
     cancelAnimationFrame(af);
     stopMusic();
+    document.getElementById('pauseBtn').classList.remove('active');
+    document.getElementById('pauseScreen').classList.remove('active');
     if (ws && !isHost) { ws.close(); ws = null; } // close WS for multiplayer; keep for solo/survival
     lobbyPlayers = [];
     isHost = false;
@@ -1841,6 +1887,7 @@ function beginGame(data) {
     startMusic();
 
     showScreen(null);
+    document.getElementById('pauseBtn').classList.add('active');
     running = true;
     cancelAnimationFrame(af);
     af = requestAnimationFrame(loop);
@@ -4104,9 +4151,10 @@ canvas.addEventListener('touchcancel', touchEnd, {passive:false});
 document.addEventListener('keydown', e => {
     keys[e.code]=true;
     if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter'].includes(e.code))e.preventDefault();
+    if (e.code === 'Escape' && running) { e.preventDefault(); togglePause(); }
     // Spectator cycle on Space/Enter when eliminated
     const me = players[myIndex];
-    if (running && me && !me.alive && me.lives <= 0 && (e.code==='Space'||e.code==='Enter')) {
+    if (running && !paused && me && !me.alive && me.lives <= 0 && (e.code==='Space'||e.code==='Enter')) {
         cycleSpectator();
     }
 });
@@ -5350,6 +5398,7 @@ resize();
 function loop(timestamp) {
     if (!running) return;
     if (!timestamp) { af = requestAnimationFrame(loop); return; } // skip frame if no timestamp
+    if (paused) { af = requestAnimationFrame(loop); return; }
     if (!lastLoopTime) lastLoopTime = timestamp;
     const dt = Math.min(timestamp - lastLoopTime, 100); // cap to prevent spiral of death
     lastLoopTime = timestamp;
