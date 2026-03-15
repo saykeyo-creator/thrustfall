@@ -1153,6 +1153,13 @@ function snd(t, vol) {
                 g.gain.setValueAtTime(.12*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.25);
                 o.start(n); o.stop(n+.26); break;
             }
+            case 'tractorFizzle': {
+                // Short descending buzz — "no target" feedback
+                o.connect(g); g.connect(ac.destination);
+                o.type='sawtooth'; o.frequency.setValueAtTime(300,n); o.frequency.exponentialRampToValueAtTime(80,n+.15);
+                g.gain.setValueAtTime(.08*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.18);
+                o.start(n); o.stop(n+.19); break;
+            }
         }
     } catch (e) {}
 }
@@ -2837,6 +2844,10 @@ function handleEvent(evt) {
             screenShake = 6;
             doHaptic(60);
             break;
+        case 'tractorFizzle':
+            sndAt('tractorFizzle', ex, ey);
+            if (evt.i === myIndex) { killFeed.push({text:'⊛ NO TARGET',color:'#447733',timer:90}); doHaptic(20); }
+            break;
         case 'tractorHum':
             sndAt('tractorHum', ex, ey);
             break;
@@ -3174,7 +3185,7 @@ function fireTractor(p, pi) {
         const d = dist(p.x, p.y, op.x, op.y);
         if (d < bestDist) { bestDist = d; bestIdx = i; }
     }
-    if (bestIdx < 0) return; // no target in range
+    if (bestIdx < 0) { emitEvent({t:'e',n:'tractorFizzle',x:p.x,y:p.y,i:pi}); return; }
     p.tractorActive = TRACTOR_DUR;
     p.tractorTarget = bestIdx;
     p.hasTractor = false;
@@ -4250,14 +4261,17 @@ function draw() {
     ctx.save(); ctx.translate(wOff, 0);
 
     // Pre-rendered terrain (static geometry: stars, terrain, ceiling, platforms)
+    // Draw 2px wider (-1 to worldW+1) so adjacent wrap copies overlap by 1px,
+    // eliminating sub-pixel seam from fractional camera transforms
     if (terrainCanvas) {
-        ctx.drawImage(terrainCanvas, 0, 0);
+        ctx.drawImage(terrainCanvas, -1, 0, worldW + 2, worldH);
     }
 
     // Live star twinkle overlay — modulates brightness based on phase
     for (let si = frame % 3; si < stars.length; si += 3) {
         const s = stars[si];
-        if (s.x < visLeft || s.x > visRight || s.y < visTop || s.y > visBot) continue;
+        const sx = s.x + wOff;
+        if (sx < visLeft || sx > visRight || s.y < visTop || s.y > visBot) continue;
         const twinkle = .3 * Math.sin(s.tw);
         if (Math.abs(twinkle) < 0.05) continue;
         ctx.globalAlpha = Math.abs(twinkle);
@@ -4312,8 +4326,9 @@ function draw() {
     for (const b of bullets){const wx=b.x+wOff;if(wx<visLeft||wx>visRight||b.y<visTop||b.y>visBot)continue;const bsz=b.sz||2.5;ctx.fillStyle=b.color;ctx.beginPath();ctx.arc(b.x,b.y,bsz,0,Math.PI*2);ctx.fill();ctx.globalAlpha=.3;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x-b.vx*2,b.y-b.vy*2);ctx.stroke();ctx.globalAlpha=1;}
     ctx.globalCompositeOperation='source-over';
 
-    // Laser beams
+    // Laser beams — viewport cull
     for (const bm of beams) {
+        const wx=bm.x+wOff;if(wx<visLeft-LASER_RANGE||wx>visRight+LASER_RANGE||bm.y<visTop-LASER_RANGE||bm.y>visBot+LASER_RANGE)continue;
         const endX=bm.x+Math.cos(bm.angle)*(bm.endDist||LASER_RANGE), endY=bm.y+Math.sin(bm.angle)*(bm.endDist||LASER_RANGE);
         const intensity=Math.min(1,(bm.life||30)/(bm.maxLife||60));
         const flicker=0.7+Math.random()*0.3;
@@ -4774,9 +4789,21 @@ function drawHUD() {
         ctx.fillText('⚡ DISABLED '+secLeft+'s', hudL, hudY); hudY += fs+4;
     }
     if (me.hasTractor && me.tractorActive <= 0 && me.tractorVictim < 0) {
-        const pulse = 0.6 + Math.sin(frame * 0.07) * 0.4;
-        ctx.fillStyle = 'rgba(102,255,68,' + pulse + ')'; ctx.textAlign='left';
-        ctx.fillText('⊛ TRACTOR READY — SHAKE!', hudL, hudY); hudY += fs+4;
+        // Check if any enemy is within tractor range
+        let tractorTargetNear = false;
+        for (let ti = 0; ti < players.length; ti++) {
+            if (ti === myIndex) continue;
+            const tp = players[ti];
+            if (tp.alive && tp.tractorVictim < 0 && dist(me.x, me.y, tp.x, tp.y) < TRACTOR_RANGE) { tractorTargetNear = true; break; }
+        }
+        if (tractorTargetNear) {
+            const pulse = 0.7 + Math.sin(frame * 0.12) * 0.3;
+            ctx.fillStyle = 'rgba(102,255,68,' + pulse + ')'; ctx.textAlign='left';
+            ctx.fillText('⊛ TARGET IN RANGE — SHAKE!', hudL, hudY); hudY += fs+4;
+        } else {
+            ctx.fillStyle = 'rgba(102,255,68,0.4)'; ctx.textAlign='left';
+            ctx.fillText('⊛ TRACTOR READY', hudL, hudY); hudY += fs+4;
+        }
     }
     if (me.tractorActive > 0) {
         const secLeft = Math.ceil(me.tractorActive / 60);

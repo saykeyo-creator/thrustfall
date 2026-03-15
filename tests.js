@@ -8223,6 +8223,15 @@ section('269. Tractor Beam System');
 
     // Vignette
     assert(code.includes('TRACTOR LOCKED'), 'tractor victim vignette shows warning');
+
+    // No-target fizzle feedback
+    assert(code.includes("'tractorFizzle'"), 'tractorFizzle sound defined');
+    assert(code.includes("case 'tractorFizzle'"), 'tractorFizzle event handler');
+    assert(code.includes('NO TARGET'), 'fizzle shows NO TARGET killfeed text');
+
+    // Target-in-range HUD indicator
+    assert(code.includes('TARGET IN RANGE'), 'HUD shows TARGET IN RANGE when enemy nearby');
+    assert(code.includes('TRACTOR_RANGE') && code.includes('tractorTargetNear'), 'HUD checks distance for target-in-range');
 }
 
 console.log(`RESULTS: ${passed}/${total} passed, ${failed} failed`);
