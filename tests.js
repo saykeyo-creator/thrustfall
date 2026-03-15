@@ -5600,11 +5600,11 @@ section('180. EMP Powerup — Full System');
 
     // applyPickup handles EMP
     assert(code.includes("type === 'emp'") || code.includes("type==='emp'"), 'applyPickup handles emp type');
-    assert(code.includes("p.weapon='emp'") || code.includes("p.weapon = 'emp'"), 'EMP sets weapon to emp');
+    assert(code.includes('p.hasEmp = true') || code.includes('p.hasEmp=true'), 'EMP stored as hasEmp flag (separate from weapon)');
 
-    // fireBullets case
-    assert(code.includes("case 'emp':"), 'fireBullets has emp case');
-    assert(code.includes('p.empActive'), 'fireBullets sets empActive on carrier');
+    // fireEmp function (decoupled from fireBullets)
+    assert(code.includes('function fireEmp'), 'fireEmp function exists (shake/E key triggered)');
+    assert(code.includes('p.empActive'), 'fireEmp sets empActive on carrier');
 
     // hostUpdate — EMP disable
     assert(code.includes('p.empStruck'), 'empStruck state tracked in hostUpdate');
@@ -6106,7 +6106,7 @@ section('199. EMP Spawn Event Branching');
 {
     const cCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
     // spawnPickup uses ternary to emit different event for EMP
-    assert(cCode.includes("pType==='emp'?'empSpawn':'pickupSpawn'"), 'conditional event for EMP vs normal spawn');
+    assert(cCode.includes("(pType==='emp'||pType==='tractor')?pType+'Spawn':'pickupSpawn'"), 'conditional event for EMP/tractor vs normal spawn');
     // Both event handlers exist
     assert(cCode.includes("case 'empSpawn':"), 'empSpawn event handler exists');
     assert(cCode.includes("case 'pickupSpawn':"), 'pickupSpawn event handler exists');
@@ -7789,8 +7789,8 @@ section('261. Tutorial — Shield/EMP Tracking in Step 6');
     assert(cCode.includes("if (!tutShieldGot && me.shield > 0) tutShieldGot = true"),
         'step 6 tracks shield pickup via me.shield > 0');
     // tutEmpGot set when player picks up EMP
-    assert(cCode.includes("if (!tutEmpGot && me.weapon === 'emp') tutEmpGot = true"),
-        "step 6 tracks EMP pickup via me.weapon === 'emp'");
+    assert(cCode.includes('if (!tutEmpGot && me.hasEmp) tutEmpGot = true'),
+        'step 6 tracks EMP pickup via me.hasEmp');
     // Tracking only happens during step 6
     assert(cCode.includes('if (tutStep === 6)'), 'shield/EMP tracking guarded by tutStep === 6');
 
@@ -8094,6 +8094,135 @@ section('267. Win Tracking & XP Award');
     const victoryBlock = code.match(/musicStinger\('victory'\);[\s\S]{0,200}/);
     assert(victoryBlock && victoryBlock[0].includes('playerStats.wins++'), 'wins++ in victory block');
     assert(victoryBlock && victoryBlock[0].includes('addXP(XP_PER_WIN)'), 'XP_PER_WIN in victory block');
+}
+
+// =====================================================
+section('268. EMP Shake-to-Fire System');
+// =====================================================
+{
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+
+    // EMP decoupled from weapon slot — pickup sets hasEmp flag
+    assert(code.includes("type === 'emp'") || code.includes("type==='emp'"), 'applyPickup handles emp type');
+    assert(code.includes('p.hasEmp = true'), 'EMP pickup sets hasEmp flag');
+    assert(!code.includes("p.weapon = 'emp'") && !code.includes("p.weapon='emp'"), 'EMP no longer sets weapon (decoupled)');
+
+    // fireEmp is independent function
+    assert(code.includes('function fireEmp(p, pi)'), 'fireEmp function with player+index params');
+    assert(/fireEmp[\s\S]{0,200}p\.empActive\s*=\s*EMP_PULSE_DUR/.test(code), 'fireEmp sets empActive = EMP_PULSE_DUR');
+    assert(/fireEmp[\s\S]{0,200}p\.hasEmp\s*=\s*false/.test(code), 'fireEmp consumes hasEmp (sets false)');
+
+    // Shake detection via DeviceMotion
+    assert(code.includes('devicemotion'), 'DeviceMotion event listener for shake');
+    assert(code.includes('initShakeDetect'), 'initShakeDetect function exists');
+    assert(code.includes('empReady = true'), 'shake sets empReady flag');
+    assert(code.includes('lastShakeTime'), 'shake cooldown tracked');
+
+    // E key fires EMP on desktop
+    assert(code.includes("e.code === 'KeyE'"), 'E key triggers EMP');
+
+    // hasEmp in state broadcast
+    assert(code.includes('hE:p.hasEmp'), 'hasEmp broadcast in state packets');
+    assert(code.includes('hasEmp = !!b.hE') || code.includes('hasEmp = !!sp.hE'), 'hasEmp synced from state');
+
+    // hasEmp reset on death and respawn
+    assert(/killPlayer[\s\S]{0,2500}hasEmp\s*=\s*false/.test(code), 'hasEmp reset on death');
+    assert(/respawnPlayer[\s\S]{0,400}hasEmp\s*=\s*false/.test(code), 'hasEmp reset on respawn');
+
+    // hasEmp in player init
+    assert(code.includes('hasEmp: false') || code.includes('hasEmp:false'), 'hasEmp initialized false in beginGame');
+
+    // HUD shows EMP ready indicator
+    assert(code.includes('EMP READY'), 'HUD shows EMP READY when hasEmp');
+    assert(code.includes('SHAKE'), 'HUD tells user to shake');
+
+    // Tutorial updated
+    assert(code.includes('me.hasEmp'), 'tutorial tracks EMP via hasEmp');
+}
+
+// =====================================================
+section('269. Tractor Beam System');
+// =====================================================
+{
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+
+    // Constants
+    assert(code.includes('TRACTOR_RANGE'), 'TRACTOR_RANGE constant defined');
+    assert(code.includes('TRACTOR_DUR'), 'TRACTOR_DUR constant defined');
+    assert(code.includes('TRACTOR_TETHER'), 'TRACTOR_TETHER constant defined');
+    assert(code.includes('TRACTOR_THRUST_PENALTY'), 'TRACTOR_THRUST_PENALTY constant defined');
+    assert(code.includes('TRACTOR_RELEASE_INV'), 'TRACTOR_RELEASE_INV constant defined');
+
+    // Pickup type
+    assert(code.includes("id:'tractor'"), 'tractor pickup type defined');
+    assert(code.includes("p.hasTractor = true"), 'applyPickup sets hasTractor flag');
+
+    // Specials are mutually exclusive — picking up one clears the other
+    assert(/hasEmp\s*=\s*true[\s\S]{0,10}hasTractor\s*=\s*false/.test(code), 'EMP pickup clears tractor');
+    assert(/hasTractor\s*=\s*true[\s\S]{0,10}hasEmp\s*=\s*false/.test(code), 'tractor pickup clears EMP');
+
+    // Player init
+    assert(code.includes('hasTractor:false') || code.includes('hasTractor: false'), 'hasTractor initialized false');
+    assert(code.includes('tractorActive:0') || code.includes('tractorActive: 0'), 'tractorActive initialized 0');
+    assert(code.includes('tractorTarget:-1') || code.includes('tractorTarget: -1'), 'tractorTarget initialized -1');
+    assert(code.includes('tractorVictim:-1') || code.includes('tractorVictim: -1'), 'tractorVictim initialized -1');
+
+    // fireTractor function
+    assert(/function\s+fireTractor\s*\(/.test(code), 'fireTractor function exists');
+    assert(code.includes('p.tractorActive = TRACTOR_DUR'), 'fireTractor sets tractorActive');
+    assert(code.includes("victim.tractorVictim = pi"), 'fireTractor marks victim');
+
+    // breakTractor function
+    assert(/function\s+breakTractor\s*\(/.test(code), 'breakTractor function exists');
+    assert(code.includes('TRACTOR_RELEASE_INV'), 'breakTractor grants release invincibility');
+
+    // Death/respawn resets
+    assert(/killPlayer[\s\S]{0,2500}hasTractor\s*=\s*false/.test(code), 'hasTractor reset on death');
+    assert(/killPlayer[\s\S]{0,2500}breakTractor/.test(code), 'breakTractor called on death');
+    assert(/respawnPlayer[\s\S]{0,600}hasTractor\s*=\s*false/.test(code), 'hasTractor reset on respawn');
+    assert(/respawnPlayer[\s\S]{0,600}breakTractor/.test(code), 'breakTractor called on respawn');
+
+    // Priority: EMP fires first, then tractor
+    assert(/empReady[\s\S]{0,50}hasEmp[\s\S]{0,80}hasTractor/.test(code), 'EMP has priority over tractor on shake/E');
+
+    // Victim control disable
+    assert(code.includes('tractorVictim < 0') || code.includes('tractorVictim<0'), 'tractor victim controls disabled');
+
+    // Tractor physics (tow logic)
+    assert(code.includes('TRACTOR_TETHER'), 'tow physics uses TRACTOR_TETHER');
+    assert(code.includes('tractorHum'), 'periodic tractor hum event emitted');
+
+    // State broadcast
+    assert(code.includes('hT:p.hasTractor'), 'hasTractor broadcast in state packets');
+    assert(code.includes('tA:p.tractorActive'), 'tractorActive broadcast');
+
+    // Client sync
+    assert(code.includes('!!b.hT') || code.includes('!!sp.hT'), 'hasTractor synced on client');
+
+    // Sound effects
+    assert(code.includes("'tractorActivate'"), 'tractorActivate sound defined');
+    assert(code.includes("'tractorHum'"), 'tractorHum sound defined');
+    assert(code.includes("'tractorRelease'"), 'tractorRelease sound defined');
+    assert(code.includes("'tractorSpawn'"), 'tractorSpawn sound defined');
+
+    // Event handlers
+    assert(code.includes("case 'tractorActivate'"), 'tractorActivate event handler');
+    assert(code.includes("case 'tractorRelease'"), 'tractorRelease event handler');
+    assert(code.includes("case 'tractorSpawn'"), 'tractorSpawn event handler');
+
+    // HUD indicators
+    assert(code.includes('TRACTOR READY'), 'HUD shows TRACTOR READY');
+    assert(code.includes('TRACTOR ACTIVE'), 'HUD shows TRACTOR ACTIVE');
+    assert(code.includes('TETHERED'), 'HUD shows TETHERED when victim');
+
+    // Rendering
+    assert(code.includes('tractorActive') && code.includes('tractorTarget'), 'tether rendering references tractor state');
+
+    // Radar
+    assert(code.includes("pk.type==='tractor'"), 'tractor gets special radar rendering');
+
+    // Vignette
+    assert(code.includes('TRACTOR LOCKED'), 'tractor victim vignette shows warning');
 }
 
 console.log(`RESULTS: ${passed}/${total} passed, ${failed} failed`);

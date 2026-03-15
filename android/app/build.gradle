@@ -7,8 +7,8 @@ android {
         applicationId "com.lakesgames.thrustfall"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 24
-        versionName "1.2.20"
+        versionCode 26
+        versionName "1.2.22"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -55,6 +55,20 @@ dependencies {
 }
 
 apply from: 'capacitor.build.gradle'
+
+// Auto-copy AAB to project root after every release bundle build
+tasks.whenTaskAdded { task ->
+    if (task.name == 'bundleRelease') {
+        task.doLast {
+            def src = file("${buildDir}/outputs/bundle/release/app-release.aab")
+            def dst = file("${rootProject.projectDir}/../thrustfall-release.aab")
+            if (src.exists()) {
+                dst.bytes = src.bytes
+                println "Copied AAB → ${dst.absolutePath}"
+            }
+        }
+    }
+}
 
 try {
     def servicesJSON = file('google-services.json')

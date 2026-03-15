@@ -215,7 +215,7 @@ input[type=text]::placeholder{color:#555;text-transform:none}
 <span style="color:#ff9900">Touch</span>: joystick + fire button<br>
 <span style="color:#ff9900">Keyboard</span>: WASD/Arrows + Space<br><br>
 <span style="color:#ff9900">Pickups</span>: Spread · Rapid · Heavy · Laser · Homing · Burst<br>
-<span style="color:#ff9900">◎ Shield</span> (stackable!) · <span style="color:#ff9900">♥ Life</span><br>
+<span style="color:#ff9900">◎ Shield</span> (stackable!) · <span style="color:#ff9900">♥ Life</span> · <span style="color:#ffff00">⚡ EMP</span> (shake to fire!)<br>
 Land on bases to refuel · Collect weapons · Survive!
 </div>
 </div>
@@ -300,6 +300,7 @@ const PICKUP_TYPES = [
     { id:'shield',  name:'SHIELD',  color:'#00ffaa', icon:'◎', desc:'Stackable shield', weight:4 },
     { id:'heart',   name:'LIFE',    color:'#ff4477', icon:'♥', desc:'Extra life',      weight:2 },
     { id:'emp',     name:'EMP',     color:'#ffff00', icon:'⚡', desc:'EMP pulse',      weight:1 },
+    { id:'tractor',  name:'TRACTOR', color:'#66ff44', icon:'⊛', desc:'Tractor beam',   weight:1 },
 ];
 const PICKUP_TOTAL_WEIGHT = PICKUP_TYPES.reduce((s,p)=>s+p.weight,0);
 
@@ -308,9 +309,14 @@ const WEAPON_TIMER = 1200; // weapon expires after 20 seconds (1200 frames at 60
 const HOMING_TURN = 0.10; // homing bullet turn rate (was 0.06 — buffed)
 const LASER_RANGE = 350; // laser range (was 450 — nerfed)
 const LASER_DUR = 45; // laser beam duration (was 60 — nerfed)
-const EMP_PULSE_DUR = 300; // EMP field active for 5 seconds (300 frames at 60fps)
-const EMP_DISABLE_DUR = 240; // thrust/weapons/shield disabled for 4 seconds (240 frames)
-const EMP_RADIUS = 180; // EMP pulse radius in world pixels
+const EMP_PULSE_DUR = 330; // EMP field active for 5.5 seconds (330 frames at 60fps)
+const EMP_DISABLE_DUR = 270; // thrust/weapons/shield disabled for 4.5 seconds (270 frames)
+const EMP_RADIUS = 198; // EMP pulse radius in world pixels (+10%)
+const TRACTOR_RANGE = 160; // activation range in world pixels
+const TRACTOR_DUR = 360; // tether active for 6 seconds (360 frames at 60fps)
+const TRACTOR_TETHER = 80; // tow distance between ships
+const TRACTOR_THRUST_PENALTY = 0.95; // 5% thrust reduction while towing
+const TRACTOR_RELEASE_INV = 60; // 1s invincibility after release
 
 // ---------- PROGRESSION ----------
 const XP_PER_KILL = 25;
@@ -418,7 +424,7 @@ const TUT_STEPS = [
     { title:'LANDING',  msg:'Land on the glowing platform.',          sub:'Approach slowly — too fast = crash!' },
     { title:'PICKUP',   msg:'Fly through the \u2295 SPREAD pickup.',  sub:'Pickups give powerful weapons!' },
     { title:'WEAPONS',  msg:'Tap RIGHT side to fire!',                sub:'Fire 3 shots to continue.' },
-    { title:'SPECIALS', msg:'Get the \u25ce SHIELD, then \u26a1 EMP.',sub:'Shield blocks hits. EMP stuns foes!' },
+    { title:'SPECIALS', msg:'Get the \u25ce SHIELD, then \u26a1 EMP.',sub:'Shield blocks hits. Shake to fire EMP!' },
 ];
 // Tutorial world-space target positions (in tutorial map coords: 2400×1200)
 const TUT_PLATFORM_X = 1020, TUT_PLATFORM_Y = 600; // matches platform in generateMap tutorial
@@ -713,10 +719,11 @@ let lastLoopTime = 0, accumulator = 0, gameSpeed = 1.0;
 
 // Local input
 let joystickTouch = null, fireTouch = null, keys = {};
+let empReady = false; // flick/E-key latch for EMP fire
 
 // Audio
 let ac = null;
-function initAudio() { if (!ac) { ac = new (window.AudioContext || window.webkitAudioContext)(); } }
+function initAudio() { if (!ac) { ac = new (window.AudioContext || window.webkitAudioContext)(); initShakeDetect(); } }
 function snd(t, vol) {
     if (!ac) return;
     vol = (vol !== undefined ? vol : 1) * settings.sfxVol;
@@ -1099,6 +1106,52 @@ function snd(t, vol) {
                 o.type='sine'; o.frequency.setValueAtTime(200,n); o.frequency.exponentialRampToValueAtTime(50,n+.16);
                 g.gain.setValueAtTime(.035*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.16);
                 o.start(n); o.stop(n+.17); break;
+            }
+            case 'tractorSpawn': {
+                // Rising magnetic hum — two detuned saws through resonant bandpass
+                const f=ac.createBiquadFilter(), o2=ac.createOscillator();
+                f.type='bandpass'; f.Q.value=6;
+                f.frequency.setValueAtTime(200,n); f.frequency.exponentialRampToValueAtTime(1200,n+.35); f.frequency.exponentialRampToValueAtTime(500,n+.55);
+                o.connect(f); o2.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='sawtooth'; o.frequency.setValueAtTime(150,n); o.frequency.exponentialRampToValueAtTime(800,n+.35); o.frequency.exponentialRampToValueAtTime(400,n+.55);
+                o2.type='sawtooth'; o2.detune.value=-10; o2.frequency.setValueAtTime(150,n); o2.frequency.exponentialRampToValueAtTime(800,n+.35); o2.frequency.exponentialRampToValueAtTime(400,n+.55);
+                g.gain.setValueAtTime(.09*vol,n); g.gain.setValueAtTime(.12*vol,n+.15); g.gain.exponentialRampToValueAtTime(.001,n+.6);
+                o.start(n); o.stop(n+.6); o2.start(n); o2.stop(n+.6);
+                break;
+            }
+            case 'tractorActivate': {
+                // Heavy magnetic clamp thunk + rising hum
+                const f=ac.createBiquadFilter(), o2=ac.createOscillator(), g2=ac.createGain();
+                f.type='lowpass'; f.Q.value=5;
+                f.frequency.setValueAtTime(3000,n); f.frequency.exponentialRampToValueAtTime(100,n+.2);
+                o.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='square'; o.frequency.setValueAtTime(80,n); o.frequency.exponentialRampToValueAtTime(40,n+.2);
+                g.gain.setValueAtTime(.14*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.25);
+                o.start(n); o.stop(n+.26);
+                // Rising hum layer
+                o2.connect(g2); g2.connect(ac.destination);
+                o2.type='sawtooth'; o2.frequency.setValueAtTime(100,n+.1); o2.frequency.exponentialRampToValueAtTime(600,n+.5);
+                g2.gain.setValueAtTime(0,n); g2.gain.linearRampToValueAtTime(.08*vol,n+.2); g2.gain.exponentialRampToValueAtTime(.001,n+.5);
+                o2.start(n+.1); o2.stop(n+.5);
+                break;
+            }
+            case 'tractorHum': {
+                // Low buzzing tether hum — very light (called every 30 frames)
+                const f=ac.createBiquadFilter();
+                f.type='lowpass'; f.Q.value=3; f.frequency.value=250;
+                o.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='sawtooth'; o.frequency.setValueAtTime(60,n); o.frequency.setValueAtTime(55,n+.08); o.frequency.setValueAtTime(65,n+.12);
+                g.gain.setValueAtTime(.03*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.15);
+                o.start(n); o.stop(n+.16); break;
+            }
+            case 'tractorRelease': {
+                // Snap/discharge pop
+                const f=ac.createBiquadFilter();
+                f.type='highpass'; f.Q.value=2; f.frequency.value=800;
+                o.connect(f); f.connect(g); g.connect(ac.destination);
+                o.type='sawtooth'; o.frequency.setValueAtTime(1500,n); o.frequency.exponentialRampToValueAtTime(60,n+.2);
+                g.gain.setValueAtTime(.12*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.25);
+                o.start(n); o.stop(n+.26); break;
             }
         }
     } catch (e) {}
@@ -2311,7 +2364,8 @@ function beginGame(data) {
             landed: true, landedTimer: 120,
             camX: bs.x + (bs.w||BASE_W)/2, camY: baseTopY - SHIP_SZ,
             disconnected: false,
-            weapon: 'normal', shield: pShield, shieldHP: 2,
+            weapon: 'normal', shield: pShield, shieldHP: 2, hasEmp: false, hasTractor: false,
+            tractorActive: 0, tractorTarget: -1, tractorVictim: -1,
             weaponTimer: 0, // countdown to weapon expiry
             flashTimer: 0, // hit flash effect
             streak: 0, lastKillFrame: -999,
@@ -2771,6 +2825,27 @@ function handleEvent(evt) {
         case 'empPulse':
             sndAt('empPulse', ex, ey);
             break;
+        case 'tractorSpawn':
+            sndAt('tractorSpawn', ex, ey);
+            screenShake = Math.max(screenShake, 4);
+            for(let i=0;i<25;i++){const a=Math.random()*Math.PI*2,s=Math.random()*5+2;particles.push({x:ex,y:ey,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:40+Math.random()*20,maxLife:40+Math.random()*20,color:['#66ff44','#44ff88','#aaffaa'][Math.floor(Math.random()*3)],size:Math.random()*2.5+1});}
+            killFeed.push({text:'⊛ TRACTOR SPAWNED ⊛',color:'#66ff44',timer:180,big:true});
+            break;
+        case 'tractorActivate':
+            sndAt('tractorActivate', ex, ey);
+            bumpCombat(COMBAT_KILL_BUMP);
+            screenShake = 6;
+            doHaptic(60);
+            break;
+        case 'tractorHum':
+            sndAt('tractorHum', ex, ey);
+            break;
+        case 'tractorRelease':
+            sndAt('tractorRelease', ex, ey);
+            if (evt.vi === myIndex) {
+                scoreFloats.push({x:ex,y:ey-30,text:'TETHER RELEASED',color:'#66ff44',timer:90});
+            }
+            break;
     }
 }
 
@@ -2811,7 +2886,9 @@ function killPlayer(p, force, killerIdx, shieldDmg) {
     p.flashTimer = 0;
     if (playerDeaths[p.id] !== undefined) playerDeaths[p.id]++;
     p.weapon = 'normal'; p.shield = 0; p.shieldHP = 0; p.weaponTimer = 0;
+    p.hasEmp = false; p.hasTractor = false;
     p.empActive = 0; p.empStruck = 0;
+    breakTractor(p);
     // Determine kill effect: use killer's killEffect if known, else default
     const ki = (killerIdx !== undefined && killerIdx >= 0) ? killerIdx : -1;
     const ke = (ki >= 0 && players[ki]) ? (players[ki].killEffect || 'default') : 'default';
@@ -2855,7 +2932,9 @@ function awardKill(killer, homing) {
 function respawnPlayer(p) {
     p.x=p.spawnX; p.y=p.spawnY; p.vx=0; p.vy=0; p.angle=-Math.PI/2;
     p.alive=true; p.invT=INVINCE_T; p.landed=true; p.landedTimer=60;
+    p.hasEmp = false; p.hasTractor = false;
     p.empActive = 0; p.empStruck = 0;
+    breakTractor(p);
     const isLocalS = (isHost && p.id === 0) || (!isHost && p.id === myIndex);
     p.shield = 1 + (isLocalS ? activeBonuses.shield : 0); // spawn shield + perk bonus
     p.shieldHP = 2;
@@ -2971,7 +3050,7 @@ function spawnPickup() {
                     if (py > ceilY + 20 && py < groundY - 20) {
                         const pType = randomPickupType();
                         pickups.push({x, y:py, type:pType, bobPhase:Math.random()*Math.PI*2, age:0});
-                        emitEvent({t:'e',n:pType==='emp'?'empSpawn':'pickupSpawn',x:x,y:py});
+                        emitEvent({t:'e',n:(pType==='emp'||pType==='tractor')?pType+'Spawn':'pickupSpawn',x:x,y:py});
                         placed = true; break;
                     }
                 }
@@ -2990,7 +3069,7 @@ function spawnPickup() {
         if (tooClose) continue;
         const pType = randomPickupType();
         pickups.push({x, y, type:pType, bobPhase:Math.random()*Math.PI*2, age:0});
-        emitEvent({t:'e',n:pType==='emp'?'empSpawn':'pickupSpawn',x:x,y:y});
+        emitEvent({t:'e',n:(pType==='emp'||pType==='tractor')?pType+'Spawn':'pickupSpawn',x:x,y:y});
         return;
     }
 }
@@ -3002,8 +3081,9 @@ function applyPickup(p, type) {
         p.shield = (p.shield || 0) + 1;
         p.shieldHP = 2;
     } else if (type === 'emp') {
-        p.weapon = 'emp';
-        p.weaponTimer = WEAPON_TIMER; // standard expiry timer — fires on next shot
+        p.hasEmp = true; p.hasTractor = false; // specials are mutually exclusive
+    } else if (type === 'tractor') {
+        p.hasTractor = true; p.hasEmp = false; // specials are mutually exclusive
     } else {
         p.weapon = type;
         const isLocalW = (isHost && p.id === 0) || (!isHost && p.id === myIndex);
@@ -3061,18 +3141,65 @@ function fireBullets(p, pi) {
             // Fast aggressive tracker
             bullets.push({x:bx,y:by,vx:Math.cos(a)*BULLET_SPD*0.9+vbx,vy:Math.sin(a)*BULLET_SPD*0.9+vby,owner:pi,life:Math.floor(BULLET_LIFE*1.5),color:p.color,sz:3.5,homing:true});
             p.fireCd = Math.floor(FIRE_CD*1.1 * fMul); sn='shootHoming'; break;
-        case 'emp':
-            // EMP pulse — one-shot activation, field moves with player
-            p.empActive = EMP_PULSE_DUR;
-            p.weapon = 'normal'; p.weaponTimer = 0; // consumed
-            emitEvent({t:'e',n:'empActivate',x:p.x,y:p.y});
-            return; // skip normal shoot event
+        // EMP removed from fire — now triggered by flick/E key via fireEmp()
         default: // normal
             bullets.push({x:bx,y:by,vx:Math.cos(a)*BULLET_SPD+vbx,vy:Math.sin(a)*BULLET_SPD+vby,owner:pi,life:BULLET_LIFE,color:p.color,sz:2.5});
             p.fireCd = Math.floor(FIRE_CD / 1.5 * fMul); // stock fires 1.5x faster (perk can reduce further)
     }
     emitEvent({t:'e',n:sn,x:bx,y:by});
     if (tutMode && pi === 0) tutShotCount++; // tutorial: count shot bursts
+}
+
+// =====================================================
+// EMP FIRE (separate from weapon system)
+// =====================================================
+function fireEmp(p, pi) {
+    if (!p.hasEmp || p.empActive > 0 || !p.alive) return;
+    p.empActive = EMP_PULSE_DUR;
+    p.hasEmp = false;
+    emitEvent({t:'e',n:'empActivate',x:p.x,y:p.y});
+}
+
+// =====================================================
+// TRACTOR BEAM (separate from weapon system)
+// =====================================================
+function fireTractor(p, pi) {
+    if (!p.hasTractor || p.tractorActive > 0 || !p.alive) return;
+    // Find closest alive enemy within TRACTOR_RANGE
+    let bestDist = TRACTOR_RANGE, bestIdx = -1;
+    for (let i = 0; i < players.length; i++) {
+        if (i === pi) continue;
+        const op = players[i];
+        if (!op.alive || op.tractorVictim >= 0) continue; // skip dead or already tethered
+        const d = dist(p.x, p.y, op.x, op.y);
+        if (d < bestDist) { bestDist = d; bestIdx = i; }
+    }
+    if (bestIdx < 0) return; // no target in range
+    p.tractorActive = TRACTOR_DUR;
+    p.tractorTarget = bestIdx;
+    p.hasTractor = false;
+    const victim = players[bestIdx];
+    victim.tractorVictim = pi;
+    emitEvent({t:'e',n:'tractorActivate',x:p.x,y:p.y,i:pi,vi:bestIdx});
+}
+
+function breakTractor(p) {
+    // Break any tether involving this player (as tow-er or victim)
+    if (p.tractorTarget >= 0) {
+        const victim = players[p.tractorTarget];
+        if (victim) {
+            victim.tractorVictim = -1;
+            victim.invT = Math.max(victim.invT, TRACTOR_RELEASE_INV);
+            emitEvent({t:'e',n:'tractorRelease',x:victim.x,y:victim.y,i:p.id,vi:p.tractorTarget});
+        }
+    }
+    if (p.tractorVictim >= 0) {
+        const tower = players[p.tractorVictim];
+        if (tower) { tower.tractorActive = 0; tower.tractorTarget = -1; }
+        p.invT = Math.max(p.invT, TRACTOR_RELEASE_INV);
+        emitEvent({t:'e',n:'tractorRelease',x:p.x,y:p.y,i:p.tractorVictim,vi:p.id});
+    }
+    p.tractorActive = 0; p.tractorTarget = -1; p.tractorVictim = -1;
 }
 
 // =====================================================
@@ -3106,7 +3233,7 @@ function checkTutStep() {
     if (tutStep === 1) { tutRotAccum += Math.abs(playerInputs[0]?.rot || 0) * ROT_SPD_MAX; }
     if (tutStep === 6) {
         if (!tutShieldGot && me.shield > 0) tutShieldGot = true;
-        if (!tutEmpGot && me.weapon === 'emp') tutEmpGot = true;
+        if (!tutEmpGot && me.hasEmp) tutEmpGot = true;
     }
 
     let done = false;
@@ -3168,30 +3295,37 @@ function drawTutorialHUD() {
     // Place panel just below the top HUD bar so it never covers controls
     const topHudH = fs * 2 + 16;
     const panelY = hudT + topHudH + 4;
+    const panelL = hudL - 2;               // left edge respects safe area
+    const panelR = hudR + 2;               // right edge respects safe area
+    const panelW = panelR - panelL;
+    const textL = panelL + 12;             // text inset from panel edge
+    const textR = panelR - 8;             // right-aligned text inset
+    const maxW = panelW - 24;              // max text width inside panel
 
     // Panel background
     ctx.fillStyle = 'rgba(2,8,20,0.88)';
     ctx.strokeStyle = 'rgba(0,238,255,0.3)';
     ctx.lineWidth = 1;
-    roundRect(ctx, 10, panelY, W - 20, panelH, 6);
+    roundRect(ctx, panelL, panelY, panelW, panelH, 6);
     ctx.fill(); ctx.stroke();
 
     // Step completion flash
     if (!tutComplete && tutFlash > 0) {
         const alpha = (tutFlash / 60) * 0.35;
         ctx.fillStyle = `rgba(51,255,102,${alpha})`;
-        roundRect(ctx, 10, panelY, W - 20, panelH, 6);
+        roundRect(ctx, panelL, panelY, panelW, panelH, 6);
         ctx.fill();
     }
 
     if (tutComplete) {
         ctx.textAlign = 'center';
+        const cx = panelL + panelW / 2;
         ctx.fillStyle = '#33ff66';
         ctx.font = `bold ${Math.round(fs * 1.4)}px Courier New`;
-        ctx.fillText('TRAINING COMPLETE!', W / 2, panelY + panelH * 0.42);
+        ctx.fillText('TRAINING COMPLETE!', cx, panelY + panelH * 0.42);
         ctx.fillStyle = '#ffcc00';
         ctx.font = `${fs}px Courier New`;
-        ctx.fillText("You're ready for battle!", W / 2, panelY + panelH * 0.72);
+        ctx.fillText("You're ready for battle!", cx, panelY + panelH * 0.72);
         return;
     }
 
@@ -3201,7 +3335,8 @@ function drawTutorialHUD() {
     // Progress dots
     const dotR = 4, dotSpacing = 14, dotY = panelY + 10;
     const totalDotW = n * dotSpacing - (dotSpacing - dotR * 2);
-    let dotX = W / 2 - totalDotW / 2 + dotR;
+    const cx = panelL + panelW / 2;
+    let dotX = cx - totalDotW / 2 + dotR;
     for (let i = 0; i < n; i++) {
         ctx.globalAlpha = 1;
         if (i < tutStep) {
@@ -3226,28 +3361,27 @@ function drawTutorialHUD() {
     ctx.fillStyle = '#444';
     ctx.font = `${Math.round(fs * 0.82)}px Courier New`;
     ctx.textAlign = 'right';
-    ctx.fillText(`${tutStep + 1}/${n}`, W - 18, panelY + fs + 2);
+    ctx.fillText(`${tutStep + 1}/${n}`, textR, panelY + fs + 2);
 
     // Title
     ctx.fillStyle = '#ff9900';
     ctx.font = `bold ${Math.round(fs * 1.12)}px Courier New`;
     ctx.textAlign = 'left';
-    ctx.fillText(step.title, 20, panelY + fs * 2.1 + 6);
+    ctx.fillText(step.title, textL, panelY + fs * 2.1 + 6);
 
     // Instruction — shrink font until it fits
     ctx.fillStyle = '#e8e8e8';
-    const maxW = W - 40;
     let msgFs = fs;
     ctx.font = `${msgFs}px Courier New`;
     while (ctx.measureText(step.msg).width > maxW && msgFs > 7) { msgFs--; ctx.font = `${msgFs}px Courier New`; }
-    ctx.fillText(step.msg, 20, panelY + fs * 3.1 + 8);
+    ctx.fillText(step.msg, textL, panelY + fs * 3.1 + 8);
 
     // Sub-text — shrink font until it fits
     ctx.fillStyle = '#888';
     let subFs = Math.round(fs * 0.85);
     ctx.font = `${subFs}px Courier New`;
     while (ctx.measureText(step.sub).width > maxW && subFs > 6) { subFs--; ctx.font = `${subFs}px Courier New`; }
-    ctx.fillText(step.sub, 20, panelY + fs * 3.95 + 10);
+    ctx.fillText(step.sub, textL, panelY + fs * 3.95 + 10);
 
     // Off-screen arrow
     drawTutArrow();
@@ -3331,12 +3465,18 @@ function hostUpdate() {
         if (p.empStruck > 0) p.empStruck--;
 
         if (p.landed) {
-            if ((inp.thrust || inp.revThrust) && !p.empStruck) p.landed=false;
+            if ((inp.thrust || inp.revThrust) && !p.empStruck && p.tractorVictim < 0) p.landed=false;
             p.angle += inp.rot * ROT_SPD_MAX;
             if (p.landed) {
                 p.vy=0; p.vx*=0.92;
-                if (inp.fire && p.fireCd<=0 && !p.empStruck) {
+                if (inp.fire && p.fireCd<=0 && !p.empStruck && p.tractorVictim < 0) {
                     fireBullets(p, pi);
+                }
+                // Special ability fire while landed (host player — shake or E key)
+                if (pi === 0 && empReady && !p.empStruck) {
+                    if (p.hasEmp) { fireEmp(p, pi); }
+                    else if (p.hasTractor && p.tractorActive <= 0 && p.tractorVictim < 0) { fireTractor(p, pi); }
+                    empReady = false;
                 }
                 if (p.fireCd>0) p.fireCd--;
                 if (p.invT>0) p.invT--;
@@ -3345,9 +3485,9 @@ function hostUpdate() {
         }
 
         p.angle += inp.rot * ROT_SPD_MAX;
-        p.thrusting = inp.thrust && !p.empStruck;
-        p.revThrusting = inp.revThrust && !p.empStruck;
-        p.firing = inp.fire && !p.empStruck;
+        p.thrusting = inp.thrust && !p.empStruck && p.tractorVictim < 0;
+        p.revThrusting = inp.revThrust && !p.empStruck && p.tractorVictim < 0;
+        p.firing = inp.fire && !p.empStruck && p.tractorVictim < 0;
 
         // Thrust with perk multiplier for local player
         const isLocalT = (isHost && pi === 0) || (!isHost && pi === myIndex);
@@ -3405,6 +3545,12 @@ function hostUpdate() {
         if (p.firing && p.fireCd<=0) {
             fireBullets(p, pi);
         }
+        // Special ability fire — host player only (triggered by shake or E key)
+        if (pi === 0 && empReady && !p.empStruck) {
+            if (p.hasEmp) { fireEmp(p, pi); }
+            else if (p.hasTractor && p.tractorActive <= 0 && p.tractorVictim < 0) { fireTractor(p, pi); }
+            empReady = false;
+        }
 
         // EMP active field — tick down and check enemies in radius
         if (p.empActive > 0) {
@@ -3421,6 +3567,48 @@ function hostUpdate() {
                     emitEvent({t:'e',n:'empStruck',x:op.x,y:op.y,i:op.id});
                 }
             }
+        }
+
+        // Tractor beam — tow victim behind tower
+        if (p.tractorActive > 0 && p.tractorTarget >= 0) {
+            p.tractorActive--;
+            const v = players[p.tractorTarget];
+            if (!v || !v.alive) { breakTractor(p); }
+            else {
+                // Drag victim to TRACTOR_TETHER distance behind tower
+                let dx = p.x - v.x, dy = p.y - v.y;
+                // Handle world wrap
+                if (dx > worldW/2) dx -= worldW; if (dx < -worldW/2) dx += worldW;
+                const d = Math.sqrt(dx*dx + dy*dy) || 1;
+                // Target position: TRACTOR_TETHER behind tower (opposite tower's heading)
+                const behindA = p.angle + Math.PI;
+                const tx = p.x + Math.cos(behindA) * TRACTOR_TETHER;
+                const ty = p.y + Math.sin(behindA) * TRACTOR_TETHER;
+                let tdx = tx - v.x, tdy = ty - v.y;
+                if (tdx > worldW/2) tdx -= worldW; if (tdx < -worldW/2) tdx += worldW;
+                // Lerp victim toward tow point
+                v.vx = tdx * 0.15; v.vy = tdy * 0.15;
+                v.x += v.vx; v.y += v.vy;
+                if (v.x < 0) v.x += worldW; if (v.x > worldW) v.x -= worldW;
+                // Force victim angle to point toward tower (tidal lock)
+                v.angle = Math.atan2(-dy, -dx);
+                v.thrusting = false; v.revThrusting = false; v.firing = false; v.landed = false;
+                // Periodic hum sound
+                if (p.tractorActive % 30 === 0) emitEvent({t:'e',n:'tractorHum',x:p.x,y:p.y});
+                // Apply thrust penalty to tower
+                if (p.thrusting) { p.vx *= TRACTOR_THRUST_PENALTY; p.vy *= TRACTOR_THRUST_PENALTY; }
+                // Expire
+                if (p.tractorActive <= 0) breakTractor(p);
+            }
+        }
+        // Victim being towed — skip normal position update (handled by tower's loop)
+        if (p.tractorVictim >= 0) {
+            if (p.invT>0) p.invT--;
+            if (p.fireCd>0) p.fireCd--;
+            if (p.flashTimer>0) p.flashTimer--;
+            const col2 = shipCollision(p);
+            if (col2 && col2.type !== 'land') killPlayer(p);
+            continue;
         }
 
         const col = shipCollision(p);
@@ -3603,7 +3791,7 @@ function hostUpdate() {
     if (frame % STATE_INTERVAL === 0) {
         broadcast({
             t:'s',
-            p: players.map(p=>({x:rd(p.x),y:rd(p.y),vx:rd(p.vx),vy:rd(p.vy),a:rd(p.angle),al:p.alive,l:p.lives,s:p.score,iv:p.invT>0,th:p.thrusting,rv:p.revThrusting,la:p.landed,fi:p.firing,rT:p.respawnT,wp:p.weapon,sh:p.shield,shp:p.shieldHP||0,empA:p.empActive||0,empS:p.empStruck||0})),
+            p: players.map(p=>({x:rd(p.x),y:rd(p.y),vx:rd(p.vx),vy:rd(p.vy),a:rd(p.angle),al:p.alive,l:p.lives,s:p.score,iv:p.invT>0,th:p.thrusting,rv:p.revThrusting,la:p.landed,fi:p.firing,rT:p.respawnT,wp:p.weapon,sh:p.shield,shp:p.shieldHP||0,empA:p.empActive||0,empS:p.empStruck||0,hE:p.hasEmp?1:0,hT:p.hasTractor?1:0,tA:p.tractorActive||0,tT:p.tractorTarget,tV:p.tractorVictim})),
             b: bullets.map(b=>({x:rd(b.x),y:rd(b.y),vx:rd(b.vx),vy:rd(b.vy),o:b.owner,c:b.color,sz:b.sz||2.5})),
             bm: beams.map(bm=>({x:rd(bm.x),y:rd(bm.y),a:rd(bm.angle),o:bm.owner,c:bm.color,ed:rd(bm.endDist||BEAM_RANGE),l:bm.life,ml:bm.maxLife})),
             be: baseExps.map(e=>({x:rd(e.x),y:rd(e.y),t:e.t,d:e.dur,o:e.owner,p:rd(e.phase)})),
@@ -3707,7 +3895,8 @@ function clientUpdate() {
             players[i].invT = b.iv ? 1 : 0; players[i].thrusting = b.th; players[i].revThrusting = b.rv;
             players[i].landed = b.la; players[i].firing = b.fi; players[i].respawnT = b.rT;
             players[i].weapon = b.wp || 'normal'; players[i].shield = b.sh || 0; players[i].shieldHP = b.shp || 0;
-            players[i].empActive = b.empA || 0; players[i].empStruck = b.empS || 0;
+            players[i].empActive = b.empA || 0; players[i].empStruck = b.empS || 0; players[i].hasEmp = !!b.hE;
+            players[i].hasTractor = !!b.hT; players[i].tractorActive = b.tA || 0; players[i].tractorTarget = b.tT != null ? b.tT : -1; players[i].tractorVictim = b.tV != null ? b.tV : -1;
         }
     } else if (latest) {
         for (let i = 0; i < latest.state.p.length; i++) {
@@ -3718,7 +3907,8 @@ function clientUpdate() {
             players[i].invT = sp.iv ? 1 : 0; players[i].thrusting = sp.th; players[i].revThrusting = sp.rv;
             players[i].landed = sp.la; players[i].firing = sp.fi; players[i].respawnT = sp.rT;
             players[i].weapon = sp.wp || 'normal'; players[i].shield = sp.sh || 0; players[i].shieldHP = sp.shp || 0;
-            players[i].empActive = sp.empA || 0; players[i].empStruck = sp.empS || 0;
+            players[i].empActive = sp.empA || 0; players[i].empStruck = sp.empS || 0; players[i].hasEmp = !!sp.hE;
+            players[i].hasTractor = !!sp.hT; players[i].tractorActive = sp.tA || 0; players[i].tractorTarget = sp.tT != null ? sp.tT : -1; players[i].tractorVictim = sp.tV != null ? sp.tV : -1;
             players[i].weaponTimer = sp.wt || 0; players[i].flashTimer = sp.ft || 0;
         }
     }
@@ -3737,7 +3927,8 @@ function clientUpdate() {
         me.alive = sp.al; me.lives = sp.l; me.score = sp.s; me.invT = sp.iv ? 1 : 0;
         me.respawnT = sp.rT; me.weapon = sp.wp || 'normal'; me.shield = sp.sh || 0; me.shieldHP = sp.shp || 0; me.landed = sp.la;
         me.weaponTimer = sp.wt || 0; me.flashTimer = sp.ft || 0;
-        me.empActive = sp.empA || 0; me.empStruck = sp.empS || 0;
+        me.empActive = sp.empA || 0; me.empStruck = sp.empS || 0; me.hasEmp = !!sp.hE;
+        me.hasTractor = !!sp.hT; me.tractorActive = sp.tA || 0; me.tractorTarget = sp.tT != null ? sp.tT : -1; me.tractorVictim = sp.tV != null ? sp.tV : -1;
         if (me.x < 0) me.x += worldW; if (me.x > worldW) me.x -= worldW;
     }
 
@@ -4345,6 +4536,25 @@ function draw() {
             }
             ctx.globalAlpha = 1;
         }
+        // Tractor victim visual — green flicker overlay when being towed
+        if (pp.tractorVictim >= 0) {
+            ctx.shadowBlur=0;
+            ctx.globalAlpha = 0.25 + Math.sin(frame * 0.4) * 0.15;
+            ctx.fillStyle = '#66ff44';
+            ctx.beginPath(); drawShipShape(ctx, skinId, SHIP_SZ * 1.1); ctx.fill();
+            for (let si = 0; si < 3; si++) {
+                const sa = (frame * 0.25 + si * 2.09) % (Math.PI * 2);
+                const sr = SHIP_SZ * (0.7 + Math.sin(frame * 0.3 + si) * 0.3);
+                ctx.fillStyle = '#66ff44'; ctx.globalAlpha = 0.5;
+                ctx.fillRect(Math.cos(sa) * sr - 1, Math.sin(sa) * sr - 1, 2, 2);
+            }
+            if (Math.sin(frame * 0.12) > 0) {
+                ctx.globalAlpha = 0.7;
+                ctx.fillStyle = '#66ff44'; ctx.font = 'bold 7px Courier New'; ctx.textAlign = 'center';
+                ctx.fillText('TETHERED', 0, SHIP_SZ + 35);
+            }
+            ctx.globalAlpha = 1;
+        }
         // Name tag
         ctx.shadowBlur=0;ctx.globalAlpha=.7;ctx.fillStyle=pp.color;ctx.font='bold 9px Courier New';ctx.textAlign='center';
         ctx.fillText(pp.name,0,-SHIP_SZ-8);
@@ -4387,6 +4597,39 @@ function draw() {
         ctx.moveTo(pp.x, pp.y);
         ctx.lineTo(pp.x + Math.cos(sweepAngle) * EMP_RADIUS, pp.y + Math.sin(sweepAngle) * EMP_RADIUS);
         ctx.stroke();
+        ctx.restore();
+    }
+
+    // Tractor beam tether line — animated energy beam between tower and victim
+    for (const pp of players) {
+        if (!pp.alive || pp.tractorActive <= 0 || pp.tractorTarget < 0) continue;
+        const victim = players[pp.tractorTarget];
+        if (!victim || !victim.alive) continue;
+        const tractProg = pp.tractorActive / TRACTOR_DUR;
+        // Calculate positions with wrap
+        let vx = victim.x, vy = victim.y;
+        let ddx = vx - pp.x; if (ddx > worldW/2) vx -= worldW; else if (ddx < -worldW/2) vx += worldW;
+        ctx.save(); ctx.shadowBlur = 0;
+        // Main tether line
+        ctx.globalAlpha = tractProg * (0.4 + Math.sin(frame * 0.15) * 0.15);
+        ctx.strokeStyle = '#66ff44'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(pp.x, pp.y); ctx.lineTo(vx, vy); ctx.stroke();
+        // Energy pulses traveling along tether
+        const segLen = Math.sqrt((vx-pp.x)**2+(vy-pp.y)**2) || 1;
+        for (let pulse = 0; pulse < 4; pulse++) {
+            const t = ((frame * 0.04 + pulse * 0.25) % 1);
+            const px = pp.x + (vx - pp.x) * t;
+            const py = pp.y + (vy - pp.y) * t;
+            ctx.globalAlpha = tractProg * 0.6;
+            ctx.fillStyle = '#aaffaa';
+            ctx.beginPath(); ctx.arc(px, py, 2 + Math.sin(frame * 0.3 + pulse) * 1, 0, Math.PI * 2); ctx.fill();
+        }
+        // Glow at endpoints
+        ctx.globalAlpha = tractProg * 0.2;
+        ctx.fillStyle = '#66ff44';
+        ctx.beginPath(); ctx.arc(pp.x, pp.y, 8, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(vx, vy, 8, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
         ctx.restore();
     }
 
@@ -4439,6 +4682,25 @@ function draw() {
             ctx.fillStyle = `rgba(255,255,100,${empProg*0.6})`;
             ctx.font = `bold ${Math.round(eFs*0.6)}px Courier New`;
             ctx.fillText('SYSTEMS OFFLINE', W/2, H*0.18 + eFs*1.2);
+        }
+    }
+
+    // Tractor victim vignette — green flashing border when local player is tethered
+    const me_trac = players[myIndex];
+    if (me_trac && me_trac.tractorVictim >= 0) {
+        const tAlpha = 0.12 + Math.sin(frame * 0.18) * 0.08;
+        const tVig = ctx.createRadialGradient(W/2, H/2, W*0.2, W/2, H/2, W*0.7);
+        tVig.addColorStop(0, 'rgba(0,0,0,0)');
+        tVig.addColorStop(1, `rgba(102,255,68,${tAlpha})`);
+        ctx.fillStyle = tVig; ctx.fillRect(0, 0, W, H);
+        if (Math.sin(frame * 0.1) > -0.3) {
+            const tFs = Math.max(14, Math.min(W * 0.04, 22));
+            ctx.fillStyle = `rgba(102,255,68,0.85)`;
+            ctx.font = `bold ${tFs}px Courier New`; ctx.textAlign = 'center';
+            ctx.fillText('\u229B TRACTOR LOCKED \u229B', W/2, H*0.18);
+            ctx.fillStyle = `rgba(102,255,68,0.55)`;
+            ctx.font = `bold ${Math.round(tFs*0.6)}px Courier New`;
+            ctx.fillText('CONTROLS DISABLED', W/2, H*0.18 + tFs*1.2);
         }
     }
 
@@ -4498,6 +4760,11 @@ function drawHUD() {
     if (me.shield > 0) {
         ctx.fillStyle='#00ffaa'; ctx.textAlign='left'; ctx.fillText('◎ SHIELD x'+me.shield, hudL, hudY); hudY += fs+4;
     }
+    if (me.hasEmp && me.empActive <= 0) {
+        const pulse = 0.6 + Math.sin(frame * 0.08) * 0.4;
+        ctx.fillStyle = 'rgba(255,255,0,' + pulse + ')'; ctx.textAlign='left';
+        ctx.fillText('⚡ EMP READY — SHAKE!', hudL, hudY); hudY += fs+4;
+    }
     if (me.empActive > 0) {
         ctx.fillStyle='#ffff00'; ctx.textAlign='left'; ctx.fillText('⚡ EMP ACTIVE', hudL, hudY); hudY += fs+4;
     }
@@ -4505,6 +4772,19 @@ function drawHUD() {
         const secLeft = Math.ceil(me.empStruck / 60);
         ctx.fillStyle = Math.sin(frame*0.3)>0 ? '#ffff00' : '#ff4400'; ctx.textAlign='left';
         ctx.fillText('⚡ DISABLED '+secLeft+'s', hudL, hudY); hudY += fs+4;
+    }
+    if (me.hasTractor && me.tractorActive <= 0 && me.tractorVictim < 0) {
+        const pulse = 0.6 + Math.sin(frame * 0.07) * 0.4;
+        ctx.fillStyle = 'rgba(102,255,68,' + pulse + ')'; ctx.textAlign='left';
+        ctx.fillText('⊛ TRACTOR READY — SHAKE!', hudL, hudY); hudY += fs+4;
+    }
+    if (me.tractorActive > 0) {
+        const secLeft = Math.ceil(me.tractorActive / 60);
+        ctx.fillStyle='#66ff44'; ctx.textAlign='left'; ctx.fillText('⊛ TRACTOR ACTIVE '+secLeft+'s', hudL, hudY); hudY += fs+4;
+    }
+    if (me.tractorVictim >= 0) {
+        ctx.fillStyle = Math.sin(frame*0.25)>0 ? '#66ff44' : '#44aa22'; ctx.textAlign='left';
+        ctx.fillText('⊛ TETHERED', hudL, hudY); hudY += fs+4;
     }
 
     // Alive count
@@ -4679,6 +4959,27 @@ function drawRadar() {
                 ctx.fillStyle=`rgba(255,255,0,${.5+pulse*.5})`;ctx.font='bold 6px sans-serif';ctx.textAlign='center';
                 ctx.fillText('⚡',ax+Math.cos(ang+Math.PI/2)*6,ay+Math.sin(ang+Math.PI/2)*6+2);
             }
+        } else if(pk.type==='tractor'){
+            // Tractor gets special radar treatment — pulsing green ring + ⊛ glyph
+            const p=toRadar(pk.x,pk.y);
+            if(p){
+                const pulse=.5+.5*Math.sin(frame*.1);
+                ctx.strokeStyle=`rgba(102,255,68,${.3+pulse*.4})`;ctx.lineWidth=1.5;
+                ctx.beginPath();ctx.arc(p.rx,p.ry,4+pulse*3,0,Math.PI*2);ctx.stroke();
+                ctx.fillStyle='#66ff44';ctx.globalAlpha=.8+pulse*.2;
+                ctx.beginPath();ctx.arc(p.rx,p.ry,2.5,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
+                ctx.fillStyle='#66ff44';ctx.font='bold 7px sans-serif';ctx.textAlign='center';
+                ctx.fillText('⊛',p.rx,p.ry-6);
+            } else {
+                const {dx,dy}=wrapDelta(pk.x,pk.y);
+                const ang=Math.atan2(dy,dx);
+                const ax=rCx+Math.cos(ang)*(rR+7),ay=rCy+Math.sin(ang)*(rR+7);
+                const pulse=.5+.5*Math.sin(frame*.1);
+                ctx.fillStyle=`rgba(102,255,68,${.5+pulse*.5})`;ctx.save();ctx.translate(ax,ay);ctx.rotate(ang);
+                ctx.beginPath();ctx.moveTo(5,0);ctx.lineTo(-3,-3);ctx.lineTo(-3,3);ctx.closePath();ctx.fill();ctx.restore();
+                ctx.fillStyle=`rgba(102,255,68,${.5+pulse*.5})`;ctx.font='bold 6px sans-serif';ctx.textAlign='center';
+                ctx.fillText('⊛',ax+Math.cos(ang+Math.PI/2)*6,ay+Math.sin(ang+Math.PI/2)*6+2);
+            }
         } else {
             const p=toRadar(pk.x,pk.y);if(p){ctx.fillStyle=pt.color;ctx.globalAlpha=.7;ctx.beginPath();ctx.arc(p.rx,p.ry,2,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}
         }
@@ -4849,6 +5150,7 @@ canvas.addEventListener('touchcancel', touchEnd, {passive:false});
 document.addEventListener('keydown', e => {
     keys[e.code]=true;
     if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter'].includes(e.code))e.preventDefault();
+    if (e.code === 'KeyE' && running && !paused) { empReady = true; }
     if (e.code === 'Escape' && running) { e.preventDefault(); togglePause(); }
     // Spectator cycle on Space/Enter when eliminated
     const me = players[myIndex];
@@ -4859,6 +5161,30 @@ document.addEventListener('keydown', e => {
 document.addEventListener('keyup', e => { keys[e.code]=false; });
 document.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('visibilitychange', () => { if(document.hidden){keys={};joystickTouch=null;fireTouch=null;stopMusic();} });
+
+// Shake detection for EMP
+let lastShakeTime = 0;
+function initShakeDetect() {
+    if (!window.DeviceMotionEvent) return;
+    // iOS 13+ requires permission
+    if (typeof DeviceMotionEvent.requestPermission === 'function') {
+        DeviceMotionEvent.requestPermission().then(r => { if (r === 'granted') window.addEventListener('devicemotion', onShake); }).catch(()=>{});
+    } else {
+        window.addEventListener('devicemotion', onShake);
+    }
+}
+function onShake(e) {
+    if (!running || paused) return;
+    const a = e.accelerationIncludingGravity;
+    if (!a) return;
+    const mag = Math.sqrt(a.x*a.x + a.y*a.y + a.z*a.z);
+    const now = performance.now();
+    // Threshold ~20 m/s² above resting gravity (~9.8), with 500ms cooldown
+    if (mag > 25 && now - lastShakeTime > 500) {
+        lastShakeTime = now;
+        empReady = true;
+    }
+}
 
 // =====================================================
 // HAPTIC FEEDBACK
