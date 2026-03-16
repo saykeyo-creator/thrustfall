@@ -50,9 +50,9 @@ CONTENT RATING: Everyone 10+ (Fantasy Violence)
 IN-APP PURCHASES: Yes ($1.99 per cosmetic item)
 TAGS: action, arcade, multiplayer, pvp, space, combat, physics, indie
 
-PRIVACY POLICY URL: https://thrustfall-qr58.onrender.com/privacy.html
-TERMS URL: https://thrustfall-qr58.onrender.com/terms.html
+PRIVACY POLICY URL: https://thrustfall.fly.dev/privacy.html
+TERMS URL: https://thrustfall.fly.dev/terms.html
 
 DEVELOPER: KeyoGames
 EMAIL: saykeyo@gmail.com
-WEBSITE: https://thrustfall-qr58.onrender.com
+WEBSITE: https://thrustfall.fly.dev

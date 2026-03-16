@@ -10,9 +10,9 @@ A 2D physics-based spaceship cave combat game built in a single `index.html` wit
 |---|---|
 | **GitHub** | `https://github.com/saykeyo-creator/thrustfall.git` |
 | **Branch** | `main` |
-| **Hosting** | [Render](https://render.com) — Web Service, auto-deploys on push to `main` |
-| **Live URL** | `https://thrustfall-qr58.onrender.com` |
-| **Render plan** | Starter — $7/month, 0.5 vCPU, 512MB RAM |
+| **Hosting** | [Fly.io](https://fly.io) — Regional servers (syd, sjc), auto-stop/start |
+| **Live URL** | `https://thrustfall.fly.dev` |
+| **Fly.io plan** | Free tier — shared-cpu-1x, 256MB RAM per region |
 | **Developer** | KeyoGames — `saykeyo@gmail.com` |
 | **Play Store** | `com.lakesgames.thrustfall` (permanent package ID — do NOT change) |
 | **Local dev** | `http://localhost:3000` (configurable via `PORT` env var) |
@@ -140,7 +140,7 @@ index.html (source)
 - **Config:** `capacitor.config.json` — `webDir: "dist"`
 - **Plugins:** `cordova-plugin-purchase@13.13.1` (Google Play Billing)
 - **BILLING permission:** `<uses-permission android:name="com.android.vending.BILLING" />` in AndroidManifest.xml
-- **WS_URL detection:** On Android, `location.hostname === 'localhost'` → always connect to `wss://thrustfall-qr58.onrender.com` (not `ws://localhost` which would hit the phone itself)
+- **WS_URL detection:** On Android, `location.hostname === 'localhost'` → always connect to `wss://thrustfall.fly.dev` (not `ws://localhost` which would hit the phone itself)
 - **Signing:** `signingConfigs.release` in `android/app/build.gradle` reads from `android/keystore.properties`
 
 ### Google Play Billing
@@ -286,12 +286,13 @@ Viewport: `VIEW_W = 412, VIEW_H = 732` — height-fit scaling everywhere (tablet
 ### WS_URL (Critical — Android Fix)
 
 ```javascript
+const FLY_HOST = 'thrustfall.fly.dev';
 const WS_URL = (location.protocol === 'file:' || location.hostname === 'localhost')
-    ? 'wss://thrustfall-qr58.onrender.com'
+    ? 'wss://' + FLY_HOST
     : (location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host;
 ```
 
-`localhost` detection is essential — Capacitor serves the Android app from `localhost`, so without this check it would connect to `ws://localhost` (the phone itself) instead of Render.
+`localhost` detection is essential — Capacitor serves the Android app from `localhost`, so without this check it would connect to `ws://localhost` (the phone itself) instead of Fly.io.
 
 ### Key Global Variables
 
