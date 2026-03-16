@@ -8250,15 +8250,19 @@ section('269. Tractor Beam System');
 {
     section('270: Destructible platform segments');
 
-    // buildPlatSegs replicated
+    // buildPlatSegs replicated (2D grid: segments along both width and height)
     function buildPlatSegs(platforms) {
         const segs = [];
         for (let pi = 0; pi < platforms.length; pi++) {
             const pl = platforms[pi];
-            const n = Math.max(1, Math.round(pl.width / PLAT_SEG_W));
-            const sw = pl.width / n;
-            for (let s = 0; s < n; s++) {
-                segs.push({x: pl.x + s * sw, y: pl.y, width: sw, height: pl.height, hp: PLAT_SEG_HP, alive: true, parentIdx: pi});
+            const nx = Math.max(1, Math.round(pl.width / PLAT_SEG_W));
+            const ny = Math.max(1, Math.round(pl.height / PLAT_SEG_W));
+            const sw = pl.width / nx;
+            const sh = pl.height / ny;
+            for (let sy = 0; sy < ny; sy++) {
+                for (let sx = 0; sx < nx; sx++) {
+                    segs.push({x: pl.x + sx * sw, y: pl.y + sy * sh, width: sw, height: sh, hp: PLAT_SEG_HP, alive: true, parentIdx: pi});
+                }
             }
         }
         return segs;
@@ -8342,6 +8346,344 @@ section('269. Tractor Beam System');
     assert(srv.includes('PLAT_SEG_HP'), 'server has PLAT_SEG_HP constant');
     assert(srv.includes('seg.alive'), 'server checks segment alive flag');
     assert(srv.includes("'platBreak'"), 'server emits platBreak events');
+}
+
+// ── Section 280: Spatial grid for platform segments ──
+{
+    section('280: Spatial grid for platform segments');
+
+    const GRID_CELL = 100;
+
+    // Replicated grid functions (must match server.js + index.html)
+    function buildPlatGrid(segs, wW, wH) {
+        const cols = Math.ceil(wW / GRID_CELL), rows = Math.ceil(wH / GRID_CELL);
+        const grid = new Array(cols * rows);
+        for (let i = 0; i < grid.length; i++) grid[i] = [];
+        for (const seg of segs) {
+            const x0 = Math.max(0, Math.floor(seg.x / GRID_CELL));
+            const x1 = Math.min(cols - 1, Math.floor((seg.x + seg.width) / GRID_CELL));
+            const y0 = Math.max(0, Math.floor(seg.y / GRID_CELL));
+            const y1 = Math.min(rows - 1, Math.floor((seg.y + seg.height) / GRID_CELL));
+            for (let gy = y0; gy <= y1; gy++) {
+                for (let gx = x0; gx <= x1; gx++) {
+                    grid[gy * cols + gx].push(seg);
+                }
+            }
+        }
+        return { grid, cols, rows };
+    }
+    function getSegsAt(pg, x, y) {
+        if (!pg) return null;
+        const gx = Math.floor(x / GRID_CELL), gy = Math.floor(y / GRID_CELL);
+        if (gx < 0 || gx >= pg.cols || gy < 0 || gy >= pg.rows) return null;
+        return pg.grid[gy * pg.cols + gx];
+    }
+    function getSegsInRect(pg, rx, ry, rw, rh) {
+        if (!pg) return [];
+        const x0 = Math.max(0, Math.floor(rx / GRID_CELL));
+        const x1 = Math.min(pg.cols - 1, Math.floor((rx + rw) / GRID_CELL));
+        const y0 = Math.max(0, Math.floor(ry / GRID_CELL));
+        const y1 = Math.min(pg.rows - 1, Math.floor((ry + rh) / GRID_CELL));
+        const seen = new Set(), result = [];
+        for (let gy = y0; gy <= y1; gy++) {
+            for (let gx = x0; gx <= x1; gx++) {
+                for (const seg of pg.grid[gy * pg.cols + gx]) {
+                    if (!seen.has(seg)) { seen.add(seg); result.push(seg); }
+                }
+            }
+        }
+        return result;
+    }
+
+    // buildPlatSegs replicated
+    function buildPlatSegs280(platforms) {
+        const segs = [];
+        for (let pi = 0; pi < platforms.length; pi++) {
+            const pl = platforms[pi];
+            const nx = Math.max(1, Math.round(pl.width / PLAT_SEG_W));
+            const ny = Math.max(1, Math.round(pl.height / PLAT_SEG_W));
+            const sw = pl.width / nx;
+            const sh = pl.height / ny;
+            for (let sy = 0; sy < ny; sy++) {
+                for (let sx = 0; sx < nx; sx++) {
+                    segs.push({x: pl.x + sx * sw, y: pl.y + sy * sh, width: sw, height: sh, hp: PLAT_SEG_HP, alive: true, parentIdx: pi});
+                }
+            }
+        }
+        return segs;
+    }
+
+    // --- Grid construction tests ---
+    const wW = 2000, wH = 1200;
+    const plats = [
+        {x: 100, y: 200, width: 120, height: 8},
+        {x: 500, y: 600, width: 14, height: 200},
+        {x: 1500, y: 400, width: 80, height: 50}
+    ];
+    const segs = buildPlatSegs280(plats);
+    const grid = buildPlatGrid(segs, wW, wH);
+
+    assert(grid.cols === Math.ceil(wW / GRID_CELL), 'grid has correct number of columns');
+    assert(grid.rows === Math.ceil(wH / GRID_CELL), 'grid has correct number of rows');
+    assert(grid.grid.length === grid.cols * grid.rows, 'grid array has correct total cells');
+
+    // Every segment should be in at least one grid cell
+    for (const seg of segs) {
+        const gx = Math.floor(seg.x / GRID_CELL), gy = Math.floor(seg.y / GRID_CELL);
+        const cell = grid.grid[gy * grid.cols + gx];
+        assert(cell.includes(seg), 'segment present in its grid cell');
+    }
+
+    // --- getSegsAt tests ---
+    // Point inside the first platform (100,200 width=120 height=8)
+    const segsAtPlat1 = getSegsAt(grid, 150, 204);
+    assert(segsAtPlat1 !== null, 'getSegsAt returns non-null for valid point');
+    // Should find at least one alive segment near this point
+    let foundSeg = false;
+    for (const seg of segsAtPlat1) {
+        if (ptInRect(150, 204, seg.x, seg.y, seg.width, seg.height)) { foundSeg = true; break; }
+    }
+    assert(foundSeg, 'getSegsAt finds correct segment at point inside platform');
+
+    // Point in empty space
+    const segsAtEmpty = getSegsAt(grid, 900, 900);
+    if (segsAtEmpty) {
+        let anyHit = false;
+        for (const seg of segsAtEmpty) {
+            if (ptInRect(900, 900, seg.x, seg.y, seg.width, seg.height)) { anyHit = true; break; }
+        }
+        assert(!anyHit, 'getSegsAt returns no matching segments for empty area');
+    } else {
+        assert(true, 'getSegsAt returns null for empty cell');
+    }
+
+    // Out of bounds returns null
+    assert(getSegsAt(grid, -10, -10) === null, 'getSegsAt returns null for negative coords');
+    assert(getSegsAt(grid, wW + 100, wH + 100) === null, 'getSegsAt returns null for coords beyond world');
+
+    // --- getSegsInRect tests ---
+    // Rect around vertical platform (x:500, y:600, w:14, h:200)
+    const rectSegs = getSegsInRect(grid, 498, 598, 18, 204);
+    assert(rectSegs.length > 0, 'getSegsInRect finds segments for vertical platform region');
+    // All found segments should belong to the vertical platform (parentIdx 1)
+    for (const seg of rectSegs) {
+        assert(seg.parentIdx === 1, 'getSegsInRect returns segments from correct platform');
+    }
+
+    // Empty rect region
+    const emptyRect = getSegsInRect(grid, 800, 800, 50, 50);
+    assert(emptyRect.length === 0, 'getSegsInRect returns empty for region with no platforms');
+
+    // Rect that spans entire world should return all segments
+    const allSegs = getSegsInRect(grid, 0, 0, wW, wH);
+    assert(allSegs.length === segs.length, 'getSegsInRect full-world returns all segments');
+
+    // Null grid returns safe defaults
+    assert(getSegsAt(null, 100, 100) === null, 'getSegsAt handles null grid');
+    assert(getSegsInRect(null, 0, 0, 100, 100).length === 0, 'getSegsInRect handles null grid');
+
+    // --- Grid collision equivalence test ---
+    // Verify that grid lookup gives the SAME collision results as linear scan for every segment
+    const testPoints = [
+        {x: 110, y: 202}, {x: 160, y: 204}, {x: 220, y: 200}, // around first platform
+        {x: 505, y: 650}, {x: 507, y: 750}, {x: 510, y: 850}, // along vertical platform
+        {x: 1530, y: 420}, {x: 1580, y: 430}, {x: 1500, y: 449}, // third platform
+        {x: 400, y: 400}, {x: 1000, y: 1000}, {x: 0, y: 0} // empty areas
+    ];
+    for (const pt of testPoints) {
+        // Linear scan result
+        let linearHit = null;
+        for (const seg of segs) {
+            if (seg.alive && ptInRect(pt.x, pt.y, seg.x, seg.y, seg.width, seg.height)) {
+                linearHit = seg; break;
+            }
+        }
+        // Grid scan result
+        let gridHit = null;
+        const cellSegs = getSegsAt(grid, pt.x, pt.y);
+        if (cellSegs) {
+            for (const seg of cellSegs) {
+                if (seg.alive && ptInRect(pt.x, pt.y, seg.x, seg.y, seg.width, seg.height)) {
+                    gridHit = seg; break;
+                }
+            }
+        }
+        assert(linearHit === gridHit, `grid collision matches linear scan at (${pt.x},${pt.y})`);
+    }
+
+    // --- Segment spanning grid boundaries ---
+    // A segment that crosses a grid cell boundary should be in both cells
+    const crossPlats = [{x: 90, y: 90, width: 30, height: 30}]; // crosses cell boundary at x=100, y=100
+    const crossSegs = buildPlatSegs280(crossPlats);
+    const crossGrid = buildPlatGrid(crossSegs, wW, wH);
+    // Should be findable from both cells
+    const cellA = getSegsAt(crossGrid, 95, 95);   // cell (0,0)
+    const cellB = getSegsAt(crossGrid, 105, 105); // cell (1,1)
+    assert(cellA && cellA.includes(crossSegs[0]), 'segment spanning boundary found in first cell');
+    assert(cellB && cellB.includes(crossSegs[0]), 'segment spanning boundary found in second cell');
+
+    // --- Vertical platform gets multiple segments ---
+    const tallPlat = [{x: 100, y: 100, width: 14, height: 200}];
+    const tallSegs = buildPlatSegs280(tallPlat);
+    assert(tallSegs.length > 1, 'tall vertical platform generates multiple segments');
+    const tallGrid = buildPlatGrid(tallSegs, wW, wH);
+    // Each segment should be findable via grid at its center
+    for (const seg of tallSegs) {
+        const cx = seg.x + seg.width / 2, cy = seg.y + seg.height / 2;
+        const found = getSegsAt(tallGrid, cx, cy);
+        assert(found && found.includes(seg), 'vertical segment findable via grid at its center');
+    }
+
+    // --- Dead segments don't affect grid structure but are filtered in collision ---
+    const damageSegs = buildPlatSegs280([{x: 200, y: 200, width: 70, height: 8}]);
+    const damageGrid = buildPlatGrid(damageSegs, wW, wH);
+    damageSegs[0].alive = false; // kill first segment
+    const dCell = getSegsAt(damageGrid, 210, 204);
+    // Dead segment is still in the grid cell (grid isn't rebuilt), but collision should skip it
+    let dHit = null;
+    if (dCell) {
+        for (const seg of dCell) {
+            if (seg.alive && ptInRect(210, 204, seg.x, seg.y, seg.width, seg.height)) { dHit = seg; break; }
+        }
+    }
+    assert(dHit === null, 'collision via grid correctly skips dead segments');
+
+    // --- Code verification: grid functions exist in source ---
+    const code = fs.readFileSync('index.html', 'utf8');
+    assert(code.includes('buildPlatGrid'), 'index.html has buildPlatGrid function');
+    assert(code.includes('getSegsAt'), 'index.html has getSegsAt function');
+    assert(code.includes('getSegsInRect'), 'index.html has getSegsInRect function');
+    assert(code.includes('GRID_CELL'), 'index.html has GRID_CELL constant');
+    assert(code.includes('platGrid'), 'index.html references platGrid');
+
+    const srv = fs.readFileSync('server.js', 'utf8');
+    assert(srv.includes('buildPlatGrid'), 'server.js has buildPlatGrid function');
+    assert(srv.includes('getSegsAt'), 'server.js has getSegsAt function');
+    assert(srv.includes('getSegsInRect'), 'server.js has getSegsInRect function');
+    assert(srv.includes('GRID_CELL'), 'server.js has GRID_CELL constant');
+    assert(srv.includes('this.platGrid'), 'server.js stores platGrid on game');
+    assert(srv.includes('pendingPlatBreaks'), 'server.js has batched platBreak array');
+}
+
+// ── Section 281: Separate platform canvas layer ──
+{
+    section('281: Separate platform canvas layer');
+
+    const code = fs.readFileSync('index.html', 'utf8');
+    assert(code.includes('platCanvas'), 'index.html has platCanvas variable');
+    assert(code.includes('rerenderPlatforms'), 'index.html has rerenderPlatforms function');
+    assert(code.includes('clearPlatSegment'), 'index.html has clearPlatSegment function');
+    assert(code.includes('renderPlatSeg'), 'index.html has renderPlatSeg function');
+    assert(code.includes('redrawPlatDamage'), 'index.html has redrawPlatDamage function');
+    // Verify platCanvas is drawn in the draw loop
+    assert(code.includes('drawImage(platCanvas'), 'draw() composites platCanvas');
+    // Verify platBreak handler uses clearPlatSegment instead of prerenderTerrain
+    assert(code.includes("clearPlatSegment(seg)"), 'platBreak uses clearPlatSegment');
+    // Verify damage update uses redrawPlatDamage instead of prerenderTerrain
+    assert(code.includes('redrawPlatDamage()'), 'damage update uses redrawPlatDamage');
+}
+
+// ── Section 282: Batched platBreak events on server ──
+{
+    section('282: Batched platBreak events on server');
+
+    const srv = fs.readFileSync('server.js', 'utf8');
+    assert(srv.includes('this.pendingPlatBreaks = []'), 'server initialises pendingPlatBreaks array');
+    assert(srv.includes('this.pendingPlatBreaks.push'), 'server pushes to pendingPlatBreaks instead of immediate emit');
+    assert(srv.includes('FLUSH BATCHED PLATFORM BREAKS'), 'server has flush section for batched breaks');
+    assert(srv.includes('this.pendingPlatBreaks.length = 0'), 'server clears pendingPlatBreaks after flush');
+    // Verify no direct emitEvent for platBreak in collision code (should use pending array)
+    // The only emitEvent calls for platBreak should NOT be in the bullet/laser collision sections
+    const platBreakEmitCount = (srv.match(/this\.emitEvent\(\{t:'e',n:'platBreak'/g) || []).length;
+    assert(platBreakEmitCount === 0, 'server does not directly emitEvent for platBreak in collision code');
+}
+
+// ── Section 283: Grid collision equivalence on all maps ──
+{
+    section('283: Grid collision equivalence on all maps');
+
+    const GRID_CELL_283 = 100;
+    function buildPlatSegs283(platforms) {
+        const segs = [];
+        for (let pi = 0; pi < platforms.length; pi++) {
+            const pl = platforms[pi];
+            const nx = Math.max(1, Math.round(pl.width / PLAT_SEG_W));
+            const ny = Math.max(1, Math.round(pl.height / PLAT_SEG_W));
+            const sw = pl.width / nx;
+            const sh = pl.height / ny;
+            for (let sy = 0; sy < ny; sy++) {
+                for (let sx = 0; sx < nx; sx++) {
+                    segs.push({x: pl.x + sx * sw, y: pl.y + sy * sh, width: sw, height: sh, hp: PLAT_SEG_HP, alive: true, parentIdx: pi});
+                }
+            }
+        }
+        return segs;
+    }
+    function buildPlatGrid283(segs, wW, wH) {
+        const cols = Math.ceil(wW / GRID_CELL_283), rows = Math.ceil(wH / GRID_CELL_283);
+        const grid = new Array(cols * rows);
+        for (let i = 0; i < grid.length; i++) grid[i] = [];
+        for (const seg of segs) {
+            const x0 = Math.max(0, Math.floor(seg.x / GRID_CELL_283));
+            const x1 = Math.min(cols - 1, Math.floor((seg.x + seg.width) / GRID_CELL_283));
+            const y0 = Math.max(0, Math.floor(seg.y / GRID_CELL_283));
+            const y1 = Math.min(rows - 1, Math.floor((seg.y + seg.height) / GRID_CELL_283));
+            for (let gy = y0; gy <= y1; gy++) {
+                for (let gx = x0; gx <= x1; gx++) {
+                    grid[gy * cols + gx].push(seg);
+                }
+            }
+        }
+        return { grid, cols, rows };
+    }
+    function getSegsAt283(pg, x, y) {
+        if (!pg) return null;
+        const gx = Math.floor(x / GRID_CELL_283), gy = Math.floor(y / GRID_CELL_283);
+        if (gx < 0 || gx >= pg.cols || gy < 0 || gy >= pg.rows) return null;
+        return pg.grid[gy * pg.cols + gx];
+    }
+
+    // Test grid equivalence on every map with platforms
+    for (const mapKey of ['caves', 'canyon', 'asteroid', 'fortress', 'tunnels']) {
+        const mapData = generateMap(mapKey);
+        const segs = buildPlatSegs283(mapData.platforms);
+        const grid = buildPlatGrid283(segs, mapData.worldW, mapData.worldH);
+
+        // Generate random test points across the map
+        let mismatches = 0;
+        for (let t = 0; t < 200; t++) {
+            const px = Math.random() * mapData.worldW;
+            const py = Math.random() * mapData.worldH;
+
+            // Linear scan
+            let linearHit = null;
+            for (const seg of segs) {
+                if (seg.alive && ptInRect(px, py, seg.x, seg.y, seg.width, seg.height)) {
+                    linearHit = seg; break;
+                }
+            }
+            // Grid scan
+            let gridHit = null;
+            const cellSegs = getSegsAt283(grid, px, py);
+            if (cellSegs) {
+                for (const seg of cellSegs) {
+                    if (seg.alive && ptInRect(px, py, seg.x, seg.y, seg.width, seg.height)) {
+                        gridHit = seg; break;
+                    }
+                }
+            }
+            if (linearHit !== gridHit) mismatches++;
+        }
+        assert(mismatches === 0, `${mapKey}: grid collision matches linear scan for 200 random points`);
+    }
+
+    // Arena map has no platforms — grid should be empty but not crash
+    const arenaData = generateMap('arena');
+    const arenaSegs = buildPlatSegs283(arenaData.platforms);
+    const arenaGrid = buildPlatGrid283(arenaSegs, arenaData.worldW, arenaData.worldH);
+    assert(arenaSegs.length === 0, 'arena has no platform segments');
+    const arenaCell = getSegsAt283(arenaGrid, 500, 500);
+    assert(arenaCell !== null && arenaCell.length === 0, 'arena grid cell exists but has no segments');
 }
 
 console.log(`RESULTS: ${passed}/${total} passed, ${failed} failed`);

@@ -321,6 +321,7 @@ const TRACTOR_RELEASE_INV = 60; // 1s invincibility after release
 // ---------- DESTRUCTIBLE PLATFORMS ----------
 const PLAT_SEG_W = 35; // target segment width in pixels
 const PLAT_SEG_HP = 10; // hits to destroy a segment
+const GRID_CELL = 100; // spatial grid cell size in pixels
 
 // ---------- PROGRESSION ----------
 const XP_PER_KILL = 25;
@@ -715,7 +716,7 @@ let lastPing = 0, pingMs = 0, reconnectAttempts = 0, reconnectTimer = null;
 let pendingReconnect = null; // {code, name, wasInGame}
 
 // ---------- PRE-RENDER CACHE ----------
-let terrainCanvas = null, terrainDirty = true, platDmgDirty = false;
+let terrainCanvas = null, platCanvas = null, terrainDirty = true, platDmgDirty = false;
 
 // ---------- FIXED TIMESTEP ----------
 const FIXED_DT = 1000/60;
@@ -2441,12 +2442,57 @@ function buildPlatSegs() {
     platSegs = [];
     for (let pi = 0; pi < platforms.length; pi++) {
         const pl = platforms[pi];
-        const n = Math.max(1, Math.round(pl.width / PLAT_SEG_W));
-        const sw = pl.width / n;
-        for (let s = 0; s < n; s++) {
-            platSegs.push({x: pl.x + s * sw, y: pl.y, width: sw, height: pl.height, hp: PLAT_SEG_HP, alive: true, parentIdx: pi});
+        const nx = Math.max(1, Math.round(pl.width / PLAT_SEG_W));
+        const ny = Math.max(1, Math.round(pl.height / PLAT_SEG_W));
+        const sw = pl.width / nx;
+        const sh = pl.height / ny;
+        for (let sy = 0; sy < ny; sy++) {
+            for (let sx = 0; sx < nx; sx++) {
+                platSegs.push({x: pl.x + sx * sw, y: pl.y + sy * sh, width: sw, height: sh, hp: PLAT_SEG_HP, alive: true, parentIdx: pi});
+            }
         }
     }
+    platGrid = buildPlatGrid(platSegs, worldW, worldH);
+}
+let platGrid = null;
+function buildPlatGrid(segs, wW, wH) {
+    const cols = Math.ceil(wW / GRID_CELL), rows = Math.ceil(wH / GRID_CELL);
+    const grid = new Array(cols * rows);
+    for (let i = 0; i < grid.length; i++) grid[i] = [];
+    for (const seg of segs) {
+        const x0 = Math.max(0, Math.floor(seg.x / GRID_CELL));
+        const x1 = Math.min(cols - 1, Math.floor((seg.x + seg.width) / GRID_CELL));
+        const y0 = Math.max(0, Math.floor(seg.y / GRID_CELL));
+        const y1 = Math.min(rows - 1, Math.floor((seg.y + seg.height) / GRID_CELL));
+        for (let gy = y0; gy <= y1; gy++) {
+            for (let gx = x0; gx <= x1; gx++) {
+                grid[gy * cols + gx].push(seg);
+            }
+        }
+    }
+    return { grid, cols, rows };
+}
+function getSegsAt(pg, x, y) {
+    if (!pg) return null;
+    const gx = Math.floor(x / GRID_CELL), gy = Math.floor(y / GRID_CELL);
+    if (gx < 0 || gx >= pg.cols || gy < 0 || gy >= pg.rows) return null;
+    return pg.grid[gy * pg.cols + gx];
+}
+function getSegsInRect(pg, rx, ry, rw, rh) {
+    if (!pg) return [];
+    const x0 = Math.max(0, Math.floor(rx / GRID_CELL));
+    const x1 = Math.min(pg.cols - 1, Math.floor((rx + rw) / GRID_CELL));
+    const y0 = Math.max(0, Math.floor(ry / GRID_CELL));
+    const y1 = Math.min(pg.rows - 1, Math.floor((ry + rh) / GRID_CELL));
+    const seen = new Set(), result = [];
+    for (let gy = y0; gy <= y1; gy++) {
+        for (let gx = x0; gx <= x1; gx++) {
+            for (const seg of pg.grid[gy * pg.cols + gx]) {
+                if (!seen.has(seg)) { seen.add(seg); result.push(seg); }
+            }
+        }
+    }
+    return result;
 }
 
 // =====================================================
@@ -2505,108 +2551,6 @@ function prerenderTerrain() {
     tc.beginPath();
     for (let i = 0; i < ceiling.length; i++) { if(i===0) tc.moveTo(ceiling[i].x, ceiling[i].y); else tc.lineTo(ceiling[i].x, ceiling[i].y); }
     tc.stroke();
-
-    // Platforms — per-map styled (segments)
-    for (const pl of platSegs) {
-        if (!pl.alive) continue;
-        const px = pl.x, py = pl.y, pw = pl.width, ph = pl.height;
-
-        // Body: vertical gradient from lighter top to darker bottom
-        const pg = tc.createLinearGradient(0, py, 0, py + ph);
-        pg.addColorStop(0, theme.platStroke);
-        pg.addColorStop(1, theme.platFill);
-        tc.fillStyle = pg;
-        tc.fillRect(px, py, pw, ph);
-
-        // Side edge lines
-        tc.strokeStyle = theme.platStroke; tc.lineWidth = 1;
-        tc.strokeRect(px, py, pw, ph);
-
-        // Bright top surface with glow
-        tc.save();
-        tc.shadowColor = theme.platTop; tc.shadowBlur = 6;
-        tc.strokeStyle = theme.platTop; tc.lineWidth = 2;
-        tc.beginPath(); tc.moveTo(px, py); tc.lineTo(px + pw, py); tc.stroke();
-        tc.restore();
-
-        // Per-map surface detail
-        switch (lobbyMap) {
-            case 'caves': {
-                // Mossy cracks — short vertical lines along the top
-                tc.strokeStyle = theme.terrainStroke; tc.lineWidth = 1; tc.globalAlpha = 0.5;
-                for (let cx2 = px + 10; cx2 < px + pw - 10; cx2 += 18) {
-                    tc.beginPath(); tc.moveTo(cx2, py); tc.lineTo(cx2 + 4, py + ph); tc.stroke();
-                }
-                tc.globalAlpha = 1;
-                break;
-            }
-            case 'canyon': {
-                // Layered rock strata — horizontal lines inside body
-                tc.strokeStyle = theme.platTop; tc.lineWidth = 1; tc.globalAlpha = 0.2;
-                for (let sy = py + Math.floor(ph * 0.35); sy < py + ph - 2; sy += Math.max(3, Math.floor(ph * 0.25))) {
-                    tc.beginPath(); tc.moveTo(px + 2, sy); tc.lineTo(px + pw - 2, sy); tc.stroke();
-                }
-                tc.globalAlpha = 1;
-                break;
-            }
-            case 'asteroid': {
-                // Bolt/rivet dots along the top edge
-                tc.fillStyle = theme.platTop; tc.globalAlpha = 0.85;
-                for (let bx2 = px + 8; bx2 < px + pw - 8; bx2 += 20) {
-                    tc.beginPath(); tc.arc(bx2, py + 2, 2, 0, Math.PI * 2); tc.fill();
-                }
-                tc.globalAlpha = 1;
-                break;
-            }
-            case 'fortress': {
-                // Metal panel seams — vertical dividers
-                tc.strokeStyle = theme.platTop; tc.lineWidth = 1; tc.globalAlpha = 0.35;
-                const panelW = 40;
-                for (let sx = px + panelW; sx < px + pw; sx += panelW) {
-                    tc.beginPath(); tc.moveTo(sx, py); tc.lineTo(sx, py + ph); tc.stroke();
-                }
-                // Corner rivets
-                tc.fillStyle = theme.platTop; tc.globalAlpha = 0.7;
-                [[px + 4, py + 2],[px + pw - 4, py + 2],[px + 4, py + ph - 2],[px + pw - 4, py + ph - 2]].forEach(([rx, ry]) => {
-                    tc.beginPath(); tc.arc(rx, ry, 1.5, 0, Math.PI * 2); tc.fill();
-                });
-                tc.globalAlpha = 1;
-                break;
-            }
-            case 'tunnels': {
-                // Glowing energy conduit strip down the centre
-                tc.save();
-                tc.shadowColor = theme.padColor; tc.shadowBlur = 8;
-                tc.fillStyle = theme.padColor; tc.globalAlpha = 0.25;
-                tc.fillRect(px + 4, py + 2, pw - 8, ph - 4);
-                tc.globalAlpha = 0.6;
-                tc.fillRect(px + pw * 0.3, py + 1, pw * 0.4, 2);
-                tc.restore();
-                break;
-            }
-            case 'arena': {
-                // Clean reflective surface — soft highlight band
-                const ag = tc.createLinearGradient(px, py, px + pw, py);
-                ag.addColorStop(0,   'rgba(255,255,255,0)');
-                ag.addColorStop(0.3, `rgba(255,255,255,0.12)`);
-                ag.addColorStop(0.7, `rgba(255,255,255,0.12)`);
-                ag.addColorStop(1,   'rgba(255,255,255,0)');
-                tc.fillStyle = ag;
-                tc.fillRect(px, py, pw, ph);
-                break;
-            }
-        }
-        // Damage cracks overlay
-        if (pl.hp < PLAT_SEG_HP) {
-            const dmg = 1 - pl.hp / PLAT_SEG_HP;
-            tc.strokeStyle = 'rgba(255,80,0,' + (0.3 + dmg * 0.5) + ')'; tc.lineWidth = 1;
-            const cracks = Math.ceil(dmg * 4);
-            for (let ci2 = 0; ci2 < cracks; ci2++) {
-                const cx = px + pw * (0.2 + ci2 * 0.6 / Math.max(1, cracks - 1));
-                tc.beginPath(); tc.moveTo(cx, py); tc.lineTo(cx + (ci2 % 2 ? 3 : -3), py + ph); tc.stroke();
-            }
-        }
-    }
 
     // Landing zones — find flat terrain runs and draw per-map pad style
     const padColor = theme.padColor;
@@ -2708,6 +2652,117 @@ function prerenderTerrain() {
     }
 
     terrainDirty = false;
+    rerenderPlatforms();
+}
+
+function renderPlatSeg(tc, pl, theme) {
+    const px = pl.x, py = pl.y, pw = pl.width, ph = pl.height;
+    const pg = tc.createLinearGradient(0, py, 0, py + ph);
+    pg.addColorStop(0, theme.platStroke);
+    pg.addColorStop(1, theme.platFill);
+    tc.fillStyle = pg;
+    tc.fillRect(px, py, pw, ph);
+    tc.strokeStyle = theme.platStroke; tc.lineWidth = 1;
+    tc.strokeRect(px, py, pw, ph);
+    tc.save();
+    tc.shadowColor = theme.platTop; tc.shadowBlur = 6;
+    tc.strokeStyle = theme.platTop; tc.lineWidth = 2;
+    tc.beginPath(); tc.moveTo(px, py); tc.lineTo(px + pw, py); tc.stroke();
+    tc.restore();
+    switch (lobbyMap) {
+        case 'caves': {
+            tc.strokeStyle = theme.terrainStroke; tc.lineWidth = 1; tc.globalAlpha = 0.5;
+            for (let cx2 = px + 10; cx2 < px + pw - 10; cx2 += 18) {
+                tc.beginPath(); tc.moveTo(cx2, py); tc.lineTo(cx2 + 4, py + ph); tc.stroke();
+            }
+            tc.globalAlpha = 1; break;
+        }
+        case 'canyon': {
+            tc.strokeStyle = theme.platTop; tc.lineWidth = 1; tc.globalAlpha = 0.2;
+            for (let sy = py + Math.floor(ph * 0.35); sy < py + ph - 2; sy += Math.max(3, Math.floor(ph * 0.25))) {
+                tc.beginPath(); tc.moveTo(px + 2, sy); tc.lineTo(px + pw - 2, sy); tc.stroke();
+            }
+            tc.globalAlpha = 1; break;
+        }
+        case 'asteroid': {
+            tc.fillStyle = theme.platTop; tc.globalAlpha = 0.85;
+            for (let bx2 = px + 8; bx2 < px + pw - 8; bx2 += 20) {
+                tc.beginPath(); tc.arc(bx2, py + 2, 2, 0, Math.PI * 2); tc.fill();
+            }
+            tc.globalAlpha = 1; break;
+        }
+        case 'fortress': {
+            tc.strokeStyle = theme.platTop; tc.lineWidth = 1; tc.globalAlpha = 0.35;
+            const panelW = 40;
+            for (let sx = px + panelW; sx < px + pw; sx += panelW) {
+                tc.beginPath(); tc.moveTo(sx, py); tc.lineTo(sx, py + ph); tc.stroke();
+            }
+            tc.fillStyle = theme.platTop; tc.globalAlpha = 0.7;
+            [[px + 4, py + 2],[px + pw - 4, py + 2],[px + 4, py + ph - 2],[px + pw - 4, py + ph - 2]].forEach(([rx, ry]) => {
+                tc.beginPath(); tc.arc(rx, ry, 1.5, 0, Math.PI * 2); tc.fill();
+            });
+            tc.globalAlpha = 1; break;
+        }
+        case 'tunnels': {
+            tc.save();
+            tc.shadowColor = theme.padColor; tc.shadowBlur = 8;
+            tc.fillStyle = theme.padColor; tc.globalAlpha = 0.25;
+            tc.fillRect(px + 4, py + 2, pw - 8, ph - 4);
+            tc.globalAlpha = 0.6;
+            tc.fillRect(px + pw * 0.3, py + 1, pw * 0.4, 2);
+            tc.restore(); break;
+        }
+        case 'arena': {
+            const ag = tc.createLinearGradient(px, py, px + pw, py);
+            ag.addColorStop(0,   'rgba(255,255,255,0)');
+            ag.addColorStop(0.3, 'rgba(255,255,255,0.12)');
+            ag.addColorStop(0.7, 'rgba(255,255,255,0.12)');
+            ag.addColorStop(1,   'rgba(255,255,255,0)');
+            tc.fillStyle = ag;
+            tc.fillRect(px, py, pw, ph); break;
+        }
+    }
+    if (pl.hp < PLAT_SEG_HP) {
+        const dmg = 1 - pl.hp / PLAT_SEG_HP;
+        tc.strokeStyle = 'rgba(255,80,0,' + (0.3 + dmg * 0.5) + ')'; tc.lineWidth = 1;
+        const cracks = Math.ceil(dmg * 4);
+        for (let ci2 = 0; ci2 < cracks; ci2++) {
+            const cx = px + pw * (0.2 + ci2 * 0.6 / Math.max(1, cracks - 1));
+            tc.beginPath(); tc.moveTo(cx, py); tc.lineTo(cx + (ci2 % 2 ? 3 : -3), py + ph); tc.stroke();
+        }
+    }
+}
+
+function rerenderPlatforms() {
+    if (!worldW || !worldH) return;
+    const theme = MAP_THEME[lobbyMap] || MAP_THEME.caves;
+    platCanvas = document.createElement('canvas');
+    platCanvas.width = worldW;
+    platCanvas.height = worldH;
+    const pc = platCanvas.getContext('2d');
+    for (const pl of platSegs) {
+        if (!pl.alive) continue;
+        renderPlatSeg(pc, pl, theme);
+    }
+}
+
+function clearPlatSegment(seg) {
+    if (!platCanvas) return;
+    const pc = platCanvas.getContext('2d');
+    // Clear with margin for shadow/glow bleed
+    pc.clearRect(seg.x - 10, seg.y - 10, seg.width + 20, seg.height + 20);
+}
+
+function redrawPlatDamage() {
+    if (!platCanvas) return;
+    const theme = MAP_THEME[lobbyMap] || MAP_THEME.caves;
+    const pc = platCanvas.getContext('2d');
+    for (const pl of platSegs) {
+        if (!pl.alive || pl.hp >= PLAT_SEG_HP) continue;
+        // Clear and redraw damaged segment
+        pc.clearRect(pl.x - 10, pl.y - 10, pl.width + 20, pl.height + 20);
+        renderPlatSeg(pc, pl, theme);
+    }
 }
 
 // Binary search terrain lookup — O(log n) instead of O(n)
@@ -2909,12 +2964,12 @@ function handleEvent(evt) {
             screenShake = Math.max(screenShake, 4);
             // Sync segment state for non-host clients
             if (!isHost) {
-                for (const seg of platSegs) {
+                const pbSegs = getSegsInRect(platGrid, ex - 50, ey - 50, 100, 100);
+                for (const seg of pbSegs) {
                     if (seg.alive && Math.abs(seg.x + seg.width/2 - ex) < seg.width && Math.abs(seg.y + seg.height/2 - ey) < seg.height) {
-                        seg.alive = false; break;
+                        seg.alive = false; clearPlatSegment(seg); break;
                     }
                 }
-                prerenderTerrain();
             }
             // Debris particles
             for (let i=0;i<12;i++){const a=Math.random()*Math.PI*2,s=Math.random()*3+1;
@@ -3755,7 +3810,7 @@ function hostUpdate() {
         if (bt&&b.y>bt.y){boom(b.x,b.y,b.color,.4);bullets[i]=bullets[bullets.length-1];bullets.pop();continue;}
         const ct=getTerrainYAt(b.x,ceiling);
         if (ct&&b.y<ct.y){boom(b.x,b.y,b.color,.4);bullets[i]=bullets[bullets.length-1];bullets.pop();continue;}
-        for (const seg of platSegs){if(!seg.alive)continue;if(ptInRect(b.x,b.y,seg.x,seg.y,seg.width,seg.height)){boom(b.x,b.y,b.color,.4);seg.hp--;if(seg.hp<=0){seg.alive=false;emitEvent({t:'e',n:'platBreak',x:seg.x+seg.width/2,y:seg.y+seg.height/2,sw:seg.width,sh:seg.height});prerenderTerrain();}else{platDmgDirty=true;}bullets[i]=bullets[bullets.length-1];bullets.pop();break;}}
+        const bSegs=getSegsAt(platGrid,b.x,b.y);if(bSegs){for(const seg of bSegs){if(!seg.alive)continue;if(ptInRect(b.x,b.y,seg.x,seg.y,seg.width,seg.height)){boom(b.x,b.y,b.color,.4);seg.hp--;if(seg.hp<=0){seg.alive=false;emitEvent({t:'e',n:'platBreak',x:seg.x+seg.width/2,y:seg.y+seg.height/2,sw:seg.width,sh:seg.height});clearPlatSegment(seg);}else{platDmgDirty=true;}bullets[i]=bullets[bullets.length-1];bullets.pop();break;}}}
     }
 
     // Laser beams — follow firing player's position/angle, check hits along the line
@@ -3775,7 +3830,7 @@ function hostUpdate() {
             if(ty<0||ty>worldH){endDist=d;break;}
             const bt=getTerrainYAt(wx,terrain);if(bt&&ty>bt.y){endDist=d;break;}
             const ct=getTerrainYAt(wx,ceiling);if(ct&&ty<ct.y){endDist=d;break;}
-            let platHit=false;for(const seg of platSegs){if(seg.alive&&ptInRect(wx,ty,seg.x,seg.y,seg.width,seg.height)){platHit=true;seg.hp--;if(seg.hp<=0){seg.alive=false;emitEvent({t:'e',n:'platBreak',x:seg.x+seg.width/2,y:seg.y+seg.height/2,sw:seg.width,sh:seg.height});prerenderTerrain();}else{platDmgDirty=true;}break;}}
+            let platHit=false;const lSegs=getSegsAt(platGrid,wx,ty);if(lSegs){for(const seg of lSegs){if(seg.alive&&ptInRect(wx,ty,seg.x,seg.y,seg.width,seg.height)){platHit=true;seg.hp--;if(seg.hp<=0){seg.alive=false;emitEvent({t:'e',n:'platBreak',x:seg.x+seg.width/2,y:seg.y+seg.height/2,sw:seg.width,sh:seg.height});clearPlatSegment(seg);}else{platDmgDirty=true;}break;}}}
             if(platHit){endDist=d;break;}
         }
         bm.endDist=endDist;
@@ -3933,7 +3988,8 @@ function clientUpdate() {
         }
         const cInfo = getTerrainYAt(me.x, ceiling);
         if (cInfo && me.y - SHIP_SZ <= cInfo.y) { if (Math.abs(me.vy) > 0.5) snd('wallHit'); me.y = cInfo.y + SHIP_SZ; me.vy = Math.abs(me.vy) * 0.3; }
-        for (const seg of platSegs) {
+        const meSegs = getSegsInRect(platGrid, me.x - SHIP_SZ, me.y - SHIP_SZ, SHIP_SZ * 2, SHIP_SZ * 2 + 10);
+        for (const seg of meSegs) {
             if (!seg.alive) continue;
             if (me.x >= seg.x && me.x <= seg.x + seg.width && me.y + SHIP_SZ >= seg.y && me.y + SHIP_SZ <= seg.y + 10 && me.vy >= 0) {
                 if (canLand(me, {y: seg.y, slope: 0})) { me.y = seg.y - SHIP_SZ; me.vx = 0; me.vy = 0; me.landed = true; }
@@ -4285,7 +4341,7 @@ function drawShipShape(c, skinId, sz) {
 // =====================================================
 function draw() {
     // Batched platform damage crack update (every 30 frames)
-    if (platDmgDirty && frame % 30 === 0) { platDmgDirty = false; prerenderTerrain(); }
+    if (platDmgDirty && frame % 30 === 0) { platDmgDirty = false; redrawPlatDamage(); }
     // Clear full screen (including any area outside fixed viewport on wider screens)
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -4327,11 +4383,15 @@ function draw() {
     for (const wOff of wrapOffsets) {
     ctx.save(); ctx.translate(wOff, 0);
 
-    // Pre-rendered terrain (static geometry: stars, terrain, ceiling, platforms)
+    // Pre-rendered terrain (static geometry: stars, terrain, ceiling)
     // Draw 2px wider (-1 to worldW+1) so adjacent wrap copies overlap by 1px,
     // eliminating sub-pixel seam from fractional camera transforms
     if (terrainCanvas) {
         ctx.drawImage(terrainCanvas, -1, 0, worldW + 2, worldH);
+    }
+    // Pre-rendered platforms (separate layer — updated on destruction/damage only)
+    if (platCanvas) {
+        ctx.drawImage(platCanvas, -1, 0, worldW + 2, worldH);
     }
 
     // Live star twinkle overlay — modulates brightness based on phase

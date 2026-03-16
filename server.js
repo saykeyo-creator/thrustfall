@@ -98,13 +98,55 @@ function buildPlatSegs(platforms) {
     const segs = [];
     for (let pi = 0; pi < platforms.length; pi++) {
         const pl = platforms[pi];
-        const n = Math.max(1, Math.round(pl.width / PLAT_SEG_W));
-        const sw = pl.width / n;
-        for (let s = 0; s < n; s++) {
-            segs.push({x: pl.x + s * sw, y: pl.y, width: sw, height: pl.height, hp: PLAT_SEG_HP, alive: true, parentIdx: pi});
+        const nx = Math.max(1, Math.round(pl.width / PLAT_SEG_W));
+        const ny = Math.max(1, Math.round(pl.height / PLAT_SEG_W));
+        const sw = pl.width / nx;
+        const sh = pl.height / ny;
+        for (let sy = 0; sy < ny; sy++) {
+            for (let sx = 0; sx < nx; sx++) {
+                segs.push({x: pl.x + sx * sw, y: pl.y + sy * sh, width: sw, height: sh, hp: PLAT_SEG_HP, alive: true, parentIdx: pi});
+            }
         }
     }
     return segs;
+}
+const GRID_CELL = 100; // spatial grid cell size in pixels
+function buildPlatGrid(segs, worldW, worldH) {
+    const cols = Math.ceil(worldW / GRID_CELL), rows = Math.ceil(worldH / GRID_CELL);
+    const grid = new Array(cols * rows);
+    for (let i = 0; i < grid.length; i++) grid[i] = [];
+    for (const seg of segs) {
+        const x0 = Math.max(0, Math.floor(seg.x / GRID_CELL));
+        const x1 = Math.min(cols - 1, Math.floor((seg.x + seg.width) / GRID_CELL));
+        const y0 = Math.max(0, Math.floor(seg.y / GRID_CELL));
+        const y1 = Math.min(rows - 1, Math.floor((seg.y + seg.height) / GRID_CELL));
+        for (let gy = y0; gy <= y1; gy++) {
+            for (let gx = x0; gx <= x1; gx++) {
+                grid[gy * cols + gx].push(seg);
+            }
+        }
+    }
+    return { grid, cols, rows };
+}
+function getSegsAt(pg, x, y) {
+    const gx = Math.floor(x / GRID_CELL), gy = Math.floor(y / GRID_CELL);
+    if (gx < 0 || gx >= pg.cols || gy < 0 || gy >= pg.rows) return null;
+    return pg.grid[gy * pg.cols + gx];
+}
+function getSegsInRect(pg, rx, ry, rw, rh) {
+    const x0 = Math.max(0, Math.floor(rx / GRID_CELL));
+    const x1 = Math.min(pg.cols - 1, Math.floor((rx + rw) / GRID_CELL));
+    const y0 = Math.max(0, Math.floor(ry / GRID_CELL));
+    const y1 = Math.min(pg.rows - 1, Math.floor((ry + rh) / GRID_CELL));
+    const seen = new Set(), result = [];
+    for (let gy = y0; gy <= y1; gy++) {
+        for (let gx = x0; gx <= x1; gx++) {
+            for (const seg of pg.grid[gy * pg.cols + gx]) {
+                if (!seen.has(seg)) { seen.add(seg); result.push(seg); }
+            }
+        }
+    }
+    return result;
 }
 function getTerrainYAt(x, arr) {
     let lo = 0, hi = arr.length - 2;
@@ -365,7 +407,10 @@ class Room {
         this.terrain = [];
         this.ceiling = [];
         this.platforms = [];
-        this.platSegs = [];        this.stars = [];
+        this.platSegs = [];
+        this.platGrid = null;
+        this.pendingPlatBreaks = [];
+        this.stars = [];
         this.players = [];
         this.bullets = [];
         this.beams = [];
@@ -513,6 +558,7 @@ class Room {
         this.ceiling = mapData.ceiling;
         this.platforms = mapData.platforms;
         this.platSegs = buildPlatSegs(mapData.platforms);
+        this.platGrid = buildPlatGrid(this.platSegs, mapData.worldW, mapData.worldH);
         this.stars = mapData.stars;
         // Pre-computed Y lookup per integer X pixel — replaces binary search in hot path
         this.terrainCache = buildTerrainCache(mapData.terrain, mapData.worldW);
@@ -718,14 +764,15 @@ class Room {
             const bxi = ((Math.round(b.x) % this.worldW) + this.worldW) % this.worldW;
             const btY = this.terrainCache[bxi]; if (btY >= 0 && b.y > btY) { this.bullets[i]=this.bullets[this.bullets.length-1];this.bullets.pop(); continue; }
             const ctY = this.ceilingCache[bxi]; if (ctY >= 0 && b.y < ctY) { this.bullets[i]=this.bullets[this.bullets.length-1];this.bullets.pop(); continue; }
-            for (const seg of this.platSegs) {
+            const bSegs = getSegsAt(this.platGrid, b.x, b.y);
+            if (bSegs) { for (const seg of bSegs) {
                 if (!seg.alive) continue;
                 if (ptInRect(b.x, b.y, seg.x, seg.y, seg.width, seg.height)) {
                     seg.hp--;
-                    if (seg.hp <= 0) { seg.alive = false; this.emitEvent({t:'e',n:'platBreak',x:seg.x+seg.width/2,y:seg.y+seg.height/2,sw:seg.width,sh:seg.height}); }
+                    if (seg.hp <= 0) { seg.alive = false; this.pendingPlatBreaks.push({t:'e',n:'platBreak',x:seg.x+seg.width/2,y:seg.y+seg.height/2,sw:seg.width,sh:seg.height}); }
                     this.bullets[i]=this.bullets[this.bullets.length-1];this.bullets.pop(); break;
                 }
-            }
+            } }
         }
 
         // === LASER BEAMS ===
@@ -746,7 +793,8 @@ class Room {
                 const lbtY = this.terrainCache[wxi]; if (lbtY >= 0 && ty > lbtY) { endDist = d; break; }
                 const lctY = this.ceilingCache[wxi]; if (lctY >= 0 && ty < lctY) { endDist = d; break; }
                 let platHit = false;
-                for (const seg of this.platSegs) { if (seg.alive && ptInRect(wx, ty, seg.x, seg.y, seg.width, seg.height)) { platHit = true; seg.hp--; if (seg.hp <= 0) { seg.alive = false; this.emitEvent({t:'e',n:'platBreak',x:seg.x+seg.width/2,y:seg.y+seg.height/2,sw:seg.width,sh:seg.height}); } break; } }
+                const lSegs = getSegsAt(this.platGrid, wx, ty);
+                if (lSegs) { for (const seg of lSegs) { if (seg.alive && ptInRect(wx, ty, seg.x, seg.y, seg.width, seg.height)) { platHit = true; seg.hp--; if (seg.hp <= 0) { seg.alive = false; this.pendingPlatBreaks.push({t:'e',n:'platBreak',x:seg.x+seg.width/2,y:seg.y+seg.height/2,sw:seg.width,sh:seg.height}); } break; } } }
                 if (platHit) { endDist = d; break; }
             }
             bm.endDist = endDist;
@@ -795,6 +843,12 @@ class Room {
                     break;
                 }
             }
+        }
+
+        // === FLUSH BATCHED PLATFORM BREAKS ===
+        if (this.pendingPlatBreaks.length > 0) {
+            for (const evt of this.pendingPlatBreaks) this.broadcast(evt);
+            this.pendingPlatBreaks.length = 0;
         }
 
         // === BROADCAST STATE (delta compressed) ===
@@ -862,7 +916,8 @@ class Room {
         }
         const ct = getTerrainYAt(p.x, this.ceiling);
         if (ct && p.y - SHIP_SZ + 2 < ct.y) return { type: 'crash' };
-        for (const seg of this.platSegs) {
+        const shipSegs = getSegsInRect(this.platGrid, p.x - SHIP_SZ - 3, p.y - SHIP_SZ - 2, SHIP_SZ * 2 + 6, SHIP_SZ * 2 + 16);
+        for (const seg of shipSegs) {
             if (!seg.alive) continue;
             if (p.x > seg.x - 3 && p.x < seg.x + seg.width + 3 && p.y + SHIP_SZ - 2 > seg.y && p.y + SHIP_SZ - 2 < seg.y + seg.height + 14 && p.vy >= 0) {
                 if (canLand(p, { y: seg.y, slope: 0 })) return { type: 'land', surfY: seg.y };
@@ -1002,7 +1057,8 @@ class Room {
             const ti = { y: tiY }, ci = { y: ciY };
             let placed = false;
             if (Math.random() < 0.5) {
-                for (const seg of this.platSegs) {
+                const pkSegs = getSegsInRect(this.platGrid, x - 1, ciY, 2, tiY - ciY);
+                for (const seg of pkSegs) {
                     if (!seg.alive) continue;
                     if (x > seg.x && x < seg.x + seg.width) {
                         const py = seg.y - PICKUP_R - 5;
