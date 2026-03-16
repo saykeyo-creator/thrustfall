@@ -20,7 +20,7 @@ const BULLET_SPD = 5.5, BULLET_LIFE = 110, FIRE_CD = 14, SHIP_SZ = 10;
 const LIVES = 10, RESPAWN_T = 90, INVINCE_T = 120;
 const BASE_W = 50, BASE_H = 28;
 const BASE_EXP_DUR = 240, BASE_EXP_R = 65, RESPAWN_KILL_R = 58;
-const LAND_MAX_SPD = 2.2, LAND_MAX_ANGLE = 0.85;
+const LAND_MAX_SPD = 2.7, LAND_MAX_ANGLE = 0.85;
 const STATE_INTERVAL = 2; // broadcast every 2 frames = 30 Hz
 const FULL_SYNC_INTERVAL = 60; // full state every 60 frames (~2s) as safety net
 const COLORS = ['#00ccff','#ff3366','#33ff66','#ffcc00','#ff66ff','#66ffcc','#ff8833','#aa66ff'];
@@ -178,7 +178,10 @@ function buildTerrainCache(arr, worldW) {
 function canLand(p, surface) {
     const speed = Math.sqrt(p.vx ** 2 + p.vy ** 2);
     const upright = Math.abs(p.angle + Math.PI / 2);
-    return speed < LAND_MAX_SPD && upright < LAND_MAX_ANGLE && Math.abs(surface.slope) < 0.7 && p.vy >= 0 && p.vy < LAND_MAX_SPD * 1.5;
+    const flat = Math.abs(surface.slope) < 0.2;
+    const spdLimit = flat ? LAND_MAX_SPD * 1.8 : LAND_MAX_SPD;
+    const angLimit = flat ? LAND_MAX_ANGLE * 1.4 : LAND_MAX_ANGLE;
+    return speed < spdLimit && upright < angLimit && Math.abs(surface.slope) < 0.7 && p.vy >= 0 && p.vy < spdLimit * 1.5;
 }
 function randomCode() {
     const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -637,6 +640,18 @@ class Room {
 
             if (p.landed) {
                 if (inp.thrust || inp.revThrust) p.landed = false;
+                // Check if platform beneath was destroyed
+                if (p.landed) {
+                    const footY = p.y + SHIP_SZ;
+                    const onBase = p.x > p.base.x - 3 && p.x < p.base.x + p.base.w + 3 && footY > p.base.y - 2 && footY < p.base.y + p.base.h + 14;
+                    const bt = getTerrainYAt(p.x, this.terrain);
+                    const onTerrain = bt && Math.abs(footY - bt.y) < 4;
+                    if (!onBase && !onTerrain) {
+                        const footSegs = getSegsInRect(this.platGrid, p.x - SHIP_SZ, footY - 4, SHIP_SZ * 2, 8);
+                        const onPlat = footSegs.some(s => s.alive && p.x > s.x - 3 && p.x < s.x + s.width + 3);
+                        if (!onPlat) p.landed = false;
+                    }
+                }
                 p.angle += inp.rot * ROT_SPD_MAX;
                 if (p.landed) {
                     p.vy = 0; p.vx *= 0.92;

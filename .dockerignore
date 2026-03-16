@@ -1,0 +1,11 @@
+node_modules
+android
+icons
+*.aab
+*.bat
+*.ps1
+tests.js
+build-mobile.js
+generate-*.js
+capacitor.config.json
+.git

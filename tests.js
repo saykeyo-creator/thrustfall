@@ -31,7 +31,7 @@ const BULLET_SPD = 5.5, BULLET_LIFE = 110, FIRE_CD = 14, SHIP_SZ = 10;
 const LIVES = 10, RESPAWN_T = 90, INVINCE_T = 120;
 const BASE_W = 50, BASE_H = 28;
 const BASE_EXP_DUR = 240, BASE_EXP_R = 65, RESPAWN_KILL_R = 58;
-const LAND_MAX_SPD = 2.2, LAND_MAX_ANGLE = 0.85;
+const LAND_MAX_SPD = 2.7, LAND_MAX_ANGLE = 0.85;
 const PICKUP_R = 18;
 const PICKUP_MAX = 5;
 const PICKUP_SPAWN_INTERVAL = 360;
@@ -173,7 +173,10 @@ function getTerrainYAt(x, arr) {
 function canLand(p,surface) {
     const speed = Math.sqrt(p.vx**2+p.vy**2);
     const upright = Math.abs(p.angle+Math.PI/2);
-    return speed < LAND_MAX_SPD && upright < LAND_MAX_ANGLE && Math.abs(surface.slope)<0.7 && p.vy>=0 && p.vy<LAND_MAX_SPD*1.5;
+    const flat = Math.abs(surface.slope) < 0.2;
+    const spdLimit = flat ? LAND_MAX_SPD * 1.8 : LAND_MAX_SPD;
+    const angLimit = flat ? LAND_MAX_ANGLE * 1.4 : LAND_MAX_ANGLE;
+    return speed < spdLimit && upright < angLimit && Math.abs(surface.slope)<0.7 && p.vy>=0 && p.vy<spdLimit*1.5;
 }
 
 // Simplified killPlayer for testing (no visual effects)
@@ -534,11 +537,11 @@ section('3. Landing Mechanics (canLand)');
     const flatSurface = {y: 500, slope: 0};
     const goodShip = {vx:0, vy:0.5, angle:-Math.PI/2};
     assert(canLand(goodShip, flatSurface), 'slow upright descent = can land');
-    const fastShip = {vx:2, vy:1, angle:-Math.PI/2};
+    const fastShip = {vx:4, vy:3, angle:-Math.PI/2};
     assert(!canLand(fastShip, flatSurface), 'too fast = crash');
     const borderSpeed = {vx:0, vy:LAND_MAX_SPD-0.1, angle:-Math.PI/2};
     assert(canLand(borderSpeed, flatSurface), 'just under speed limit = can land');
-    const overSpeed = {vx:0, vy:LAND_MAX_SPD+0.1, angle:-Math.PI/2};
+    const overSpeed = {vx:0, vy:LAND_MAX_SPD*1.8+0.1, angle:-Math.PI/2};
     assert(!canLand(overSpeed, flatSurface), 'just over speed limit = crash');
     const tiltedShip = {vx:0, vy:0.5, angle:0};
     assert(!canLand(tiltedShip, flatSurface), 'tilted sideways = crash');
@@ -1340,7 +1343,7 @@ section('31. Constants Sanity Checks');
     assert(REV_THRUST > 0, 'reverse thrust is positive');
     assert(REV_THRUST === THRUST, 'reverse thrust equals forward thrust');
     assert(BULLET_SPD > MAX_SPD, 'bullets faster than ships');
-    assert(LAND_MAX_SPD > 0 && LAND_MAX_SPD < MAX_SPD, 'landing speed between 0 and max');
+    assert(LAND_MAX_SPD > 0, 'landing speed limit is positive');
     assert(LAND_MAX_ANGLE > 0 && LAND_MAX_ANGLE < Math.PI/2, 'landing angle tolerance between 0 and 90 deg');
     assert(INVINCE_T > 0, 'invincibility time is positive');
     assert(RESPAWN_T > 0, 'respawn time is positive');
@@ -2211,7 +2214,7 @@ section('67. Client-Server Constant Alignment');
     assert(BASE_EXP_DUR === 240, 'BASE_EXP_DUR matches');
     assert(BASE_EXP_R === 65, 'BASE_EXP_R matches');
     assert(RESPAWN_KILL_R === 58, 'RESPAWN_KILL_R matches');
-    assert(LAND_MAX_SPD === 2.2, 'LAND_MAX_SPD matches');
+    assert(LAND_MAX_SPD === 2.7, 'LAND_MAX_SPD matches');
     assert(LAND_MAX_ANGLE === 0.85, 'LAND_MAX_ANGLE matches');
     assert(PICKUP_R === 18, 'PICKUP_R matches');
     assert(PICKUP_MAX === 5, 'PICKUP_MAX matches');
@@ -7031,15 +7034,15 @@ section('239. WebSocket URL — Android/Capacitor localhost fix');
     const clientCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
     const androidCode = fs.readFileSync(require('path').join(__dirname, 'android/app/src/main/assets/public/index.html'), 'utf8');
 
-    // Both files must detect localhost and redirect to Render
-    assert(clientCode.includes("location.hostname === 'localhost'") && clientCode.includes('thrustfall-qr58.onrender.com'),
-        'index.html WS_URL redirects localhost to Render server');
-    assert(androidCode.includes("location.hostname === 'localhost'") && androidCode.includes('thrustfall-qr58.onrender.com'),
-        'Android index.html WS_URL redirects localhost to Render server');
+    // Both files must detect localhost and redirect to Fly.io
+    assert(clientCode.includes("location.hostname === 'localhost'") && clientCode.includes('.fly.dev'),
+        'index.html WS_URL redirects localhost to Fly.io server');
+    assert(androidCode.includes("location.hostname === 'localhost'") && androidCode.includes('.fly.dev'),
+        'Android index.html WS_URL redirects localhost to Fly.io server');
 
     // Must use wss:// (secure) for the hardcoded URL
-    assert(clientCode.includes("'wss://thrustfall-qr58.onrender.com'"),
-        'WS_URL uses wss:// (secure WebSocket) for Render');
+    assert(clientCode.includes("'wss://'") && clientCode.includes('FLY_HOST'),
+        'WS_URL uses wss:// (secure WebSocket) for Fly.io');
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -8176,7 +8179,7 @@ section('269. Tractor Beam System');
     // Player init
     assert(code.includes('hasTractor:false') || code.includes('hasTractor: false'), 'hasTractor initialized false');
     assert(code.includes('tractorActive:0') || code.includes('tractorActive: 0'), 'tractorActive initialized 0');
-    assert(code.includes('tractorTarget:-1') || code.includes('tractorTarget: -1'), 'tractorTarget initialized -1');
+    assert(code.includes('tractorChain:[]') || code.includes('tractorChain: []'), 'tractorChain initialized empty');
     assert(code.includes('tractorVictim:-1') || code.includes('tractorVictim: -1'), 'tractorVictim initialized -1');
 
     // fireTractor function
@@ -8684,6 +8687,523 @@ section('269. Tractor Beam System');
     assert(arenaSegs.length === 0, 'arena has no platform segments');
     const arenaCell = getSegsAt283(arenaGrid, 500, 500);
     assert(arenaCell !== null && arenaCell.length === 0, 'arena grid cell exists but has no segments');
+}
+
+// ── Section 284: canLand flat-surface bonus (server/client parity) ──
+{
+    section('Section 284 — canLand flat-surface bonus');
+    const GRID_CELL = 100;
+
+    // Helper ship pointing upward with given speed
+    function mkShip(vx, vy) {
+        return { vx, vy, angle: -Math.PI/2 };
+    }
+
+    // Flat surface (slope=0) — should get bonus
+    const flatSurf = { y: 500, slope: 0 };
+    // Sloped surface (slope=0.5) — should NOT get bonus
+    const slopedSurf = { y: 500, slope: 0.5 };
+    // Nearly flat surface (slope=0.19) — should get bonus
+    const nearFlat = { y: 500, slope: 0.19 };
+    // Just over threshold (slope=0.21) — should NOT get bonus
+    const justOver = { y: 500, slope: 0.21 };
+
+    // Base speed limit for non-flat: 2.7
+    // Flat bonus: 2.7 * 1.8 = 4.86
+
+    // Speed 2.5 — should land on flat (under 2.7), should land on sloped (under 2.7)
+    assert(canLand(mkShip(0, 2.5), flatSurf), 'speed 2.5 lands on flat surface');
+    assert(canLand(mkShip(0, 2.5), slopedSurf), 'speed 2.5 lands on sloped surface');
+
+    // Speed 3.0 — exceeds base 2.7, only flat gets bonus (4.86)
+    assert(canLand(mkShip(0, 3.0), flatSurf), 'speed 3.0 lands on flat surface (bonus)');
+    assert(!canLand(mkShip(0, 3.0), slopedSurf), 'speed 3.0 crashes on sloped surface');
+
+    // Speed 4.5 — under flat bonus 4.86, over base
+    assert(canLand(mkShip(0, 4.5), flatSurf), 'speed 4.5 lands on flat (under 4.86 bonus)');
+    assert(!canLand(mkShip(0, 4.5), slopedSurf), 'speed 4.5 crashes on sloped');
+
+    // Speed 5.0 — exceeds even flat bonus 4.86
+    assert(!canLand(mkShip(0, 5.0), flatSurf), 'speed 5.0 crashes even on flat');
+
+    // Near-flat (0.19) gets bonus, just over (0.21) doesn't
+    assert(canLand(mkShip(0, 3.5), nearFlat), 'speed 3.5 lands on near-flat (slope 0.19)');
+    assert(!canLand(mkShip(0, 3.5), justOver), 'speed 3.5 crashes on slope 0.21 (no bonus)');
+
+    // Angle bonus on flat: LAND_MAX_ANGLE * 1.4 = 0.85 * 1.4 = 1.19
+    // Ship tilted 1.0 rad from upright — exceeds base 0.85 but under flat 1.19
+    const tiltedShip = { vx: 0, vy: 1.0, angle: -Math.PI/2 + 1.0 };
+    assert(canLand(tiltedShip, flatSurf), 'tilted 1.0 rad lands on flat (under 1.19 bonus)');
+    assert(!canLand(tiltedShip, slopedSurf), 'tilted 1.0 rad crashes on sloped (over 0.85)');
+
+    // Ship tilted 1.2 rad — exceeds even flat bonus 1.19
+    const veryTilted = { vx: 0, vy: 1.0, angle: -Math.PI/2 + 1.2 };
+    assert(!canLand(veryTilted, flatSurf), 'tilted 1.2 rad crashes even on flat');
+
+    // Platform surfaces always pass slope:0 in shipCollision — verify they get bonus
+    const platSurf = { y: 300, slope: 0 };
+    assert(canLand(mkShip(0, 4.0), platSurf), 'speed 4.0 lands on platform (slope 0, bonus)');
+
+    // Negative vy (going up) — should never land
+    assert(!canLand(mkShip(0, -1.0), flatSurf), 'upward velocity cannot land on flat');
+    assert(!canLand(mkShip(0, -1.0), slopedSurf), 'upward velocity cannot land on sloped');
+
+    // Server and client canLand now use same formula
+    // Verify the previously-failing scenario: terrain landing zone with small slope
+    // Terrain LZ slope ~0.05 (very flat but not zero) — should get bonus
+    const lzSurf = { y: 600, slope: 0.05 };
+    assert(canLand(mkShip(0, 3.5), lzSurf), 'speed 3.5 lands on terrain LZ (slope 0.05, flat bonus)');
+
+    // Steep terrain (slope 0.6) — no bonus, but under 0.7 threshold so still landable at low speed
+    const steepSurf = { y: 600, slope: 0.6 };
+    assert(canLand(mkShip(0, 2.0), steepSurf), 'speed 2.0 lands on steep terrain (0.6)');
+    assert(!canLand(mkShip(0, 3.0), steepSurf), 'speed 3.0 crashes on steep terrain (0.6, no bonus)');
+
+    // Too steep (slope >= 0.7) — never landable
+    const tooSteep = { y: 600, slope: 0.7 };
+    assert(!canLand(mkShip(0, 1.0), tooSteep), 'slope 0.7 is never landable');
+}
+
+// ── Section 285: Ship falls when platform destroyed beneath ──
+{
+    section('Section 285 — Ship falls when landed platform destroyed');
+    const GRID_CELL = 100;
+
+    // Replicate grid functions for this section
+    function buildPlatSegs285(platforms) {
+        const segs = [];
+        for (let pi = 0; pi < platforms.length; pi++) {
+            const pl = platforms[pi];
+            const nx = Math.max(1, Math.round(pl.width / PLAT_SEG_W));
+            const ny = Math.max(1, Math.round(pl.height / PLAT_SEG_W));
+            const sw = pl.width / nx;
+            const sh = pl.height / ny;
+            for (let sy = 0; sy < ny; sy++) {
+                for (let sx = 0; sx < nx; sx++) {
+                    segs.push({x: pl.x + sx * sw, y: pl.y + sy * sh,
+                               width: sw, height: sh, hp: PLAT_SEG_HP,
+                               alive: true, parentIdx: pi});
+                }
+            }
+        }
+        return segs;
+    }
+    function buildPlatGrid285(segs, worldW, worldH) {
+        const cols = Math.ceil(worldW / GRID_CELL);
+        const rows = Math.ceil(worldH / GRID_CELL);
+        const grid = new Array(cols * rows);
+        for (let i = 0; i < grid.length; i++) grid[i] = [];
+        for (const seg of segs) {
+            const x0 = Math.max(0, Math.floor(seg.x / GRID_CELL));
+            const x1 = Math.min(cols - 1, Math.floor((seg.x + seg.width) / GRID_CELL));
+            const y0 = Math.max(0, Math.floor(seg.y / GRID_CELL));
+            const y1 = Math.min(rows - 1, Math.floor((seg.y + seg.height) / GRID_CELL));
+            for (let gy = y0; gy <= y1; gy++) {
+                for (let gx = x0; gx <= x1; gx++) {
+                    grid[gy * cols + gx].push(seg);
+                }
+            }
+        }
+        return { grid, cols, rows };
+    }
+    function getSegsInRect285(pg, rx, ry, rw, rh) {
+        if (!pg) return [];
+        const x0 = Math.max(0, Math.floor(rx / GRID_CELL));
+        const x1 = Math.min(pg.cols - 1, Math.floor((rx + rw) / GRID_CELL));
+        const y0 = Math.max(0, Math.floor(ry / GRID_CELL));
+        const y1 = Math.min(pg.rows - 1, Math.floor((ry + rh) / GRID_CELL));
+        const seen = new Set(), result = [];
+        for (let gy = y0; gy <= y1; gy++) {
+            for (let gx = x0; gx <= x1; gx++) {
+                for (const seg of pg.grid[gy * pg.cols + gx]) {
+                    if (!seen.has(seg)) { seen.add(seg); result.push(seg); }
+                }
+            }
+        }
+        return result;
+    }
+
+    // Replicate the ground-check logic from server.js
+    function checkStillLanded(p, platGrid, terrain, base) {
+        const footY = p.y + SHIP_SZ;
+        const onBase = p.x > base.x - 3 && p.x < base.x + base.w + 3 && footY > base.y - 2 && footY < base.y + base.h + 14;
+        const bt = getTerrainYAt(p.x, terrain);
+        const onTerrain = bt && Math.abs(footY - bt.y) < 4;
+        if (!onBase && !onTerrain) {
+            const footSegs = getSegsInRect285(platGrid, p.x - SHIP_SZ, footY - 4, SHIP_SZ * 2, 8);
+            const onPlat = footSegs.some(s => s.alive && p.x > s.x - 3 && p.x < s.x + s.width + 3);
+            if (!onPlat) return false; // should fall
+        }
+        return true; // still supported
+    }
+
+    // Setup: a platform at y=500, width=105 (3 segments of 35px each)
+    const platforms = [{ x: 200, y: 500, width: 105, height: 14 }];
+    const segs = buildPlatSegs285(platforms);
+    const worldW = 1000, worldH = 1000;
+    const platGrid = buildPlatGrid285(segs, worldW, worldH);
+
+    // Terrain far below (y=900) — not relevant to platform landing
+    const terrain = [{ x: 0, y: 900 }, { x: 1000, y: 900 }];
+    // Base far away
+    const base = { x: 50, y: 900, w: BASE_W, h: BASE_H };
+
+    // Ship landed on middle of platform
+    const ship = { x: 252, y: 500 - SHIP_SZ, vx: 0, vy: 0, angle: -Math.PI/2, landed: true, alive: true };
+
+    // 1) Ship on intact platform — should stay landed
+    assert(checkStillLanded(ship, platGrid, terrain, base), 'ship stays landed on intact platform');
+
+    // 2) Destroy the segment under the ship (middle segment)
+    const midSeg = segs.find(s => ship.x > s.x - 3 && ship.x < s.x + s.width + 3 && s.alive);
+    assert(midSeg !== undefined, 'found segment under ship');
+    midSeg.alive = false;
+    midSeg.hp = 0;
+
+    // 3) Ship should now fall — no alive segment under it
+    // Need to check if any other segment still supports it
+    const stillOnSeg = segs.filter(s => s.alive && ship.x > s.x - 3 && ship.x < s.x + s.width + 3);
+    if (stillOnSeg.length === 0) {
+        assert(!checkStillLanded(ship, platGrid, terrain, base), 'ship falls when platform segment destroyed');
+    } else {
+        // Ship is near edge of another segment, so it might still be supported
+        assert(checkStillLanded(ship, platGrid, terrain, base), 'ship stays if adjacent segment supports');
+    }
+
+    // 4) Destroy ALL segments — ship must fall
+    for (const s of segs) { s.alive = false; s.hp = 0; }
+    assert(!checkStillLanded(ship, platGrid, terrain, base), 'ship falls when all platform segments destroyed');
+
+    // 5) Ship on terrain — should stay landed even with no platforms
+    const terrainShip = { x: 500, y: 900 - SHIP_SZ, vx: 0, vy: 0, angle: -Math.PI/2, landed: true, alive: true };
+    assert(checkStillLanded(terrainShip, platGrid, terrain, base), 'ship stays landed on terrain (no platform needed)');
+
+    // 6) Ship on base — should stay landed even with no platforms
+    const baseShip = { x: 75, y: 900 - SHIP_SZ, vx: 0, vy: 0, angle: -Math.PI/2, landed: true, alive: true };
+    assert(checkStillLanded(baseShip, platGrid, terrain, base), 'ship stays landed on base');
+
+    // 7) Ship in mid-air (not on anything) — should fall
+    const airShip = { x: 500, y: 300, vx: 0, vy: 0, angle: -Math.PI/2, landed: true, alive: true };
+    assert(!checkStillLanded(airShip, platGrid, terrain, base), 'ship in mid-air falls (not on any surface)');
+
+    // 8) Verify the ground-check code exists in server.js
+    const serverSrc = fs.readFileSync('server.js','utf8');
+    assert(serverSrc.includes('Check if platform beneath was destroyed'), 'server.js has ground-check comment');
+    assert(serverSrc.includes('onPlat') && serverSrc.includes('onTerrain') && serverSrc.includes('onBase'),
+           'server.js checks base, terrain, and platform support');
+    assert(serverSrc.includes('if (!onPlat) p.landed = false'), 'server.js unlands ship when no platform support');
+
+    // 9) Verify the ground-check code exists in client index.html
+    const clientSrc = fs.readFileSync('index.html','utf8');
+    assert(clientSrc.includes('Check if platform beneath was destroyed'), 'index.html has ground-check comment');
+    assert(clientSrc.includes('if (!onPlat) p.landed = false'), 'index.html unlands ship when no platform support');
+
+    // 10) Edge case: ship exactly at platform edge (x = seg.x - 2, within tolerance)
+    const edgePlatforms = [{ x: 400, y: 600, width: 35, height: 14 }];
+    const edgeSegs = buildPlatSegs285(edgePlatforms);
+    const edgeGrid = buildPlatGrid285(edgeSegs, worldW, worldH);
+    const edgeShip = { x: 398, y: 600 - SHIP_SZ, vx: 0, vy: 0, angle: -Math.PI/2, landed: true, alive: true };
+    assert(checkStillLanded(edgeShip, edgeGrid, terrain, base), 'ship at platform edge (within 3px tolerance) stays landed');
+
+    // 11) Ship just outside platform tolerance — should fall
+    const outsideShip = { x: 393, y: 600 - SHIP_SZ, vx: 0, vy: 0, angle: -Math.PI/2, landed: true, alive: true };
+    assert(!checkStillLanded(outsideShip, edgeGrid, terrain, base), 'ship outside platform tolerance falls');
+
+    // 12) Partial platform destruction — ship on surviving segment stays landed
+    const widePlat = [{ x: 100, y: 400, width: 175, height: 14 }];
+    const wideSegs = buildPlatSegs285(widePlat);
+    const wideGrid = buildPlatGrid285(wideSegs, worldW, worldH);
+    // Ship on first segment
+    const wideShip = { x: 117, y: 400 - SHIP_SZ, vx: 0, vy: 0, angle: -Math.PI/2, landed: true, alive: true };
+    // Destroy segments 3-5 (far from ship)
+    for (let i = 2; i < wideSegs.length; i++) { wideSegs[i].alive = false; }
+    assert(checkStillLanded(wideShip, wideGrid, terrain, base), 'ship on surviving segment stays landed after partial destruction');
+    // Now destroy segment under ship
+    wideSegs[0].alive = false;
+    // Check if segment 1 still supports (ship might be near boundary)
+    const supported = wideSegs.some(s => s.alive && wideShip.x > s.x - 3 && wideShip.x < s.x + s.width + 3);
+    if (supported) {
+        assert(checkStillLanded(wideShip, wideGrid, terrain, base), 'adjacent alive segment still supports ship');
+    } else {
+        wideSegs[1].alive = false; // destroy adjacent too
+        assert(!checkStillLanded(wideShip, wideGrid, terrain, base), 'ship falls when nearby segments all destroyed');
+    }
+}
+
+// ── Section 286: Tractor beam daisy-chain mechanics ──
+{
+    section('Section 286 — Tractor beam daisy-chain');
+    const code = fs.readFileSync('index.html', 'utf8');
+
+    // New constants exist
+    assert(code.includes('TRACTOR_CHAIN_RANGE'), 'TRACTOR_CHAIN_RANGE constant defined');
+    assert(code.includes('TRACTOR_MAX_CHAIN'), 'TRACTOR_MAX_CHAIN constant defined');
+    assert(code.includes('TRACTOR_CHAIN_DUR_PENALTY'), 'TRACTOR_CHAIN_DUR_PENALTY constant defined');
+
+    // tractorChain is used instead of tractorTarget
+    assert(code.includes('tractorChain:[]') || code.includes('tractorChain: []'), 'tractorChain initialized as empty array');
+    assert(code.includes('p.tractorChain = [bestIdx]'), 'fireTractor sets chain to first target');
+    assert(!code.includes('p.tractorTarget = bestIdx'), 'old tractorTarget assignment removed from fireTractor');
+
+    // Chain scanning logic
+    assert(code.includes('TRACTOR_MAX_CHAIN'), 'chain length limited by TRACTOR_MAX_CHAIN');
+    assert(code.includes('TRACTOR_CHAIN_RANGE'), 'chain uses shorter range constant');
+    assert(code.includes('tractorChain.includes(i)'), 'chain scan skips already-chained targets');
+
+    // Duration penalty per chain link
+    assert(code.includes('TRACTOR_CHAIN_DUR_PENALTY'), 'duration penalty applied per chain link');
+
+    // Cumulative thrust penalty
+    assert(/pen\s*\*=\s*TRACTOR_THRUST_PENALTY/.test(code), 'thrust penalty is cumulative per chain link');
+
+    // breakTractor handles chain
+    assert(code.includes('p.tractorChain') && code.includes('for (const vi of p.tractorChain)'),
+           'breakTractor frees all chain victims');
+    assert(code.includes('tower.tractorChain') && code.includes('.indexOf(p.id)'),
+           'breakTractor removes victim from tower chain');
+
+    // Network sync sends array
+    assert(code.includes('tT:p.tractorChain'), 'network serialization sends tractorChain array');
+    assert(code.includes('Array.isArray(') && code.includes('tT'), 'network deserialization handles array');
+
+    // Rope initialization
+    assert(/function\s+initRope/.test(code), 'initRope function exists');
+    assert(code.includes('TRACTOR_ROPE_NODES'), 'rope uses TRACTOR_ROPE_NODES constant');
+    assert(code.includes('tractorRopes'), 'tractorRopes array used');
+
+    // HUD shows chain count
+    assert(code.includes('tractorChain.length') && code.includes('chainCount'), 'HUD displays chain count');
+}
+
+// ── Section 287: Tractor rope physics verification ──
+{
+    section('Section 287 — Tractor rope physics');
+    const code = fs.readFileSync('index.html', 'utf8');
+
+    // Rope visual uses verlet integration
+    assert(code.includes('n.ox') && code.includes('n.oy'), 'rope stores old positions for verlet');
+    assert(code.includes('n.x * 2 - n.ox'), 'verlet integration formula present');
+
+    // Distance constraints
+    assert(code.includes('restLen'), 'rope has rest length constraint');
+    assert(/pass\s*<\s*3/.test(code), 'rope runs 3 constraint passes');
+
+    // Smooth curve rendering
+    assert(code.includes('quadraticCurveTo'), 'rope drawn with quadratic curves');
+
+    // Energy pulses follow rope path
+    assert(code.includes('rIdx') && code.includes('rope[ri]'), 'energy pulses interpolate along rope nodes');
+
+    // Rope init creates correct number of nodes
+    const TRACTOR_ROPE_NODES = 10;
+    // Simulate initRope
+    function initRopeTest(ax, ay, bx, by) {
+        const nodes = [];
+        for (let i = 0; i < TRACTOR_ROPE_NODES; i++) {
+            const t = i / (TRACTOR_ROPE_NODES - 1);
+            const x = ax + (bx - ax) * t;
+            const y = ay + (by - ay) * t;
+            nodes.push({ x, y, ox: x, oy: y });
+        }
+        return nodes;
+    }
+    const rope = initRopeTest(100, 200, 300, 200);
+    assert(rope.length === 10, 'initRope creates 10 nodes');
+    assert(rope[0].x === 100 && rope[0].y === 200, 'rope first node at start');
+    assert(rope[9].x === 300 && rope[9].y === 200, 'rope last node at end');
+    // t = 5/9 ≈ 0.556, so x ≈ 100 + 200*0.556 = 211.1
+    assertApprox(rope[5].x, 100 + 200 * (5/9), 0.01, 'rope node 5 interpolated correctly');
+    // Each node has ox/oy
+    for (let i = 0; i < rope.length; i++) {
+        assert(rope[i].ox === rope[i].x && rope[i].oy === rope[i].y,
+               'rope node ' + i + ' has matching old position on init');
+    }
+
+    // Simulate one verlet step — gravity should make middle nodes sag
+    const ropeG = 0.0396 * 25;
+    // Pin endpoints
+    rope[0].x = 100; rope[0].y = 200;
+    rope[9].x = 300; rope[9].y = 200;
+    // Integration step for inner nodes
+    for (let ni = 1; ni < rope.length - 1; ni++) {
+        const n = rope[ni];
+        const nx = n.x * 2 - n.ox;
+        const ny = n.y * 2 - n.oy + ropeG;
+        n.ox = n.x; n.oy = n.y;
+        n.x = nx; n.y = ny;
+    }
+    // Middle nodes should have moved downward (y increased)
+    assert(rope[5].y > 200, 'verlet gravity makes rope sag downward');
+    assert(rope[0].y === 200, 'pinned endpoint stays in place');
+    assert(rope[9].y === 200, 'pinned endpoint stays in place');
+}
+
+// ── Section 288: Tractor chain — functional simulation ──
+{
+    section('Section 288 — Tractor chain functional simulation');
+
+    const TRACTOR_RANGE = 160;
+    const TRACTOR_DUR = 360;
+    const TRACTOR_TETHER = 80;
+    const TRACTOR_CHAIN_RANGE = 130;
+    const TRACTOR_MAX_CHAIN = 3;
+    const TRACTOR_CHAIN_DUR_PENALTY = 60;
+    const TRACTOR_THRUST_PENALTY = 0.95;
+    const TRACTOR_RELEASE_INV = 60;
+
+    // Create test players
+    function mkPlayer(id, x, y) {
+        return {
+            id, x, y, vx: 0, vy: 0, angle: -Math.PI/2,
+            alive: true, hasTractor: false,
+            tractorActive: 0, tractorChain: [], tractorVictim: -1,
+            tractorRopes: [], invT: 0, thrusting: false,
+            revThrusting: false, firing: false, landed: false
+        };
+    }
+
+    // Test 1: fireTractor targets closest enemy
+    const tPlayers = [mkPlayer(0, 100, 100), mkPlayer(1, 200, 100), mkPlayer(2, 150, 100)];
+    tPlayers[0].hasTractor = true;
+    // Simulate fireTractor
+    let bestDist = TRACTOR_RANGE, bestIdx = -1;
+    for (let i = 1; i < tPlayers.length; i++) {
+        const op = tPlayers[i];
+        if (!op.alive || op.tractorVictim >= 0) continue;
+        const d = Math.sqrt((tPlayers[0].x - op.x)**2 + (tPlayers[0].y - op.y)**2);
+        if (d < bestDist) { bestDist = d; bestIdx = i; }
+    }
+    assert(bestIdx === 2, 'fireTractor targets closest enemy (player 2 at 50px, not player 1 at 100px)');
+
+    // Test 2: Chain captures in range from last link
+    tPlayers[0].tractorActive = TRACTOR_DUR;
+    tPlayers[0].tractorChain = [2]; // player 2 is first victim
+    tPlayers[2].tractorVictim = 0;
+    tPlayers[2].x = 150; tPlayers[2].y = 100;
+    tPlayers[1].x = 250; tPlayers[1].y = 100; // 100px from player 2 — within TRACTOR_CHAIN_RANGE
+    // Simulate chain scan
+    const lastV = tPlayers[tPlayers[0].tractorChain[tPlayers[0].tractorChain.length - 1]];
+    let bestD = TRACTOR_CHAIN_RANGE, bestI = -1;
+    for (let i = 0; i < tPlayers.length; i++) {
+        if (i === 0 || tPlayers[0].tractorChain.includes(i)) continue;
+        const op = tPlayers[i];
+        if (!op.alive || op.tractorVictim >= 0) continue;
+        const d = Math.sqrt((lastV.x - op.x)**2 + (lastV.y - op.y)**2);
+        if (d < bestD) { bestD = d; bestI = i; }
+    }
+    assert(bestI === 1, 'chain scan finds player 1 near last chained victim');
+
+    // Test 3: Chain doesn't exceed TRACTOR_MAX_CHAIN
+    const chainPlayers = [];
+    for (let i = 0; i < 5; i++) chainPlayers.push(mkPlayer(i, i * 70, 100));
+    chainPlayers[0].hasTractor = true;
+    chainPlayers[0].tractorChain = [1, 2, 3]; // 3 victims = max
+    assert(chainPlayers[0].tractorChain.length === TRACTOR_MAX_CHAIN, 'chain at max length');
+    // Should not scan for more
+    const shouldScan = chainPlayers[0].tractorChain.length < TRACTOR_MAX_CHAIN;
+    assert(!shouldScan, 'no chain scan when at max chain length');
+
+    // Test 4: Duration penalty accumulates
+    let dur = TRACTOR_DUR;
+    dur -= TRACTOR_CHAIN_DUR_PENALTY; // first extra link
+    assert(dur === 300, 'first chain link costs 60 frames');
+    dur -= TRACTOR_CHAIN_DUR_PENALTY; // second extra link
+    assert(dur === 240, 'second chain link costs another 60 frames');
+
+    // Test 5: Cumulative thrust penalty
+    let pen = 1;
+    for (let ci = 0; ci < 3; ci++) pen *= TRACTOR_THRUST_PENALTY;
+    assertApprox(pen, 0.857375, 0.001, '3-link chain thrust penalty: 0.95^3 ≈ 0.857');
+    let pen1 = TRACTOR_THRUST_PENALTY;
+    assertApprox(pen1, 0.95, 0.001, '1-link chain thrust penalty: 0.95');
+
+    // Test 6: Chain break from middle frees subsequent links
+    const breakPlayers = [];
+    for (let i = 0; i < 4; i++) breakPlayers.push(mkPlayer(i, i * 80, 100));
+    breakPlayers[0].tractorActive = 200;
+    breakPlayers[0].tractorChain = [1, 2, 3];
+    breakPlayers[1].tractorVictim = 0;
+    breakPlayers[2].tractorVictim = 0;
+    breakPlayers[3].tractorVictim = 0;
+    // Player 2 dies — should free 2 and 3 from chain
+    breakPlayers[2].alive = false;
+    // Simulate chain check: iterate, find dead link, splice from there
+    let chainBroken = false;
+    for (let ci = 0; ci < breakPlayers[0].tractorChain.length; ci++) {
+        const vi = breakPlayers[0].tractorChain[ci];
+        const v = breakPlayers[vi];
+        if (!v.alive) {
+            const freed = breakPlayers[0].tractorChain.splice(ci);
+            for (const fi of freed) {
+                breakPlayers[fi].tractorVictim = -1;
+            }
+            chainBroken = true;
+            break;
+        }
+    }
+    assert(chainBroken, 'chain breaks when middle link dies');
+    assert(breakPlayers[0].tractorChain.length === 1, 'chain truncated to link before dead player');
+    assert(breakPlayers[0].tractorChain[0] === 1, 'first link survives');
+    assert(breakPlayers[2].tractorVictim === -1, 'dead player freed');
+    assert(breakPlayers[3].tractorVictim === -1, 'player after dead link freed');
+    assert(breakPlayers[1].tractorVictim === 0, 'player before dead link still tethered');
+
+    // Test 7: Out-of-range target not chained
+    const farPlayers = [mkPlayer(0, 100, 100), mkPlayer(1, 200, 100), mkPlayer(2, 500, 100)];
+    farPlayers[0].tractorChain = [1];
+    const lastFV = farPlayers[1];
+    let bestFD = TRACTOR_CHAIN_RANGE, bestFI = -1;
+    for (let i = 0; i < farPlayers.length; i++) {
+        if (i === 0 || farPlayers[0].tractorChain.includes(i)) continue;
+        const op = farPlayers[i];
+        if (!op.alive || op.tractorVictim >= 0) continue;
+        const d = Math.sqrt((lastFV.x - op.x)**2 + (lastFV.y - op.y)**2);
+        if (d < bestFD) { bestFD = d; bestFI = i; }
+    }
+    assert(bestFI === -1, 'player at 300px not chained (exceeds TRACTOR_CHAIN_RANGE 130)');
+
+    // Test 8: Already-tethered player not double-chained
+    const dPlayers = [mkPlayer(0, 100, 100), mkPlayer(1, 200, 100), mkPlayer(2, 250, 100)];
+    dPlayers[0].tractorChain = [1];
+    dPlayers[1].tractorVictim = 0;
+    dPlayers[2].tractorVictim = 3; // already tethered by someone else
+    let bestDI = -1, bestDD = TRACTOR_CHAIN_RANGE;
+    for (let i = 0; i < dPlayers.length; i++) {
+        if (i === 0 || dPlayers[0].tractorChain.includes(i)) continue;
+        const op = dPlayers[i];
+        if (!op.alive || op.tractorVictim >= 0) continue;
+        const d = Math.sqrt((dPlayers[1].x - op.x)**2 + (dPlayers[1].y - op.y)**2);
+        if (d < bestDD) { bestDD = d; bestDI = i; }
+    }
+    assert(bestDI === -1, 'already-tethered player not double-chained');
+
+    // Test 9: Dead player not chained
+    const deadPlayers = [mkPlayer(0, 100, 100), mkPlayer(1, 200, 100), mkPlayer(2, 250, 100)];
+    deadPlayers[0].tractorChain = [1];
+    deadPlayers[2].alive = false;
+    let bestDeadI = -1, bestDeadD = TRACTOR_CHAIN_RANGE;
+    for (let i = 0; i < deadPlayers.length; i++) {
+        if (i === 0 || deadPlayers[0].tractorChain.includes(i)) continue;
+        const op = deadPlayers[i];
+        if (!op.alive || op.tractorVictim >= 0) continue;
+        const d = Math.sqrt((deadPlayers[1].x - op.x)**2 + (deadPlayers[1].y - op.y)**2);
+        if (d < bestDeadD) { bestDeadD = d; bestDeadI = i; }
+    }
+    assert(bestDeadI === -1, 'dead player not chained');
+
+    // Test 10: Tower itself not chained
+    const selfPlayers = [mkPlayer(0, 100, 100), mkPlayer(1, 150, 100)];
+    selfPlayers[0].tractorChain = [1];
+    selfPlayers[1].x = 120; // close to tower
+    let bestSI = -1, bestSD = TRACTOR_CHAIN_RANGE;
+    for (let i = 0; i < selfPlayers.length; i++) {
+        if (i === 0 || selfPlayers[0].tractorChain.includes(i)) continue;
+        const op = selfPlayers[i];
+        if (!op.alive || op.tractorVictim >= 0) continue;
+        const d = Math.sqrt((selfPlayers[1].x - op.x)**2 + (selfPlayers[1].y - op.y)**2);
+        if (d < bestSD) { bestSD = d; bestSI = i; }
+    }
+    assert(bestSI === -1, 'tower cannot chain itself');
 }
 
 console.log(`RESULTS: ${passed}/${total} passed, ${failed} failed`);

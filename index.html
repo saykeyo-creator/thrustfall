@@ -317,6 +317,10 @@ const TRACTOR_DUR = 360; // tether active for 6 seconds (360 frames at 60fps)
 const TRACTOR_TETHER = 80; // tow distance between ships
 const TRACTOR_THRUST_PENALTY = 0.95; // 5% thrust reduction while towing
 const TRACTOR_RELEASE_INV = 60; // 1s invincibility after release
+const TRACTOR_CHAIN_RANGE = 130; // range to chain next target (shorter than initial)
+const TRACTOR_MAX_CHAIN = 3; // max victims in chain
+const TRACTOR_CHAIN_DUR_PENALTY = 60; // lose 1s duration per extra chain link
+const TRACTOR_ROPE_NODES = 10; // rope simulation nodes per link
 
 // ---------- DESTRUCTIBLE PLATFORMS ----------
 const PLAT_SEG_W = 35; // target segment width in pixels
@@ -370,7 +374,8 @@ let hudT = 4, hudL = 8, hudR = VIEW_W - 8;
 let running = false, paused = false, frame = 0, af;
 
 // Networking — WebSocket to dedicated server
-const WS_URL = (location.protocol === 'file:' || location.hostname === 'localhost') ? 'wss://thrustfall-qr58.onrender.com' : (location.protocol==='https:'?'wss:':'ws:') + '//' + location.host;
+const FLY_HOST = 'thrustfall.fly.dev';
+const WS_URL = (location.protocol === 'file:' || location.hostname === 'localhost') ? 'wss://' + FLY_HOST : (location.protocol==='https:'?'wss:':'ws:') + '//' + location.host;
 let ws = null, isHost = false, isRoomCreator = false, myIndex = -1, roomCode = '';
 
 // Game state
@@ -2055,8 +2060,8 @@ function spawnSurvivalWave(wave) {
         weapon:hs.weapon, shield:hs.shield, shieldHP:hs.shieldHP||0, streak:hs.streak, lastKillFrame:hs.lastKillFrame,
         weaponTimer:hs.weaponTimer, flashTimer:hs.flashTimer,
         hasEmp:false, hasTractor:false, empActive:0, empStruck:0,
-        tractorActive:0, tractorTarget:-1, tractorVictim:-1,
-        skin:hs.skin, trail:hs.trail
+        tractorActive:0, tractorChain:[], tractorVictim:-1,
+        tractorRopes:[], skin:hs.skin, trail:hs.trail
     });
     playerInputs.push({rot:0, thrust:false, revThrust:false, fire:false});
 
@@ -2097,8 +2102,8 @@ function spawnSurvivalWave(wave) {
             weapon:botWeapon, weaponTimer: botWeapon !== 'normal' ? WEAPON_TIMER : 0,
             shield: (wave>=5 || isBossWave) ? 1 : 0, shieldHP: (wave>=5 || isBossWave) ? 2 : 0, flashTimer:0,
             hasEmp:false, hasTractor:false, empActive:0, empStruck:0,
-            tractorActive:0, tractorTarget:-1, tractorVictim:-1,
-            streak:0, lastKillFrame:-999, lastInput:null
+            tractorActive:0, tractorChain:[], tractorVictim:-1,
+            tractorRopes:[], streak:0, lastKillFrame:-999, lastInput:null
         });
         playerInputs.push({rot:0, thrust:false, revThrust:false, fire:false});
     }
@@ -2396,7 +2401,7 @@ function beginGame(data) {
             camX: bs.x + (bs.w||BASE_W)/2, camY: baseTopY - SHIP_SZ,
             disconnected: false,
             weapon: 'normal', shield: pShield, shieldHP: 2, hasEmp: false, hasTractor: false,
-            tractorActive: 0, tractorTarget: -1, tractorVictim: -1,
+            tractorActive: 0, tractorChain: [], tractorVictim: -1, tractorRopes: [],
             weaponTimer: 0, // countdown to weapon expiry
             flashTimer: 0, // hit flash effect
             streak: 0, lastKillFrame: -999,
@@ -3293,6 +3298,17 @@ function fireEmp(p, pi) {
 // =====================================================
 // TRACTOR BEAM (separate from weapon system)
 // =====================================================
+function initRope(ax, ay, bx, by) {
+    const nodes = [];
+    for (let i = 0; i < TRACTOR_ROPE_NODES; i++) {
+        const t = i / (TRACTOR_ROPE_NODES - 1);
+        const x = ax + (bx - ax) * t;
+        const y = ay + (by - ay) * t;
+        nodes.push({ x, y, ox: x, oy: y });
+    }
+    return nodes;
+}
+
 function fireTractor(p, pi) {
     if (!p.hasTractor || p.tractorActive > 0 || !p.alive) return;
     // Find closest alive enemy within TRACTOR_RANGE
@@ -3300,13 +3316,14 @@ function fireTractor(p, pi) {
     for (let i = 0; i < players.length; i++) {
         if (i === pi) continue;
         const op = players[i];
-        if (!op.alive || op.tractorVictim >= 0) continue; // skip dead or already tethered
+        if (!op.alive || op.tractorVictim >= 0) continue;
         const d = dist(p.x, p.y, op.x, op.y);
         if (d < bestDist) { bestDist = d; bestIdx = i; }
     }
     if (bestIdx < 0) { emitEvent({t:'e',n:'tractorFizzle',x:p.x,y:p.y,i:pi}); return; }
     p.tractorActive = TRACTOR_DUR;
-    p.tractorTarget = bestIdx;
+    p.tractorChain = [bestIdx];
+    p.tractorRopes = [initRope(p.x, p.y, players[bestIdx].x, players[bestIdx].y)];
     p.hasTractor = false;
     const victim = players[bestIdx];
     victim.tractorVictim = pi;
@@ -3315,21 +3332,44 @@ function fireTractor(p, pi) {
 
 function breakTractor(p) {
     // Break any tether involving this player (as tow-er or victim)
-    if (p.tractorTarget >= 0) {
-        const victim = players[p.tractorTarget];
-        if (victim) {
-            victim.tractorVictim = -1;
-            victim.invT = Math.max(victim.invT, TRACTOR_RELEASE_INV);
-            emitEvent({t:'e',n:'tractorRelease',x:victim.x,y:victim.y,i:p.id,vi:p.tractorTarget});
+    if (p.tractorChain && p.tractorChain.length > 0) {
+        for (const vi of p.tractorChain) {
+            const victim = players[vi];
+            if (victim) {
+                victim.tractorVictim = -1;
+                victim.invT = Math.max(victim.invT, TRACTOR_RELEASE_INV);
+                emitEvent({t:'e',n:'tractorRelease',x:victim.x,y:victim.y,i:p.id,vi});
+            }
         }
     }
     if (p.tractorVictim >= 0) {
         const tower = players[p.tractorVictim];
-        if (tower) { tower.tractorActive = 0; tower.tractorTarget = -1; }
+        if (tower) {
+            // Remove this player from tower's chain (and everyone after)
+            const ci = tower.tractorChain ? tower.tractorChain.indexOf(p.id) : -1;
+            if (ci >= 0) {
+                // Free everyone from this link onward
+                const freed = tower.tractorChain.splice(ci);
+                tower.tractorRopes.splice(ci);
+                for (const fi of freed) {
+                    const fp = players[fi];
+                    if (fp && fp !== p) {
+                        fp.tractorVictim = -1;
+                        fp.invT = Math.max(fp.invT, TRACTOR_RELEASE_INV);
+                        emitEvent({t:'e',n:'tractorRelease',x:fp.x,y:fp.y,i:p.tractorVictim,vi:fi});
+                    }
+                }
+                if (tower.tractorChain.length === 0) {
+                    tower.tractorActive = 0;
+                }
+            } else {
+                tower.tractorActive = 0; tower.tractorChain = []; tower.tractorRopes = [];
+            }
+        }
         p.invT = Math.max(p.invT, TRACTOR_RELEASE_INV);
         emitEvent({t:'e',n:'tractorRelease',x:p.x,y:p.y,i:p.tractorVictim,vi:p.id});
     }
-    p.tractorActive = 0; p.tractorTarget = -1; p.tractorVictim = -1;
+    p.tractorActive = 0; p.tractorChain = []; p.tractorRopes = []; p.tractorVictim = -1;
 }
 
 // =====================================================
@@ -3596,6 +3636,18 @@ function hostUpdate() {
 
         if (p.landed) {
             if ((inp.thrust || inp.revThrust) && !p.empStruck && p.tractorVictim < 0) p.landed=false;
+            // Check if platform beneath was destroyed
+            if (p.landed) {
+                const footY = p.y + SHIP_SZ;
+                const onBase = p.x > p.base.x - 3 && p.x < p.base.x + p.base.w + 3 && footY > p.base.y - 2 && footY < p.base.y + p.base.h + 14;
+                const bt = getTerrainYAt(p.x, terrain);
+                const onTerrain = bt && Math.abs(footY - bt.y) < 4;
+                if (!onBase && !onTerrain) {
+                    const footSegs = getSegsInRect(platGrid, p.x - SHIP_SZ, footY - 4, SHIP_SZ * 2, 8);
+                    const onPlat = footSegs.some(s => s.alive && p.x > s.x - 3 && p.x < s.x + s.width + 3);
+                    if (!onPlat) p.landed = false;
+                }
+            }
             p.angle += inp.rot * ROT_SPD_MAX;
             if (p.landed) {
                 p.vy=0; p.vx*=0.92;
@@ -3699,34 +3751,78 @@ function hostUpdate() {
             }
         }
 
-        // Tractor beam — tow victim behind tower
-        if (p.tractorActive > 0 && p.tractorTarget >= 0) {
+        // Tractor beam — tow chain of victims behind tower
+        if (p.tractorActive > 0 && p.tractorChain.length > 0) {
             p.tractorActive--;
-            const v = players[p.tractorTarget];
-            if (!v || !v.alive) { breakTractor(p); }
-            else {
-                // Drag victim to TRACTOR_TETHER distance behind tower
-                let dx = p.x - v.x, dy = p.y - v.y;
-                // Handle world wrap
+            let chainBroken = false;
+            // Process each link in the chain
+            for (let ci = 0; ci < p.tractorChain.length; ci++) {
+                const vi = p.tractorChain[ci];
+                const v = players[vi];
+                if (!v || !v.alive) {
+                    // Chain breaks from this link onward
+                    const freed = p.tractorChain.splice(ci);
+                    p.tractorRopes.splice(ci);
+                    for (const fi of freed) {
+                        const fp = players[fi];
+                        if (fp && fp.alive) {
+                            fp.tractorVictim = -1;
+                            fp.invT = Math.max(fp.invT, TRACTOR_RELEASE_INV);
+                            emitEvent({t:'e',n:'tractorRelease',x:fp.x,y:fp.y,i:p.id,vi:fi});
+                        }
+                    }
+                    chainBroken = true;
+                    break;
+                }
+                // Anchor = tower for first link, previous victim for subsequent links
+                const anchor = ci === 0 ? p : players[p.tractorChain[ci - 1]];
+                let dx = anchor.x - v.x, dy = anchor.y - v.y;
                 if (dx > worldW/2) dx -= worldW; if (dx < -worldW/2) dx += worldW;
-                const d = Math.sqrt(dx*dx + dy*dy) || 1;
-                // Target position: TRACTOR_TETHER behind tower (opposite tower's heading)
-                const behindA = p.angle + Math.PI;
-                const tx = p.x + Math.cos(behindA) * TRACTOR_TETHER;
-                const ty = p.y + Math.sin(behindA) * TRACTOR_TETHER;
+                // Target position: TRACTOR_TETHER behind anchor (opposite anchor's heading)
+                const behindA = anchor.angle + Math.PI;
+                const tx = anchor.x + Math.cos(behindA) * TRACTOR_TETHER;
+                const ty = anchor.y + Math.sin(behindA) * TRACTOR_TETHER;
                 let tdx = tx - v.x, tdy = ty - v.y;
                 if (tdx > worldW/2) tdx -= worldW; if (tdx < -worldW/2) tdx += worldW;
-                // Lerp victim toward tow point
                 v.vx = tdx * 0.15; v.vy = tdy * 0.15;
                 v.x += v.vx; v.y += v.vy;
                 if (v.x < 0) v.x += worldW; if (v.x > worldW) v.x -= worldW;
-                // Force victim angle to point toward tower (tidal lock)
                 v.angle = Math.atan2(-dy, -dx);
                 v.thrusting = false; v.revThrusting = false; v.firing = false; v.landed = false;
+            }
+            if (!chainBroken && p.tractorChain.length === 0) { breakTractor(p); }
+            else if (!chainBroken) {
+                // Try to chain a new target from last link
+                if (p.tractorChain.length < TRACTOR_MAX_CHAIN) {
+                    const lastVi = p.tractorChain[p.tractorChain.length - 1];
+                    const lastV = players[lastVi];
+                    if (lastV && lastV.alive) {
+                        let bestD = TRACTOR_CHAIN_RANGE, bestI = -1;
+                        for (let i = 0; i < players.length; i++) {
+                            if (i === pi || p.tractorChain.includes(i)) continue;
+                            const op = players[i];
+                            if (!op.alive || op.tractorVictim >= 0) continue;
+                            const d = dist(lastV.x, lastV.y, op.x, op.y);
+                            if (d < bestD) { bestD = d; bestI = i; }
+                        }
+                        if (bestI >= 0) {
+                            p.tractorChain.push(bestI);
+                            p.tractorRopes.push(initRope(lastV.x, lastV.y, players[bestI].x, players[bestI].y));
+                            players[bestI].tractorVictim = pi;
+                            // Duration penalty per extra link
+                            p.tractorActive = Math.max(1, p.tractorActive - TRACTOR_CHAIN_DUR_PENALTY);
+                            emitEvent({t:'e',n:'tractorActivate',x:lastV.x,y:lastV.y,i:pi,vi:bestI});
+                        }
+                    }
+                }
                 // Periodic hum sound
                 if (p.tractorActive % 30 === 0) emitEvent({t:'e',n:'tractorHum',x:p.x,y:p.y});
-                // Apply thrust penalty to tower
-                if (p.thrusting) { p.vx *= TRACTOR_THRUST_PENALTY; p.vy *= TRACTOR_THRUST_PENALTY; }
+                // Thrust penalty — cumulative per chain link
+                if (p.thrusting) {
+                    let pen = 1;
+                    for (let ci = 0; ci < p.tractorChain.length; ci++) pen *= TRACTOR_THRUST_PENALTY;
+                    p.vx *= pen; p.vy *= pen;
+                }
                 // Expire
                 if (p.tractorActive <= 0) breakTractor(p);
             }
@@ -3921,7 +4017,7 @@ function hostUpdate() {
     if (frame % STATE_INTERVAL === 0) {
         broadcast({
             t:'s',
-            p: players.map(p=>({x:rd(p.x),y:rd(p.y),vx:rd(p.vx),vy:rd(p.vy),a:rd(p.angle),al:p.alive,l:p.lives,s:p.score,iv:p.invT>0,th:p.thrusting,rv:p.revThrusting,la:p.landed,fi:p.firing,rT:p.respawnT,wp:p.weapon,sh:p.shield,shp:p.shieldHP||0,empA:p.empActive||0,empS:p.empStruck||0,hE:p.hasEmp?1:0,hT:p.hasTractor?1:0,tA:p.tractorActive||0,tT:p.tractorTarget,tV:p.tractorVictim})),
+            p: players.map(p=>({x:rd(p.x),y:rd(p.y),vx:rd(p.vx),vy:rd(p.vy),a:rd(p.angle),al:p.alive,l:p.lives,s:p.score,iv:p.invT>0,th:p.thrusting,rv:p.revThrusting,la:p.landed,fi:p.firing,rT:p.respawnT,wp:p.weapon,sh:p.shield,shp:p.shieldHP||0,empA:p.empActive||0,empS:p.empStruck||0,hE:p.hasEmp?1:0,hT:p.hasTractor?1:0,tA:p.tractorActive||0,tT:p.tractorChain,tV:p.tractorVictim})),
             b: bullets.map(b=>({x:rd(b.x),y:rd(b.y),vx:rd(b.vx),vy:rd(b.vy),o:b.owner,c:b.color,sz:b.sz||2.5})),
             bm: beams.map(bm=>({x:rd(bm.x),y:rd(bm.y),a:rd(bm.angle),o:bm.owner,c:bm.color,ed:rd(bm.endDist||BEAM_RANGE),l:bm.life,ml:bm.maxLife})),
             be: baseExps.map(e=>({x:rd(e.x),y:rd(e.y),t:e.t,d:e.dur,o:e.owner,p:rd(e.phase)})),
@@ -4028,11 +4124,7 @@ function clientUpdate() {
             players[i].landed = b.la; players[i].firing = b.fi; players[i].respawnT = b.rT;
             players[i].weapon = b.wp || 'normal'; players[i].shield = b.sh || 0; players[i].shieldHP = b.shp || 0;
             players[i].empActive = b.empA || 0; players[i].empStruck = b.empS || 0; players[i].hasEmp = !!b.hE;
-            players[i].hasTractor = !!b.hT; players[i].tractorActive = b.tA || 0; players[i].tractorTarget = b.tT != null ? b.tT : -1; players[i].tractorVictim = b.tV != null ? b.tV : -1;
-        }
-    } else if (latest) {
-        for (let i = 0; i < latest.state.p.length; i++) {
-            if (i === myIndex || !players[i]) continue;
+            players[i].hasTractor = !!b.hT; players[i].tractorActive = b.tA || 0; players[i].tractorChain = Array.isArray(b.tT) ? b.tT : []; players[i].tractorVictim = b.tV != null ? b.tV : -1;
             const sp = latest.state.p[i];
             players[i].x = sp.x; players[i].y = sp.y; players[i].vx = sp.vx; players[i].vy = sp.vy;
             players[i].angle = sp.a; players[i].alive = sp.al; players[i].lives = sp.l; players[i].score = sp.s;
@@ -4040,7 +4132,7 @@ function clientUpdate() {
             players[i].landed = sp.la; players[i].firing = sp.fi; players[i].respawnT = sp.rT;
             players[i].weapon = sp.wp || 'normal'; players[i].shield = sp.sh || 0; players[i].shieldHP = sp.shp || 0;
             players[i].empActive = sp.empA || 0; players[i].empStruck = sp.empS || 0; players[i].hasEmp = !!sp.hE;
-            players[i].hasTractor = !!sp.hT; players[i].tractorActive = sp.tA || 0; players[i].tractorTarget = sp.tT != null ? sp.tT : -1; players[i].tractorVictim = sp.tV != null ? sp.tV : -1;
+            players[i].hasTractor = !!sp.hT; players[i].tractorActive = sp.tA || 0; players[i].tractorChain = Array.isArray(sp.tT) ? sp.tT : []; players[i].tractorVictim = sp.tV != null ? sp.tV : -1;
             players[i].weaponTimer = sp.wt || 0; players[i].flashTimer = sp.ft || 0;
         }
     }
@@ -4060,7 +4152,7 @@ function clientUpdate() {
         me.respawnT = sp.rT; me.weapon = sp.wp || 'normal'; me.shield = sp.sh || 0; me.shieldHP = sp.shp || 0; me.landed = sp.la;
         me.weaponTimer = sp.wt || 0; me.flashTimer = sp.ft || 0;
         me.empActive = sp.empA || 0; me.empStruck = sp.empS || 0; me.hasEmp = !!sp.hE;
-        me.hasTractor = !!sp.hT; me.tractorActive = sp.tA || 0; me.tractorTarget = sp.tT != null ? sp.tT : -1; me.tractorVictim = sp.tV != null ? sp.tV : -1;
+        me.hasTractor = !!sp.hT; me.tractorActive = sp.tA || 0; me.tractorChain = Array.isArray(sp.tT) ? sp.tT : []; me.tractorVictim = sp.tV != null ? sp.tV : -1;
         if (me.x < 0) me.x += worldW; if (me.x > worldW) me.x -= worldW;
     }
 
@@ -4742,35 +4834,88 @@ function draw() {
         ctx.restore();
     }
 
-    // Tractor beam tether line — animated energy beam between tower and victim
+    // Tractor beam tether — rope physics chain between tower and victims
     for (const pp of players) {
-        if (!pp.alive || pp.tractorActive <= 0 || pp.tractorTarget < 0) continue;
-        const victim = players[pp.tractorTarget];
-        if (!victim || !victim.alive) continue;
+        if (!pp.alive || pp.tractorActive <= 0 || !pp.tractorChain || pp.tractorChain.length === 0) continue;
         const tractProg = pp.tractorActive / TRACTOR_DUR;
-        // Calculate positions with wrap
-        let vx = victim.x, vy = victim.y;
-        let ddx = vx - pp.x; if (ddx > worldW/2) vx -= worldW; else if (ddx < -worldW/2) vx += worldW;
         ctx.save(); ctx.shadowBlur = 0;
-        // Main tether line
-        ctx.globalAlpha = tractProg * (0.4 + Math.sin(frame * 0.15) * 0.15);
-        ctx.strokeStyle = '#66ff44'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(pp.x, pp.y); ctx.lineTo(vx, vy); ctx.stroke();
-        // Energy pulses traveling along tether
-        const segLen = Math.sqrt((vx-pp.x)**2+(vy-pp.y)**2) || 1;
-        for (let pulse = 0; pulse < 4; pulse++) {
-            const t = ((frame * 0.04 + pulse * 0.25) % 1);
-            const px = pp.x + (vx - pp.x) * t;
-            const py = pp.y + (vy - pp.y) * t;
-            ctx.globalAlpha = tractProg * 0.6;
-            ctx.fillStyle = '#aaffaa';
-            ctx.beginPath(); ctx.arc(px, py, 2 + Math.sin(frame * 0.3 + pulse) * 1, 0, Math.PI * 2); ctx.fill();
+
+        // Draw each link in the chain
+        for (let ci = 0; ci < pp.tractorChain.length; ci++) {
+            const vi = pp.tractorChain[ci];
+            const victim = players[vi];
+            if (!victim || !victim.alive) break;
+            const anchor = ci === 0 ? pp : players[pp.tractorChain[ci - 1]];
+            if (!anchor) break;
+
+            // Wrap-corrected victim position
+            let vx = victim.x, vy = victim.y;
+            let ddx = vx - anchor.x;
+            if (ddx > worldW/2) vx -= worldW; else if (ddx < -worldW/2) vx += worldW;
+
+            // Ensure rope array exists for this link
+            if (!pp.tractorRopes[ci]) pp.tractorRopes[ci] = initRope(anchor.x, anchor.y, vx, vy);
+            const rope = pp.tractorRopes[ci];
+
+            // Verlet rope simulation
+            const ropeG = G * 25; // visual sag gravity
+            // Pin endpoints
+            rope[0].x = anchor.x; rope[0].y = anchor.y;
+            rope[rope.length - 1].x = vx; rope[rope.length - 1].y = vy;
+            // Verlet integration for inner nodes
+            for (let ni = 1; ni < rope.length - 1; ni++) {
+                const n = rope[ni];
+                const nx = n.x * 2 - n.ox;
+                const ny = n.y * 2 - n.oy + ropeG;
+                n.ox = n.x; n.oy = n.y;
+                n.x = nx; n.y = ny;
+            }
+            // Distance constraints (3 passes)
+            const restLen = Math.sqrt((vx - anchor.x)**2 + (vy - anchor.y)**2) / (rope.length - 1);
+            for (let pass = 0; pass < 3; pass++) {
+                for (let ni = 0; ni < rope.length - 1; ni++) {
+                    const a = rope[ni], b = rope[ni + 1];
+                    let cdx = b.x - a.x, cdy = b.y - a.y;
+                    const cd = Math.sqrt(cdx*cdx + cdy*cdy) || 1;
+                    const diff = (cd - restLen) / cd * 0.5;
+                    cdx *= diff; cdy *= diff;
+                    if (ni > 0) { a.x += cdx; a.y += cdy; }
+                    if (ni < rope.length - 2) { b.x -= cdx; b.y -= cdy; }
+                }
+            }
+
+            // Draw rope as smooth curve
+            ctx.globalAlpha = tractProg * (0.4 + Math.sin(frame * 0.15) * 0.15);
+            ctx.strokeStyle = '#66ff44'; ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(rope[0].x, rope[0].y);
+            for (let ni = 1; ni < rope.length - 1; ni++) {
+                const cpx = (rope[ni].x + rope[ni + 1].x) / 2;
+                const cpy = (rope[ni].y + rope[ni + 1].y) / 2;
+                ctx.quadraticCurveTo(rope[ni].x, rope[ni].y, cpx, cpy);
+            }
+            ctx.lineTo(rope[rope.length - 1].x, rope[rope.length - 1].y);
+            ctx.stroke();
+
+            // Energy pulses traveling along rope path
+            for (let pulse = 0; pulse < 3; pulse++) {
+                const t = ((frame * 0.04 + pulse * 0.33) % 1);
+                const rIdx = t * (rope.length - 1);
+                const ri = Math.min(Math.floor(rIdx), rope.length - 2);
+                const rf = rIdx - ri;
+                const px = rope[ri].x + (rope[ri + 1].x - rope[ri].x) * rf;
+                const py = rope[ri].y + (rope[ri + 1].y - rope[ri].y) * rf;
+                ctx.globalAlpha = tractProg * 0.6;
+                ctx.fillStyle = '#aaffaa';
+                ctx.beginPath(); ctx.arc(px, py, 2 + Math.sin(frame * 0.3 + pulse + ci) * 1, 0, Math.PI * 2); ctx.fill();
+            }
+
+            // Glow at link endpoints
+            ctx.globalAlpha = tractProg * 0.2;
+            ctx.fillStyle = '#66ff44';
+            ctx.beginPath(); ctx.arc(anchor.x, anchor.y, 8, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(vx, vy, 8, 0, Math.PI * 2); ctx.fill();
         }
-        // Glow at endpoints
-        ctx.globalAlpha = tractProg * 0.2;
-        ctx.fillStyle = '#66ff44';
-        ctx.beginPath(); ctx.arc(pp.x, pp.y, 8, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(vx, vy, 8, 0, Math.PI * 2); ctx.fill();
         ctx.globalAlpha = 1;
         ctx.restore();
     }
@@ -4934,7 +5079,9 @@ function drawHUD() {
     }
     if (me.tractorActive > 0) {
         const secLeft = Math.ceil(me.tractorActive / 60);
-        ctx.fillStyle='#66ff44'; ctx.textAlign='left'; ctx.fillText('⊛ TRACTOR ACTIVE '+secLeft+'s', hudL, hudY); hudY += fs+4;
+        const chainCount = me.tractorChain ? me.tractorChain.length : 0;
+        const chainTxt = chainCount > 1 ? ' ×' + chainCount : '';
+        ctx.fillStyle='#66ff44'; ctx.textAlign='left'; ctx.fillText('⊛ TRACTOR ACTIVE '+secLeft+'s'+chainTxt, hudL, hudY); hudY += fs+4;
     }
     if (me.tractorVictim >= 0) {
         ctx.fillStyle = Math.sin(frame*0.25)>0 ? '#66ff44' : '#44aa22'; ctx.textAlign='left';
